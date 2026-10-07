@@ -270,3 +270,25 @@ Process-local halted sets and UI-only stop controls were rejected because they r
 
 ### Reversal
 A future subscription state machine may replace the boolean only through an additive migration and coordinated contract tests preserving stopped-strategy risk rejection.
+
+## DEC-013 — Isolated local PostgreSQL development databases
+Date: 2026-10-07
+Status: ACCEPTED
+
+### Context
+PostgreSQL persistence and migrations were only locally unit-tested because an isolated Neon database was unavailable. Production data must never be used for integration tests, while SQLite alone cannot validate psycopg behavior, advisory ownership or PostgreSQL migration application.
+
+### Decision
+DESIGN_DECISION: Support peer-authenticated local PostgreSQL with separate `algoshield_local` application and `algoshield_test` rollback-only test databases. `scripts/setup_local_postgres.sh` creates missing databases and applies the same reviewed additive migrations without dropping, resetting or seeding data. Machine-specific URLs remain in ignored `.env.local`; Neon PostgreSQL remains the durable deployment target.
+
+### Reason
+Developers can validate the real PostgreSQL store and migrations safely without production access or stored local credentials.
+
+### Impact
+Local setup documentation, environment template, migration validation and PostgreSQL integration testing.
+
+### Alternatives
+Using production/Neon data for tests, silently falling back to SQLite, or maintaining a second PostgreSQL schema path were rejected.
+
+### Reversal
+Replace the local launcher when the team adopts a different isolated development environment, while preserving separate application/test databases and the existing migration history.

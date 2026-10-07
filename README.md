@@ -27,6 +27,16 @@ python -m ruff format --check .
 
 Docker alternative: `docker build -t algoshield .`, then `docker run --rm -p 8000:8000 -v algoshield-data:/app/data algoshield`.
 
+### Local PostgreSQL
+
+When a local PostgreSQL server and peer-authenticated development role are available, create isolated application and test databases and apply the reviewed additive migrations with:
+
+```sh
+sh scripts/setup_local_postgres.sh
+```
+
+Use `DATABASE_URL=postgresql:///algoshield_local` for the application. Run the rollback-only PostgreSQL integration test with `ALGOSHIELD_TEST_DATABASE_URL=postgresql:///algoshield_test python -m pytest -q tests/test_postgres_integration.py`. Database names can be overridden with `ALGOSHIELD_LOCAL_DATABASE` and `ALGOSHIELD_LOCAL_TEST_DATABASE`; the script never drops databases or resets data. Keep machine-specific URLs in ignored `.env.local`, not tracked configuration.
+
 ## Current implementation and limits
 
 Mock/replay bootstrap only; **021 sandbox integration remains mandatory and incomplete**. FastAPI serves a responsive static dashboard with two-second state polling. SQLite offline schema v2 stores accounts, durable subscription enablement, approved orders, fills and audit events. Strategy callback failures quarantine only the affected subscription; risk rejects stopped strategies. Decimal money and price values remain exact in persistence and are emitted as JSON strings. Start with `RECOVERING`; explicit reconciliation and resume are required. Configure the DB with `ALGOSHIELD_DB` (default `data/platform.db`); copy `.env.example` to ignored `.env.local` if needed. Process environment overrides `.env.local`, which overrides `.env`. Never put real values in tracked examples.
