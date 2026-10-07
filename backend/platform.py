@@ -13,8 +13,16 @@ from backend.strategies.runtime import StrategyRuntime
 
 
 class Platform:
-    def __init__(self, path=":memory:", broker=None, clock=time.time, store=None):
+    def __init__(
+        self,
+        path=":memory:",
+        broker=None,
+        clock=time.time,
+        store=None,
+        demo_enabled=True,
+    ):
         self.clock = clock
+        self.demo_enabled = demo_enabled
         self.store = store if store is not None else Store(path)
         self.broker = broker if broker is not None else MockBrokerAdapter()
         self.ledger = Ledger(self.store)
@@ -78,9 +86,14 @@ class Platform:
 
     def demo(self):
         with self.store.lock:
+            if not self.demo_enabled:
+                raise ValueError("replay demo is disabled for this database")
             if not self.store.rows("SELECT id FROM accounts WHERE id='demo'"):
                 self.account("demo")
-                for kind in ("momentum", "mean_reversion", "breakout"):
+            for kind in ("momentum", "mean_reversion", "breakout"):
+                if not self.store.rows(
+                    "SELECT id FROM subscriptions WHERE id=?", (kind,)
+                ):
                     self.strategies.subscribe("demo", kind, kind, "DEMO")
             self.reliability.resume()
             start = 1_700_000_100 + self.demo_count * 900
@@ -110,11 +123,15 @@ class Platform:
     def snapshot(self):
         with self.store.lock:
             return {
-                "mode": "MOCK / REPLAY",
+                "mode": "MOCK / REPLAY" if self.demo_enabled else "PERSISTENT",
                 "health": self.reliability.health,
                 "gate": self.risk.state,
                 "subscriptions": [
-                    dict(r) | {"running": self.strategies.enabled}
+                    dict(r)
+                    | {
+                        "running": self.strategies.state_for(r) == "RUNNING",
+                        "state": self.strategies.state_for(r),
+                    }
                     for r in self.store.rows("SELECT * FROM subscriptions")
                 ],
                 "positions": [
@@ -124,6 +141,9 @@ class Platform:
                 "orders": [dict(r) for r in self.store.rows("SELECT * FROM orders")],
                 "fills": [dict(r) for r in self.store.rows("SELECT * FROM fills")],
                 "candles": [asdict(c) for c in self.closed_candles[-20:]],
+                "signals": list(self.strategies.signals),
+                "strategy_errors": list(self.strategies.errors),
+                "market_data": self.candles.stats(),
                 "audit": [
                     dict(r)
                     for r in self.store.rows(

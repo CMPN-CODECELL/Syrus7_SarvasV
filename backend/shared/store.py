@@ -19,7 +19,8 @@ class Store:
             CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS subscriptions(
                 id TEXT PRIMARY KEY, account TEXT NOT NULL, kind TEXT NOT NULL,
-                symbol TEXT NOT NULL);
+                symbol TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)));
             CREATE TABLE IF NOT EXISTS orders(
                 id TEXT PRIMARY KEY, strategy TEXT NOT NULL, account TEXT NOT NULL,
                 symbol TEXT NOT NULL, side TEXT NOT NULL, quantity INTEGER NOT NULL,
@@ -33,8 +34,16 @@ class Store:
             CREATE TABLE IF NOT EXISTS audit(
                 sequence INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL,
                 payload TEXT NOT NULL);
-            PRAGMA user_version=1;
         """)
+        subscription_columns = {
+            row["name"] for row in self.db.execute("PRAGMA table_info(subscriptions)")
+        }
+        if "enabled" not in subscription_columns:
+            self.db.execute(
+                "ALTER TABLE subscriptions ADD COLUMN enabled INTEGER NOT NULL "
+                "DEFAULT 1 CHECK (enabled IN (0,1))"
+            )
+        self.db.execute("PRAGMA user_version=2")
         self.db.commit()
 
     @contextmanager

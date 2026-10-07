@@ -53,11 +53,14 @@ class RiskGateway:
             return "RISK_GLOBAL_GATE", None
         if self.store.rows("SELECT id FROM orders WHERE id=?", (intent.intent_id,)):
             return "RISK_DUPLICATE_INTENT", None
-        if not self.store.rows(
-            "SELECT id FROM subscriptions WHERE id=? AND account=? AND symbol=?",
+        subscriptions = self.store.rows(
+            "SELECT enabled FROM subscriptions WHERE id=? AND account=? AND symbol=?",
             (intent.strategy_instance_id, intent.account_id, intent.symbol),
-        ):
+        )
+        if not subscriptions:
             return "RISK_NOT_SUBSCRIBED", None
+        if not subscriptions[0]["enabled"]:
+            return "RISK_STRATEGY_STOPPED", None
         policy = self.policies.get(intent.strategy_instance_id, RiskPolicy())
         now = self.clock()
         if (

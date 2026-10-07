@@ -1,5 +1,6 @@
 from dataclasses import replace
 from decimal import Decimal
+from collections import deque
 from typing import Iterable, Protocol
 
 from backend.shared.contracts import Candle, Tick
@@ -35,20 +36,41 @@ class ReplayMarketDataProvider:
 class CandleBuilder:
     """UTC half-open buckets; close only upon next bucket, no invented gap candles."""
 
-    def __init__(self):
+    def __init__(self, max_seen_ids=100_000):
+        if max_seen_ids <= 0:
+            raise ValueError("max_seen_ids must be positive")
         self.active = {}
         self.seen = set()
+        self.seen_order = deque()
+        self.max_seen_ids = max_seen_ids
         self.last = {}
+        self.accepted_ticks = 0
+        self.duplicate_ticks = 0
+        self.late_ticks = 0
 
     def ingest(self, tick):
-        if tick.event_id in self.seen:
+        identity = (tick.symbol, tick.event_id)
+        if identity in self.seen:
+            self.duplicate_ticks += 1
             return []
-        if tick.price <= 0 or tick.quantity < 0:
+        if (
+            not tick.symbol
+            or not tick.event_id
+            or not isinstance(tick.event_timestamp, int)
+            or tick.event_timestamp < 0
+            or tick.price <= 0
+            or tick.quantity < 0
+        ):
             raise ValueError("invalid tick")
         if tick.event_timestamp < self.last.get(tick.symbol, -1):
+            self.late_ticks += 1
             raise ValueError("late tick: replay must be ordered before ingestion")
-        self.seen.add(tick.event_id)
+        self.seen.add(identity)
+        self.seen_order.append(identity)
+        if len(self.seen_order) > self.max_seen_ids:
+            self.seen.remove(self.seen_order.popleft())
         self.last[tick.symbol] = tick.event_timestamp
+        self.accepted_ticks += 1
         closed = []
         for interval in (60, 300):
             key = (tick.symbol, interval)
@@ -80,6 +102,15 @@ class CandleBuilder:
                 )
             self.active[key] = c
         return closed
+
+    def stats(self):
+        return {
+            "accepted_ticks": self.accepted_ticks,
+            "duplicate_ticks": self.duplicate_ticks,
+            "late_ticks": self.late_ticks,
+            "tracked_event_ids": len(self.seen),
+            "last_event_timestamp": dict(self.last),
+        }
 
 
 class MarketData021Provider:
