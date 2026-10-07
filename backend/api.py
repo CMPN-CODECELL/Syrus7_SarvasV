@@ -4,14 +4,22 @@ import sqlite3
 from contextlib import asynccontextmanager
 from decimal import Decimal
 from pathlib import Path
+from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response, WebSocket
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
-from pydantic import BaseModel, StrictInt, field_validator
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
+from pydantic import BaseModel, ConfigDict, StrictInt, field_validator
 from psycopg.errors import UniqueViolation
+from starlette.websockets import WebSocketDisconnect
 
 from backend.platform import Platform
+from backend.broker.http_adapter import HTTPMockBrokerAdapter
 from backend.reliability.failure_lab import FailureLab
 from backend.shared.config import settings
 from backend.shared.contracts import RiskPolicy, StrategyState
@@ -31,12 +39,13 @@ class AccountRequest(BaseModel):
 
 
 class SubscriptionRequest(BaseModel):
-    account_id: str
+    model_config = ConfigDict(extra="forbid")
+
     strategy_instance_id: str
     kind: str
     symbol: str
 
-    @field_validator("account_id", "strategy_instance_id")
+    @field_validator("strategy_instance_id")
     @classmethod
     def normalize_ids(cls, value):
         value = value.strip()
@@ -72,6 +81,41 @@ class MarketSessionRequest(BaseModel):
     status: str
 
 
+class RegisterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    username: str
+    password: str
+
+    @field_validator("username")
+    @classmethod
+    def normalize_username(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("username is required")
+        return value
+
+    @field_validator("password")
+    @classmethod
+    def normalize_password(cls, value):
+        if len(value) < 6:
+            raise ValueError("password must be at least 6 characters")
+        return value
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+    @field_validator("username")
+    @classmethod
+    def normalize_username(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("username is required")
+        return value
+
+
 def financial_json(value):
     return JSONResponse(content=jsonable_encoder(value, custom_encoder={Decimal: str}))
 
@@ -82,10 +126,20 @@ def create_app(platform=None):
         if platform is None
         else {"sqlite_path": ":memory:", "database_url": ""}
     )
+    broker = None
+    mock_broker_url = config.get("mock_broker_url", "")
+    if mock_broker_url:
+        broker = HTTPMockBrokerAdapter(mock_broker_url)
+    # PostgreSQL is safe for replay only when the caller explicitly points at
+    # a loopback HTTP mock broker.  Remote/mock-looking URLs must never enable
+    # seeded replay against a durable or production database.
+    broker_host = urlparse(mock_broker_url).hostname if mock_broker_url else None
+    local_mock = broker_host in {"127.0.0.1", "localhost", "::1"}
     engine = platform or Platform(
         config["sqlite_path"],
+        broker=broker,
         store=PostgresStore(config["database_url"]) if config["database_url"] else None,
-        demo_enabled=not bool(config["database_url"]),
+        demo_enabled=not bool(config["database_url"]) or local_mock,
     )
 
     @asynccontextmanager
@@ -94,10 +148,36 @@ def create_app(platform=None):
             yield
         finally:
             if platform is None:
+                if broker is not None:
+                    broker.close()
                 engine.store.close()
 
     app = FastAPI(title="AlgoShield mock control plane", lifespan=lifespan)
     app.state.platform = engine
+    session_cookie = "algoshield_session"
+
+    def request_token(request: Request) -> str:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            return auth_header.removeprefix("Bearer ").strip()
+        return request.cookies.get(session_cookie, "")
+
+    def require_user(request: Request):
+        user = engine.auth.verify_token(request_token(request))
+        if not user:
+            raise HTTPException(401, "authentication required")
+        return user
+
+    def set_session_cookie(response, token: str):
+        response.set_cookie(
+            key=session_cookie,
+            value=token,
+            httponly=True,
+            samesite="strict",
+            secure=False,
+            max_age=engine.auth.token_ttl_seconds,
+            path="/",
+        )
 
     @app.exception_handler(ValueError)
     async def invalid(request, exc):
@@ -106,10 +186,64 @@ def create_app(platform=None):
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.get("/")
-    def dashboard():
+    def dashboard(request: Request):
+        if not engine.auth.verify_token(request_token(request)):
+            return RedirectResponse("/login", status_code=303)
         return FileResponse(
             Path(__file__).resolve().parent.parent / "frontend/index.html"
         )
+
+    @app.get("/login")
+    def login_page():
+        return FileResponse(
+            Path(__file__).resolve().parent.parent / "frontend/login.html"
+        )
+
+    @app.get("/register")
+    def register_page():
+        return FileResponse(
+            Path(__file__).resolve().parent.parent / "frontend/register.html"
+        )
+
+    @app.post("/api/auth/register", status_code=201)
+    def register(body: RegisterRequest, response: Response):
+        try:
+            res = engine.auth.register(body.username, body.password)
+            set_session_cookie(response, res["token"])
+            return {
+                "user": {"username": res["username"], "account_id": res["account_id"]},
+                "token": res["token"],
+            }
+        except (sqlite3.IntegrityError, UniqueViolation):
+            raise HTTPException(409, "username already exists") from None
+        except ValueError as exc:
+            msg = str(exc)
+            if "already exists" in msg or "already taken" in msg:
+                raise HTTPException(409, msg) from None
+            raise HTTPException(400, msg) from None
+
+    @app.post("/api/auth/login")
+    def login(body: LoginRequest, response: Response):
+        res = engine.auth.login(body.username, body.password)
+        if not res:
+            raise HTTPException(401, "invalid credentials")
+        set_session_cookie(response, res["token"])
+        return {
+            "user": {"username": res["username"], "account_id": res["account_id"]},
+            "token": res["token"],
+        }
+
+    @app.post("/api/auth/logout")
+    def logout(request: Request, response: Response):
+        token = request_token(request)
+        if token:
+            engine.auth.logout(token)
+        response.delete_cookie(session_cookie, path="/")
+        return {"status": "logged_out"}
+
+    @app.get("/api/auth/me")
+    def current_user(request: Request):
+        return {"user": require_user(request)}
 
     @app.get("/health")
     def health():
@@ -160,6 +294,20 @@ def create_app(platform=None):
                 "X-Accel-Buffering": "no",
             },
         )
+
+    @app.websocket("/api/stream/ws")
+    async def stream_websocket(websocket: WebSocket):
+        """Push backend snapshots over a persistent browser connection."""
+        await websocket.accept()
+        try:
+            while True:
+                snapshot = engine.snapshot()
+                await websocket.send_json(
+                    jsonable_encoder(snapshot, custom_encoder={Decimal: str})
+                )
+                await asyncio.sleep(1.0)
+        except WebSocketDisconnect:
+            return
 
     @app.get("/api/fills")
     def fills(limit: int = Query(200, ge=1, le=500), offset: int = Query(0, ge=0)):
@@ -216,29 +364,37 @@ def create_app(platform=None):
         return financial_json(engine.market_session.to_dict(engine.clock()))
 
     @app.post("/api/subscriptions", status_code=201)
-    def subscribe(body: SubscriptionRequest):
+    def subscribe(body: SubscriptionRequest, request: Request):
+        user = require_user(request)
         try:
             engine.strategies.subscribe(
-                body.account_id, body.strategy_instance_id, body.kind, body.symbol
+                user["account_id"], body.strategy_instance_id, body.kind, body.symbol
             )
         except (sqlite3.IntegrityError, UniqueViolation):
             raise HTTPException(409, "strategy instance exists") from None
         return engine.snapshot()["subscriptions"]
 
     @app.post("/api/subscriptions/{strategy_instance_id}/start")
-    def start_subscription(strategy_instance_id: str, body: AccountRequest):
-        engine.strategies.set_enabled(body.account_id, strategy_instance_id, True)
+    def start_subscription(strategy_instance_id: str, request: Request):
+        user = require_user(request)
+        engine.strategies.set_enabled(user["account_id"], strategy_instance_id, True)
         return engine.snapshot()["subscriptions"]
 
     @app.post("/api/subscriptions/{strategy_instance_id}/stop")
-    def stop_subscription(strategy_instance_id: str, body: AccountRequest):
-        engine.strategies.set_enabled(body.account_id, strategy_instance_id, False)
+    def stop_subscription(strategy_instance_id: str, request: Request):
+        user = require_user(request)
+        engine.strategies.set_enabled(user["account_id"], strategy_instance_id, False)
         return engine.snapshot()["subscriptions"]
 
     @app.post("/api/demo")
     def demo():
         if not engine.demo_enabled:
             raise HTTPException(403, "replay demo is disabled for this database")
+        # A restart begins RECOVERING. A deliberate replay action may perform
+        # the required authoritative broker check first, but it must never
+        # bypass an actual drift/uncertainty result.
+        if engine.risk.state == "RECOVERING" and not engine.reliability.reconcile():
+            raise HTTPException(409, "reconciliation required")
         return financial_json(engine.demo())
 
     @app.put("/api/risk/policies/{strategy}")

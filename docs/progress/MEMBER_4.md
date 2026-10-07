@@ -5,10 +5,11 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 
 ## Current Status
 - Phase: Member 4 mock/replay implementation complete; live provider integration pending
-- Current task: await authoritative 021 feed contract and authenticated account boundary
+- Current task: await authoritative 021 feed contract and production identity-provider integration
 - Status: BLOCKED
 - Last updated: 2026-10-07 17:14 Asia/Kolkata
 - 2026-10-07 integration pass: merged published Member 2/3 persistence, durable risk policies, recovery/freshness gates, bounded broker calls, kill convergence and failure-lab APIs into the Member 4 branch. Preserved the Member 4 strategy indicators, durable subscription controls, callback quarantine, symbol-scoped tick dedupe and dashboard. Combined suite: 89 passed, 1 skipped by default; isolated local PostgreSQL integration: 1 passed after applying migrations 001-005. Ruff check/format pass.
+- 2026-10-07: gated the dashboard behind the durable local session, removed account-ID entry from registration/dashboard/subscription controls, derived strategy ownership from the verified session, replaced raw safety JSON with compact evidence indicators, and verified the strategy form at a 390x844 mobile viewport with no page overflow or browser console errors. RSI reversal is the default form selection. Validation: 218 passed / 1 optional PostgreSQL skipped; Ruff and TypeScript checks pass.
 
 ## Completed
 - 2026-10-07: Minimum P0 wiring by Member 3: account/subscription forms, candles/orders/partial/rejection evidence, backend-unavailable UI and Failure Lab HTTP actions. Replay restart IDs remain unique. 27 tests pass, 1 PostgreSQL skipped; live server/API/frontend HTTP 200 verified.
@@ -24,20 +25,27 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
   3. Standalone Mock Market Data Streaming Feed: Implemented `backend/market_data/mock_feed.py` with `create_mock_feed_app()`, `/health`, `/ticks`, `/ticks/batch`, `/replay/demo`, `/candles`, and `/stream/ticks` (SSE) for external feed simulation mirroring Member 2's Mock Broker API.
   4. Real-Time UI Telemetry Push: Added `GET /api/stream/telemetry` SSE stream in `backend/api.py` and `EventSource` in `frontend/index.html` with polling fallback.
   Test suite: 173 passed / 1 PostgreSQL skipped; Ruff check and TypeScript check clean.
+- 2026-10-07: Fixed replay wiring through the HTTP mock broker. The API now selects
+  `HTTPMockBrokerAdapter` from `MOCK_BROKER_URL`, permits replay with PostgreSQL only
+  for loopback mock URLs, and auto-executes simulated fills through the same broker
+  boundary. Added an end-to-end HTTP replay test; full suite: 219 passed / 1 skipped.
+- 2026-10-07: Replaced dashboard telemetry polling with a WebSocket snapshot stream
+  (`/api/stream/ws`) and reconnecting polling fallback. The existing SSE endpoint is
+  retained for compatibility; browser state now receives backend snapshots over a
+  persistent connection. Added WebSocket endpoint coverage.
 
 ## In Progress
 - No further 021 implementation is safe without an authoritative tick/reconnect/backfill contract. Existing adapter remains intentionally unavailable.
 
 ## Blockers / Dependencies
 - Official 021 contract/credentials and sponsor session/charges/kill semantics.
-- Authenticated user/account identity contract; Neon Auth configuration alone does not secure FastAPI.
+- Production identity provider remains unselected; the current local session boundary is not Neon Auth.
 
 ## Next
 - Obtain authoritative 021 tick schema, sequencing and reconnect/backfill behavior.
 - Implement `MarketData021Provider` normalization and adapter contract fixtures.
 - Coordinate feed freshness/session gating with Member 3.
-- Integrate an authenticated account identity boundary once its contract is selected.
+- Replace the local bootstrap identity boundary with the selected production identity provider without changing session-derived account ownership.
 
 ## Handoff Notes
 Demo replay ends STOPPED; enabled subscriptions show READY and stopped/faulted subscriptions show STOPPED. Indicator state requires a fresh complete warm-up after restart, while subscription state and signal/error evidence are durable. Neon PostgreSQL schema is initialized and verified.
-

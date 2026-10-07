@@ -78,6 +78,11 @@ $env:MOCK_BROKER_URL = "http://127.0.0.1:9001"
 # platform = Platform(broker=HTTPMockBrokerAdapter("http://127.0.0.1:9001"))
 ```
 
+With `DATABASE_URL` set to the isolated local PostgreSQL database, this
+loopback URL also enables the replay endpoint. Replay stays disabled for
+PostgreSQL unless the mock URL is loopback (`127.0.0.1`, `localhost`, or
+`::1`); a remote URL can never opt production data into seeded demo activity.
+
 ---
 
 ## 4. Main Routes

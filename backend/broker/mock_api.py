@@ -35,6 +35,7 @@ class OrderRequest(BaseModel):
     side: Side
     quantity: Annotated[int, Field(gt=0)]
     order_type: str = "MARKET"
+    limit_price: Decimal | None = None
     created_at: float | None = None
 
     @field_validator("side", mode="before")
@@ -56,6 +57,13 @@ class OrderRequest(BaseModel):
     def normalize_order_type(cls, v):
         if isinstance(v, str):
             return v.strip().upper()
+        return v
+
+    @field_validator("limit_price", mode="before")
+    @classmethod
+    def parse_limit_price(cls, v):
+        if v is not None and isinstance(v, (int, float, str)):
+            return Decimal(str(v))
         return v
 
 
@@ -196,6 +204,7 @@ def create_mock_broker_app(
             side=body.side,
             quantity=body.quantity,
             order_type=body.order_type,
+            limit_price=body.limit_price,
             created_at=created_at,
         )
         order = broker.submit(intent)

@@ -17,7 +17,7 @@ python -m pip install -e ".[dev]"
 python -m uvicorn backend.api:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
-Open http://127.0.0.1:8000 and click **Run replay**. Three built-in strategies consume completed candles concurrently in one serialized event loop: a 3/5 EMA crossover, five-period mean reversion and a 5-minute range breakout. The demo stops after replay and displays actual signals, orders, unique fills, charges, virtual positions, market-data counters and audit events. The dashboard also supports account creation, strategy subscription and durable per-strategy start/stop controls. Click **Kill all** to cancel, flatten and verify. API docs: http://127.0.0.1:8000/docs.
+Open http://127.0.0.1:8000, register or sign in, and click **Run replay**. Registration assigns a trading account ID from the authenticated username; the dashboard never asks users to type or choose it. Four built-in strategies consume completed candles concurrently in one serialized event loop: a 3/5 EMA crossover, five-period mean reversion, a 5-minute range breakout and 14-period RSI reversal. The demo stops after replay and displays actual signals, orders, unique fills, charges, virtual positions, market-data counters and audit events. The dashboard supports strategy subscription and durable per-strategy start/stop controls. Click **Kill all** to cancel, flatten and verify. API docs: http://127.0.0.1:8000/docs.
 
 ```sh
 python -m pytest -q --basetemp=.pytest-tmp
@@ -35,7 +35,7 @@ When a local PostgreSQL server and peer-authenticated development role are avail
 sh scripts/setup_local_postgres.sh
 ```
 
-Use `DATABASE_URL=postgresql:///algoshield_local` for the application. Run the rollback-only PostgreSQL integration test with `ALGOSHIELD_TEST_DATABASE_URL=postgresql:///algoshield_test python -m pytest -q tests/test_postgres_integration.py`. Database names can be overridden with `ALGOSHIELD_LOCAL_DATABASE` and `ALGOSHIELD_LOCAL_TEST_DATABASE`; the script never drops databases or resets data. Keep machine-specific URLs in ignored `.env.local`, not tracked configuration.
+Use `DATABASE_URL=postgresql:///algoshield_local` for the application. Run the rollback-only PostgreSQL integration test with `ALGOSHIELD_TEST_DATABASE_URL=postgresql:///algoshield_test python -m pytest -q tests/test_postgres_integration.py`. Database names can be overridden with `ALGOSHIELD_LOCAL_DATABASE` and `ALGOSHIELD_LOCAL_TEST_DATABASE`; the script never drops databases or resets data. Keep machine-specific URLs in ignored `.env.local`, not tracked configuration. For complete local HTTP simulation, run `uvicorn backend.broker.mock_api:app --host 127.0.0.1 --port 9001`, set `MOCK_BROKER_URL=http://127.0.0.1:9001`, then start the control plane. A loopback mock URL enables replay with isolated local PostgreSQL; remote URLs never enable seeded replay.
 
 ## Current implementation and limits
 
@@ -43,11 +43,11 @@ Mock/replay platform; **021 sandbox integration remains mandatory and incomplete
 
 Offline SQLite mode persists external mock evidence separately in `<database>.broker.json`, using atomic file replacement. Restart loads both independent stores, keeps trading RECOVERING, and requires reconciliation/explicit resume. An explicitly injected fresh broker against existing local history still fails closed. Never discard execution history to pretend recovery succeeded. The JSON file is a mock fixture only, not an assumed 021 persistence format.
 
-The dashboard exposes candles, orders/fills/P&L, risk budgets/policy controls and fresh safety evidence. Failure Lab supports partial/rejected orders, pending-position/rate rejections, duplicate/conflicting/missed fills, ambiguous acceptance, disconnect/reconnect, stale feed, injected external drift/recovery and partial-fill kill. Conflicts, disconnection and ambiguity leave trading closed; use Reconcile to inspect recovery, then explicit Resume. Stale-feed injection requires a new tick/replay before exposure. Demo/failure injection is refused against PostgreSQL to protect Neon production.
+The dashboard exposes candles, orders/fills/P&L and compact backend-derived safety indicators. Raw fail-closed evidence stays out of the main strategy workflow. Failure Lab supports partial/rejected orders, pending-position/rate rejections, duplicate/conflicting/missed fills, ambiguous acceptance, disconnect/reconnect, stale feed, injected external drift/recovery and partial-fill kill. Conflicts, disconnection and ambiguity leave trading closed; use Reconcile to inspect recovery, then explicit Resume. Stale-feed injection requires a new tick/replay before exposure. Failure injection remains refused against PostgreSQL; replay is allowed only with an explicitly configured loopback HTTP mock broker and an isolated local database.
 
 Kill latches durably and converges through verified cancellation/fill evidence and attributed exits, with bounded broker waits and a nine-second default deadline. SUCCESS means verified flat under ten seconds; SAFE_LATE is verified but misses the SLA; FAILED retains uncertainty. A timed-out external operation may complete later; it is never blindly retried. Verified kill reset requires no open orders and zero broker/virtual positions, leaves STOPPED, and retains the historical certificate. Fresh broker evidence is required within five seconds and LIVE market event/receive evidence within fifteen seconds; offline REPLAY is labeled and uses receive freshness.
 
-This is a local development tool, not a production service: no authentication, arbitrary strategy upload, broker modification, live feeds or WebSocket transport yet. Only market orders are implemented. Demo charges are **synthetic 0.01 per fill**, not an Indian fee schedule. No profitability or live kill SLA claim is made.
+This is a local development tool, not a production service. It has a basic durable local login/session boundary, but no production identity provider, arbitrary strategy upload, live 021 feed or WebSocket transport yet. Demo charges are assumptions until sponsor fee behavior is confirmed. No profitability or live kill SLA claim is made.
 
 ## Repository map
 

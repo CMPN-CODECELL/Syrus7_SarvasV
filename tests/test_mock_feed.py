@@ -48,9 +48,27 @@ def test_mock_feed_batch_ticks_and_candle_aggregation():
 
     # Ingest ticks across 60-second boundaries
     batch = [
-        {"symbol": "INFY", "price": "1500", "quantity": 5, "event_timestamp": 0, "event_id": "i1"},
-        {"symbol": "INFY", "price": "1510", "quantity": 10, "event_timestamp": 30, "event_id": "i2"},
-        {"symbol": "INFY", "price": "1490", "quantity": 2, "event_timestamp": 60, "event_id": "i3"},
+        {
+            "symbol": "INFY",
+            "price": "1500",
+            "quantity": 5,
+            "event_timestamp": 0,
+            "event_id": "i1",
+        },
+        {
+            "symbol": "INFY",
+            "price": "1510",
+            "quantity": 10,
+            "event_timestamp": 30,
+            "event_id": "i2",
+        },
+        {
+            "symbol": "INFY",
+            "price": "1490",
+            "quantity": 2,
+            "event_timestamp": 60,
+            "event_id": "i3",
+        },
     ]
     res = client.post("/ticks/batch", json=batch)
     assert res.status_code == 201

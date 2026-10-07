@@ -6,6 +6,7 @@
 - Last updated: 2026-10-07 21:25 Asia/Kolkata
 
 - 2026-10-07 21:25 Asia/Kolkata: Member 4 Advancements Integration. Completed pluggable strategy & candle interval registry (with RSI reversal strategy), market session hours & feed freshness gate coordination, standalone mock market data streaming feed API, and real-time SSE telemetry push. 173 tests passed / 1 PostgreSQL skipped; Ruff and TypeScript clean.
+- 2026-10-07: Dashboard/account ownership integration. Dashboard access now requires a valid local session; registration assigns account identity and subscription mutations derive it server-side. Removed account setup controls and raw safety JSON, added responsive safety indicators, and verified desktop plus 390x844 layouts. 218 tests passed / 1 optional PostgreSQL skipped; Ruff and TypeScript clean.
 - 2026-10-07: Member 2 Task 5 — Final Offline Broker Contract & Prototype Finalization. Defined authoritative Broker Adapter Contract in `docs/CONTRACTS.md`, added `tests/test_broker_adapter_contract.py` (12 focused tests covering Contracts A–K and 021 honesty), and verified contract parity with `Broker021Adapter` stubs. Offline Member 2 prototype tasks complete. 147 tests passed / 1 PostgreSQL skipped.
 - 2026-10-07: Member 2 Task 4 — Prototype broker disconnect and recovery flow. Added explicit `disconnect()`/`reconnect()` lifecycle, `Platform.disconnect_broker()` / `Platform.reconnect_broker()`, HTTP routes `/api/broker/disconnect` and `/api/broker/reconnect`, Failure Lab scenario `disconnect_recovery`, and missed-fill/UNKNOWN recovery validation. 135 tests passed / 1 PostgreSQL skipped.
 - 2026-10-07: Member 2 Task 3 — Lightweight broker update flow. Introduced canonical `BrokerUpdate` contracts and `OrderManager.process_broker_update`, deterministic mock event queue, API sync endpoint, and Failure Lab broker update scenario. 127 tests passed / 1 PostgreSQL skipped.
@@ -33,11 +34,14 @@
 ## Contract Mismatches
 - No confirmed 021 schema available; adapters intentionally unavailable.
 - PostgreSQL requires migrations before application startup; no implicit schema creation.
-- Authenticated account identity and live feed freshness/reconnect contracts remain absent.
+- Local authenticated account ownership now gates the dashboard and subscription mutations; production identity-provider and live 021 reconnect contracts remain absent.
 
 ## Blockers
 - Neon authentication/project access and an authorized isolated remote branch; sponsor 021 contract.
 - An explicitly injected fresh broker still cannot match existing local history; default offline mock now persists independent evidence.
+- Local PostgreSQL replay is supported only with an explicitly configured loopback
+  `MOCK_BROKER_URL`; the standalone HTTP mock remains clearly distinct from the
+  unconfirmed 021 adapter. Remote broker URLs cannot enable seeded replay.
 
 ## Next Integration Target
 Validate Neon linking/schema inspection and repeat the locally verified additive migrations on an authorized isolated remote branch. In parallel, obtain the 021 market-data contract before implementing the live provider. Do not seed replay into production.
@@ -55,3 +59,6 @@ Neon CLI 8.0.11 installed. Requested project/branch not yet authenticated/linked
 - 2026-10-07 16:03 Asia/Kolkata: commits `55beeb2` and `8dc8e34` pushed to `origin/bootstrap/safety-vertical-slice` before further Neon setup, as requested.
 - Neon CLI 8.0.11 login launched browser and is awaiting user authentication. Link to requested production branch, skills/MCP setup, remote schema inspection/migration, connectivity and deploy are paused. No remote schema changes or production seed performed.
 - Action needed: complete browser sign-in, then continue the requested Neon workflow. PostgreSQL implementation is locally tested only; isolated integration remains skipped.
+- Dashboard telemetry now uses a persistent WebSocket snapshot stream with a bounded
+  polling fallback. The transport reports backend changes but does not invent market
+  activity when no ticks or fills are arriving.

@@ -481,3 +481,26 @@ def test_mock_broker_api_persistence(tmp_path: Path):
     assert snap["positions"] == [
         {"account_id": "acc-p", "symbol": "CIPLA", "quantity": 40}
     ]
+
+
+def test_mock_broker_api_limit_order():
+    app = create_mock_broker_app()
+    client = TestClient(app)
+
+    order_payload = {
+        "intent_id": "intent-limit-1",
+        "strategy_instance_id": "strat-limit",
+        "account_id": "acc-limit",
+        "symbol": "INFY",
+        "side": "BUY",
+        "quantity": 50,
+        "order_type": "LIMIT",
+        "limit_price": "1450.50",
+    }
+    res = client.post("/orders", json=order_payload)
+    assert res.status_code == 201
+    order = res.json()
+    assert order["order_id"] == "intent-limit-1"
+    assert order["order_type"] == "LIMIT"
+    assert order["limit_price"] == "1450.50"
+    assert order["status"] == "OPEN"

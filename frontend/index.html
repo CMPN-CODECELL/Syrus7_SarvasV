@@ -161,6 +161,23 @@
       .connection-dot.ok {
         background: var(--success);
       }
+      .identity {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+      .identity strong {
+        color: var(--ink);
+      }
+      .identity button {
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        background: transparent;
+        color: var(--muted);
+        padding: 0.35rem 0.55rem;
+      }
       main {
         max-width: 1280px;
         margin: auto;
@@ -291,6 +308,49 @@
         grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 0.8rem;
         margin-bottom: 2.5rem;
+      }
+      .safety-strip {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.55rem;
+        margin: -1.7rem 0 2.8rem;
+        padding: 0.75rem;
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+        background: rgba(255, 255, 255, 0.62);
+      }
+      .safety-indicator {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        min-width: 0;
+        color: var(--muted);
+        font-size: 0.74rem;
+      }
+      .safety-indicator strong {
+        display: block;
+        overflow: hidden;
+        color: var(--ink);
+        font-size: 0.76rem;
+        font-weight: 650;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .safety-dot {
+        width: 0.55rem;
+        height: 0.55rem;
+        flex: 0 0 auto;
+        border-radius: 50%;
+        background: var(--warning);
+        box-shadow: 0 0 0 4px rgba(138, 100, 23, 0.1);
+      }
+      .safety-indicator.verified .safety-dot {
+        background: var(--success);
+        box-shadow: 0 0 0 4px rgba(34, 108, 85, 0.1);
+      }
+      .safety-indicator.alert .safety-dot {
+        background: var(--danger);
+        box-shadow: 0 0 0 4px rgba(155, 47, 63, 0.1);
       }
       .metric {
         min-height: 7.5rem;
@@ -799,38 +859,99 @@
         .metrics {
           grid-template-columns: 1fr 1fr;
         }
+        .safety-strip {
+          grid-template-columns: 1fr 1fr;
+        }
         .hero-note {
           max-width: 40rem;
         }
       }
-      @media (max-width: 560px) {
-        .topbar,
-        main,
-        footer {
-          padding-left: 1rem;
-          padding-right: 1rem;
+      @media (max-width: 680px) {
+        .topbar {
+          flex-wrap: wrap;
+          gap: 0.6rem;
+          padding: 0.6rem 1rem;
         }
-        .connection span:last-child {
-          display: none;
+        .brand {
+          flex: 1 1 auto;
         }
-        .metrics {
-          grid-template-columns: 1fr;
+        #user-auth-widget {
+          order: 2;
+        }
+        .connection {
+          order: 3;
+          width: 100%;
+          justify-content: flex-start;
+          padding-top: 0.25rem;
+          border-top: 1px solid var(--line);
+        }
+        .command-bar {
+          gap: 0.5rem;
+          padding: 0.65rem;
         }
         .command-bar .button {
-          flex: 1 1 42%;
+          flex: 1 1 calc(50% - 0.5rem);
+          font-size: 0.82rem;
+          padding: 0.55rem 0.65rem;
+          text-align: center;
         }
         .command-spacer {
           display: none;
         }
         .mode-label {
           flex-basis: 100%;
+          text-align: center;
+          margin-top: 0.25rem;
+        }
+        .table-wrap {
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+        table {
+          font-size: 0.82rem;
+        }
+        th, td {
+          padding: 0.65rem 0.6rem;
+        }
+      }
+      @media (max-width: 560px) {
+        .topbar,
+        main,
+        footer {
+          padding-left: 0.85rem;
+          padding-right: 0.85rem;
+        }
+        .connection span:last-child {
+          display: none;
+        }
+        .metrics {
+          grid-template-columns: 1fr;
+          gap: 0.65rem;
+        }
+        .safety-strip {
+          grid-template-columns: 1fr;
+          margin-top: -1.5rem;
         }
         .form-grid {
           grid-template-columns: 1fr;
           gap: 0;
         }
         h1 {
-          font-size: 2.65rem;
+          font-size: 2.1rem;
+          line-height: 1.05;
+        }
+        .hero {
+          gap: 1.2rem;
+          margin-bottom: 1.8rem;
+        }
+        .hero-copy {
+          font-size: 0.92rem;
+        }
+        .panel {
+          padding: 0.85rem;
+        }
+        .panel-head {
+          padding: 0.85rem 1rem;
         }
         .safety-stats {
           grid-template-columns: repeat(2, 1fr);
@@ -852,6 +973,9 @@
           <div>
             <strong>AlgoShield</strong><span>Strategy safety control</span>
           </div>
+        </div>
+        <div id="user-auth-widget" class="identity">
+          <span>Checking session…</span>
         </div>
         <div class="connection">
           <i id="connection-dot" class="connection-dot"></i
@@ -909,6 +1033,24 @@
           ><small id="tick-note">accepted ticks</small>
         </article>
       </section>
+      <section class="safety-strip" aria-label="Safety status">
+        <div class="safety-indicator" id="safety-reconciliation">
+          <i class="safety-dot" aria-hidden="true"></i>
+          <span>Reconciliation<strong>Checking</strong></span>
+        </div>
+        <div class="safety-indicator" id="safety-position">
+          <i class="safety-dot" aria-hidden="true"></i>
+          <span>Broker position<strong>Checking</strong></span>
+        </div>
+        <div class="safety-indicator" id="safety-fills">
+          <i class="safety-dot" aria-hidden="true"></i>
+          <span>Fill integrity<strong>Checking</strong></span>
+        </div>
+        <div class="safety-indicator" id="safety-kill">
+          <i class="safety-dot" aria-hidden="true"></i>
+          <span>Kill verification<strong>Not requested</strong></span>
+        </div>
+      </section>
       <section aria-labelledby="strategy-title">
         <div class="section-heading">
           <div>
@@ -945,34 +1087,11 @@
           </article>
           <aside class="panel">
             <div class="panel-head">
-              <h3>Account setup</h3>
-              <span>Local bootstrap</span>
+              <h3>Add strategy</h3>
+              <span>Uses your signed-in trading account</span>
             </div>
             <div class="setup">
-              <form id="account-form">
-                <div class="field">
-                  <label for="account-id">Account ID</label
-                  ><input
-                    id="account-id"
-                    name="account_id"
-                    autocomplete="off"
-                    required
-                    placeholder="team-account"
-                  />
-                </div>
-                <button class="button" type="submit">Create account</button>
-              </form>
               <form id="subscription-form">
-                <div class="field">
-                  <label for="subscription-account">Account ID</label
-                  ><input
-                    id="subscription-account"
-                    name="account_id"
-                    autocomplete="off"
-                    required
-                    placeholder="team-account"
-                  />
-                </div>
                 <div class="field">
                   <label for="strategy-id">Strategy instance ID</label
                   ><input
@@ -990,7 +1109,7 @@
                       <option value="momentum">EMA momentum</option>
                       <option value="mean_reversion">Mean reversion</option>
                       <option value="breakout">5m breakout</option>
-                      <option value="rsi_reversal">RSI reversal</option>
+                      <option value="rsi_reversal" selected>RSI reversal</option>
                     </select>
                   </div>
                   <div class="field">
@@ -1559,7 +1678,7 @@
           const row = document.createElement("tr");
           const cell = textNode(
             "td",
-            "No subscriptions. Create an account and subscribe a strategy.",
+            "No strategies yet. Add your first strategy.",
             "empty",
           );
           cell.colSpan = 6;
@@ -1633,6 +1752,47 @@
         }
         for (const item of items.slice().reverse().slice(0, 8))
           list.append(renderer(item));
+      }
+      function setSafetyIndicator(id, label, tone = "") {
+        const indicator = $(id);
+        indicator.className = `safety-indicator${tone ? ` ${tone}` : ""}`;
+        indicator.querySelector("strong").textContent = label;
+      }
+      function renderSafety(snapshot) {
+        const safety = snapshot.safety || {};
+        const reconciliation = safety.reconciliation || {};
+        setSafetyIndicator(
+          "safety-reconciliation",
+          reconciliation.verified ? "Verified" : "Fail closed",
+          reconciliation.verified ? "verified" : "alert",
+        );
+        const position = safety.position_comparison || {};
+        setSafetyIndicator(
+          "safety-position",
+          position.status || "Unknown",
+          position.status === "VERIFIED"
+            ? "verified"
+            : position.status === "UNKNOWN"
+              ? ""
+              : "alert",
+        );
+        const fills = safety.fills || {};
+        const fillSafe = Number(fills.rejected_events || 0) === 0;
+        setSafetyIndicator(
+          "safety-fills",
+          fillSafe ? "No conflicts" : "Review required",
+          fillSafe ? "verified" : "alert",
+        );
+        const killStatus = snapshot.kill?.status;
+        setSafetyIndicator(
+          "safety-kill",
+          killStatus || "Not requested",
+          ["SUCCESS", "SAFE_LATE"].includes(killStatus)
+            ? "verified"
+            : killStatus === "FAILED"
+              ? "alert"
+              : "",
+        );
       }
       function render(snapshot) {
         state = snapshot;
@@ -1750,6 +1910,10 @@
       }
       async function request(url, options = {}) {
         const response = await fetch(url, options);
+        if (response.status === 401) {
+          window.location.replace("/login");
+          throw new Error("Your session has expired.");
+        }
         if (!response.ok) {
           let detail = `Request failed (${response.status})`;
           try {
@@ -1793,8 +1957,6 @@
             `/api/subscriptions/${encodeURIComponent(subscription.id)}/${action}`,
             {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ account_id: subscription.account }),
             },
           );
           await refresh();
@@ -1819,17 +1981,9 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(Object.fromEntries(new FormData(form))),
           });
-          const account = form.elements.account_id.value.trim();
-          if (url === "/api/accounts")
-            $("subscription-account").value = account;
           if (url === "/api/subscriptions") form.reset();
           await refresh();
-          setMessage(
-            url === "/api/accounts"
-              ? "Account created."
-              : "Strategy subscribed.",
-            true,
-          );
+          setMessage("Strategy subscribed.", true);
         } catch (error) {
           setMessage(error.message);
         } finally {
@@ -1838,34 +1992,72 @@
       }
       for (const action of Object.keys(endpoints))
         $(action).addEventListener("click", () => runAction(action));
-      $("account-form").addEventListener("submit", (event) =>
-        submitForm(event, "/api/accounts"),
-      );
       $("subscription-form").addEventListener("submit", (event) =>
         submitForm(event, "/api/subscriptions"),
       );
       function setupTelemetryStream() {
-        if (!window.EventSource) return;
+        if (!window.WebSocket) return;
+        let fallbackTimer;
+        const fallback = () => {
+          if (!fallbackTimer) fallbackTimer = setInterval(refresh, 5000);
+          $("connection").textContent = "Polling fallback";
+        };
         try {
-          const sse = new EventSource("/api/stream/telemetry");
-          const onData = (event) => {
+          const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+          const socket = new WebSocket(`${protocol}://${window.location.host}/api/stream/ws`);
+          socket.onopen = () => {
+            if (fallbackTimer) {
+              clearInterval(fallbackTimer);
+              fallbackTimer = undefined;
+            }
+            $("connection").textContent = "Live WebSocket";
+            $("connection-dot").className = "connection-dot ok";
+          };
+          socket.onmessage = (event) => {
             try {
-              const data = JSON.parse(event.data);
-              render(data);
-              $("connection").textContent = "Live Stream";
+              render(JSON.parse(event.data));
+              $("connection").textContent = "Live WebSocket";
               $("connection-dot").className = "connection-dot ok";
             } catch (_) {}
           };
-          sse.addEventListener("snapshot", onData);
-          sse.addEventListener("telemetry", onData);
-          sse.onerror = () => {
-            $("connection").textContent = "Polling";
+          socket.onerror = fallback;
+          socket.onclose = () => {
+            fallback();
+            window.setTimeout(setupTelemetryStream, 3000);
           };
-        } catch (_) {}
+        } catch (_) {
+          fallback();
+        }
       }
-      refresh();
-      setInterval(refresh, 2000);
-      setupTelemetryStream();
+      async function initAuthWidget() {
+        try {
+          const response = await fetch("/api/auth/me");
+          if (!response.ok) {
+            window.location.replace("/login");
+            return;
+          }
+          const { user } = await response.json();
+          const widget = $("user-auth-widget");
+          widget.replaceChildren();
+          const label = document.createElement("span");
+          label.append("Signed in as ", textNode("strong", user.username));
+          const button = textNode("button", "Sign out");
+          button.type = "button";
+          button.addEventListener("click", async () => {
+            await fetch("/api/auth/logout", { method: "POST" });
+            window.location.replace("/login");
+          });
+          widget.append(label, button);
+        } catch (_) {
+          window.location.replace("/login");
+        }
+      }
+      async function initialize() {
+        await initAuthWidget();
+        await refresh();
+        setupTelemetryStream();
+      }
+      initialize();
     </script>
   </body>
 </html>

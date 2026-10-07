@@ -14,7 +14,11 @@ class Connection:
         self.connection = connection
 
     def execute(self, sql, args=()):
-        return self.connection.execute(sql.replace("?", "%s"), args)
+        # Domain queries use SQLite-style ``?`` placeholders. Psycopg treats
+        # percent signs in LIKE patterns as formatting tokens, so escape
+        # literal percent signs before translating the placeholders.
+        translated = sql.replace("%", "%%").replace("?", "%s")
+        return self.connection.execute(translated, args)
 
     def commit(self):
         self.connection.commit()

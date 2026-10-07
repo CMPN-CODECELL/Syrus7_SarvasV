@@ -19,11 +19,11 @@ class ReplayMarketDataProvider:
         return iter(self.events)
 
     @classmethod
-    def demo(cls, start=1_700_000_100):
+    def demo(cls, start=1_700_000_100, symbol="DEMO"):
         start -= start % 300
         return cls(
             Tick(
-                "DEMO",
+                symbol,
                 start + minute * 60 + offset,
                 Decimal(100 + minute + offset // 20),
                 5,

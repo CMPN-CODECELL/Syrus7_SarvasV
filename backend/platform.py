@@ -1,16 +1,21 @@
 import time
 from collections import deque
+from itertools import chain
 from dataclasses import asdict
 from decimal import Decimal
 
+from backend.accounting.charges import calculate_indian_charges
 from backend.accounting.ledger import Ledger
 from backend.broker.adapters import MockBrokerAdapter
+from backend.broker.http_adapter import HTTPMockBrokerAdapter
 from backend.execution.orders import OrderManager
 from backend.market_data.candles import CandleBuilder, ReplayMarketDataProvider
 from backend.market_data.session import MarketSession
 from backend.reliability.control import Reliability
 from backend.reliability.broker_calls import BrokerSession
 from backend.risk.gateway import RiskGateway
+from backend.shared.auth import AuthService
+from backend.shared.contracts import Side
 from backend.shared.store import Store
 from backend.strategies.runtime import StrategyRuntime
 
@@ -65,6 +70,7 @@ class Platform:
         )
         self.candles = CandleBuilder()
         self.closed_candles = deque(maxlen=128)
+        self.auth = AuthService(self.store)
         self.demo_count = 0
 
     def account(self, account_id):
@@ -133,7 +139,7 @@ class Platform:
 
     def tick(self, tick, *, replay=False):
         if replay:
-            self.require_offline_demo()
+            self.require_replay_demo()
         with self.store.lock:
             try:
                 accepted, closed = self.candles.ingest_event(tick)
@@ -179,10 +185,16 @@ class Platform:
             if (
                 decision.allowed
                 and self.risk.state == "RUNNING"
-                and isinstance(self.broker, MockBrokerAdapter)
+                and isinstance(self.broker, (MockBrokerAdapter, HTTPMockBrokerAdapter))
             ):
                 order = self.broker.orders.get(intent.intent_id)
                 if order and order.remaining_quantity and order.status != "REJECTED":
+                    trade_side = Side(order.intent.side)
+                    charges_calc = calculate_indian_charges(
+                        order.remaining_quantity,
+                        tick.price,
+                        trade_side,
+                    )
                     self.ingest(
                         self.broker_calls.call(
                             "execute",
@@ -190,7 +202,7 @@ class Platform:
                             order.remaining_quantity,
                             tick.price,
                             self.clock(),
-                            Decimal("0.01"),
+                            charges_calc.total_charges,
                         )
                     )
 
@@ -198,7 +210,7 @@ class Platform:
         with self.store.lock:
             if not self.demo_enabled:
                 raise ValueError("replay demo is disabled for this database")
-            self.require_offline_demo()
+            self.require_replay_demo()
             if not self.store.rows("SELECT id FROM accounts WHERE id='demo'"):
                 self.account("demo")
             for kind in ("momentum", "mean_reversion", "breakout"):
@@ -216,7 +228,19 @@ class Platform:
             ]
             start = max(starts, default=1_700_000_100) + 900
             self.demo_count += 1
-            events = iter(ReplayMarketDataProvider.demo(start).ticks())
+            symbols = {"DEMO"}
+            symbols.update(
+                row["symbol"]
+                for row in self.store.rows(
+                    "SELECT symbol FROM subscriptions WHERE enabled=1"
+                )
+            )
+            events = iter(
+                chain.from_iterable(
+                    ReplayMarketDataProvider.demo(start, symbol).ticks()
+                    for symbol in sorted(symbols)
+                )
+            )
         self.tick(next(events), replay=True)
         self.reliability.resume()
         for tick in events:
@@ -234,10 +258,25 @@ class Platform:
                 "demo/failure injection requires offline mock storage; production database is protected"
             )
 
+    def require_replay_demo(self):
+        """Allow replay only for an explicitly enabled local mock path."""
+        if not self.demo_enabled or not isinstance(
+            self.broker, (MockBrokerAdapter, HTTPMockBrokerAdapter)
+        ):
+            raise ValueError(
+                "demo replay requires an explicitly enabled local mock broker"
+            )
+
     def kill(self):
         def execute(order):
             price = self.ledger.marks.get(order.intent.symbol, Decimal("100"))
             if order.status != "REJECTED":
+                trade_side = Side(order.intent.side)
+                charges_calc = calculate_indian_charges(
+                    order.remaining_quantity,
+                    price,
+                    trade_side,
+                )
                 self.ingest(
                     self.broker_calls.call(
                         "execute",
@@ -245,7 +284,7 @@ class Platform:
                         order.remaining_quantity,
                         price,
                         self.clock(),
-                        Decimal("0.01"),
+                        charges_calc.total_charges,
                         timeout=self.reliability.kill_deadline.remaining,
                     )
                 )
