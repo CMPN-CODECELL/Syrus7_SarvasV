@@ -1,5 +1,6 @@
 import time
 from collections import deque
+from itertools import chain
 from dataclasses import asdict
 from decimal import Decimal
 
@@ -227,7 +228,19 @@ class Platform:
             ]
             start = max(starts, default=1_700_000_100) + 900
             self.demo_count += 1
-            events = iter(ReplayMarketDataProvider.demo(start).ticks())
+            symbols = {"DEMO"}
+            symbols.update(
+                row["symbol"]
+                for row in self.store.rows(
+                    "SELECT symbol FROM subscriptions WHERE enabled=1"
+                )
+            )
+            events = iter(
+                chain.from_iterable(
+                    ReplayMarketDataProvider.demo(start, symbol).ticks()
+                    for symbol in sorted(symbols)
+                )
+            )
         self.tick(next(events), replay=True)
         self.reliability.resume()
         for tick in events:

@@ -271,11 +271,16 @@ def test_http_broker_replay_executes_fills_and_reconciles():
     adapter = HTTPMockBrokerAdapter(client=client)
     platform = Platform(path=":memory:", broker=adapter, demo_enabled=True)
     try:
+        platform.account("configured")
+        platform.strategies.subscribe(
+            "configured", "configured-momentum", "momentum", "RELIANCE"
+        )
         state = platform.demo()
         assert state["counts"]["orders"] > 0
         assert state["counts"]["fills"] > 0
         assert state["market_data"]["accepted_ticks"] > 0
         assert state["safety"]["position_comparison"]["status"] == "VERIFIED"
+        assert any(fill["strategy"] == "configured-momentum" for fill in state["fills"])
     finally:
         adapter.close()
 
