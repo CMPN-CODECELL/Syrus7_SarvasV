@@ -144,6 +144,14 @@ class CanonicalOrder:
     status: OrderStatus
     filled_quantity: int = 0
 
+    def __post_init__(self):
+        if type(self.filled_quantity) is not int or self.filled_quantity < 0:
+            raise ValueError("filled_quantity must be a non-negative integer")
+        if self.filled_quantity > self.intent.quantity:
+            raise ValueError("filled_quantity cannot exceed requested quantity")
+        if not isinstance(self.order_id, str) or not self.order_id.strip():
+            raise ValueError("order_id must be a non-empty string")
+
     @property
     def remaining_quantity(self):
         return self.intent.quantity - self.filled_quantity

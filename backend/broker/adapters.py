@@ -50,10 +50,22 @@ class MockBrokerAdapter:
             raise TimeoutError("acceptance is ambiguous to caller")
         return order
 
-    def execute(self, order_id, quantity, price, timestamp, charges=Decimal(0)):
+    def execute(
+        self,
+        order_id,
+        quantity,
+        price,
+        timestamp,
+        charges=Decimal(0),
+        allow_late=False,
+    ):
         self._check()
         order = self.orders[order_id]
-        if order.status in TERMINAL or not 0 < quantity <= order.remaining_quantity:
+        if (
+            (order.status in {OrderStatus.FILLED, OrderStatus.REJECTED})
+            or (order.status == OrderStatus.CANCELLED and not allow_late)
+            or not 0 < quantity <= order.remaining_quantity
+        ):
             raise ValueError("order cannot execute this quantity")
         if price <= 0 or charges < 0:
             raise ValueError("invalid execution price/charges")
@@ -72,12 +84,19 @@ class MockBrokerAdapter:
         )
         self.fills[fill.fill_id] = fill
         filled = order.filled_quantity + quantity
+        status = (
+            OrderStatus.FILLED
+            if filled == intent.quantity
+            else (
+                OrderStatus.CANCELLED
+                if order.status == OrderStatus.CANCELLED
+                else OrderStatus.PARTIALLY_FILLED
+            )
+        )
         self.orders[order_id] = replace(
             order,
             filled_quantity=filled,
-            status=OrderStatus.FILLED
-            if filled == intent.quantity
-            else OrderStatus.PARTIALLY_FILLED,
+            status=status,
         )
         self.persist()
         return fill
