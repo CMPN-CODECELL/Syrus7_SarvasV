@@ -18,5 +18,8 @@ data/
 .env.*.local
 .env.*
 !.env.example
+.neon
 .neon/
+.agents/
+skills-lock.json
 node_modules/

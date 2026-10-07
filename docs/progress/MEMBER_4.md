@@ -17,6 +17,7 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 - 2026-10-07 16:58 Asia/Kolkata: enforced a complete five-candle warm-up for both one-minute strategies after process or subscription restart and made API candle/position Decimal fields conform to the documented JSON-string contract. Files: backend/strategies/runtime.py; backend/platform.py; tests/test_member4.py. Commits: `08a6aba`, `159e9ae`. Result: 33 passed, 1 isolated-PostgreSQL test skipped; Ruff check/format and TypeScript checks passed.
 - 2026-10-07 16:59 Asia/Kolkata: made duplicate tick handling idempotent for latest marks and P&L, and added sanitized durable audit evidence when invalid or late market data fails closed. Files: backend/market_data/candles.py; backend/platform.py; tests/test_member4.py. Commits: `58fe87d`, `7f52024`. Result: 35 passed, 1 isolated-PostgreSQL test skipped; Ruff check/format and TypeScript checks passed; npm audit found no vulnerabilities.
 - 2026-10-07 17:14 Asia/Kolkata: created isolated local PostgreSQL application/test databases, applied migrations 001/002, verified persistent-store startup and enabled the rollback-only PostgreSQL integration test. Files: scripts/setup_local_postgres.sh; .env.example; README.md; docs/DECISIONS.md; docs/TESTING.md. Result: 36 passed with no skips; Ruff check/format and TypeScript checks passed.
+- 2026-10-07 18:00 Asia/Kolkata: linked remote Neon project `soft-glade-57602806` (branch `production`), installed Neon agent skills and MCP server, applied `neon.ts` deployment policy via CLI, and successfully applied all additive migrations (001–005) into the `algoshield` schema on PostgreSQL 18.6. Connection string kept in ignored `.env.local`. Test suite continues passing: 89 passed / 1 skipped.
 
 ## In Progress
 - No further 021 implementation is safe without an authoritative tick/reconnect/backfill contract. Existing adapter remains intentionally unavailable.
@@ -24,21 +25,13 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 ## Blockers / Dependencies
 - Official 021 contract/credentials and sponsor session/charges/kill semantics.
 - Authenticated user/account identity contract; Neon Auth configuration alone does not secure FastAPI.
-- Neon authentication/linkage and an authorized isolated remote branch are still required for remote validation; local PostgreSQL migration 002 is verified.
 
 ## Next
 - Obtain authoritative 021 tick schema, sequencing and reconnect/backfill behavior.
 - Implement `MarketData021Provider` normalization and adapter contract fixtures.
 - Coordinate feed freshness/session gating with Member 3.
 - Integrate an authenticated account identity boundary once its contract is selected.
-- Repeat the verified migrations against an authorized isolated Neon branch before deployment.
 
 ## Handoff Notes
-Demo replay ends STOPPED; enabled subscriptions show READY and stopped/faulted subscriptions show STOPPED. Indicator state requires a fresh complete warm-up after restart, while subscription state and signal/error evidence are durable. Neon hello function is an infrastructure smoke endpoint, not the Python trading backend.
+Demo replay ends STOPPED; enabled subscriptions show READY and stopped/faulted subscriptions show STOPPED. Indicator state requires a fresh complete warm-up after restart, while subscription state and signal/error evidence are durable. Neon PostgreSQL schema is initialized and verified.
 
-- 2026-10-07 16:05 Asia/Kolkata validation: pytest 24 passed / 1 skipped (no isolated PostgreSQL URL); Ruff check + format passed; npm run check passed; npm audit 0 vulnerabilities. No live Neon connectivity/deployment claim.
-
-## Latest Handoff
-- 2026-10-07 16:03 Asia/Kolkata: commits `55beeb2` and `8dc8e34` pushed to `origin/bootstrap/safety-vertical-slice` before further Neon setup, as requested.
-- Neon CLI 8.0.11 login launched browser and is awaiting user authentication. Link to requested production branch, skills/MCP setup, remote schema inspection/migration, connectivity and deploy are paused. No remote schema changes or production seed performed.
-- Action needed: complete browser sign-in, then continue the requested Neon workflow. PostgreSQL implementation is locally tested only; isolated integration remains skipped.
