@@ -58,6 +58,10 @@ def test_postgres_placeholder_binding():
     )
     assert raw.sql == "SELECT * FROM orders WHERE id=%s"
     assert raw.args == ("literal?",)
+    Connection(raw).execute(
+        "SELECT * FROM audit WHERE payload LIKE '%FILL_EVENT_REJECTED%'"
+    )
+    assert raw.sql == "SELECT * FROM audit WHERE payload LIKE '%%FILL_EVENT_REJECTED%%'"
 
 
 def test_postgres_error_does_not_echo_credentials(monkeypatch):
