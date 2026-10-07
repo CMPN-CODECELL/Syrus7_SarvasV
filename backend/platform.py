@@ -3,6 +3,7 @@ from collections import deque
 from dataclasses import asdict
 from decimal import Decimal
 
+from backend.accounting.charges import calculate_indian_charges
 from backend.accounting.ledger import Ledger
 from backend.broker.adapters import MockBrokerAdapter
 from backend.execution.orders import OrderManager
@@ -11,6 +12,8 @@ from backend.market_data.session import MarketSession
 from backend.reliability.control import Reliability
 from backend.reliability.broker_calls import BrokerSession
 from backend.risk.gateway import RiskGateway
+from backend.shared.auth import AuthService
+from backend.shared.contracts import Side
 from backend.shared.store import Store
 from backend.strategies.runtime import StrategyRuntime
 
@@ -65,6 +68,7 @@ class Platform:
         )
         self.candles = CandleBuilder()
         self.closed_candles = deque(maxlen=128)
+        self.auth = AuthService(self.store)
         self.demo_count = 0
 
     def account(self, account_id):
@@ -183,6 +187,12 @@ class Platform:
             ):
                 order = self.broker.orders.get(intent.intent_id)
                 if order and order.remaining_quantity and order.status != "REJECTED":
+                    trade_side = Side(order.intent.side)
+                    charges_calc = calculate_indian_charges(
+                        order.remaining_quantity,
+                        tick.price,
+                        trade_side,
+                    )
                     self.ingest(
                         self.broker_calls.call(
                             "execute",
@@ -190,7 +200,7 @@ class Platform:
                             order.remaining_quantity,
                             tick.price,
                             self.clock(),
-                            Decimal("0.01"),
+                            charges_calc.total_charges,
                         )
                     )
 
@@ -238,6 +248,12 @@ class Platform:
         def execute(order):
             price = self.ledger.marks.get(order.intent.symbol, Decimal("100"))
             if order.status != "REJECTED":
+                trade_side = Side(order.intent.side)
+                charges_calc = calculate_indian_charges(
+                    order.remaining_quantity,
+                    price,
+                    trade_side,
+                )
                 self.ingest(
                     self.broker_calls.call(
                         "execute",
@@ -245,7 +261,7 @@ class Platform:
                         order.remaining_quantity,
                         price,
                         self.clock(),
-                        Decimal("0.01"),
+                        charges_calc.total_charges,
                         timeout=self.reliability.kill_deadline.remaining,
                     )
                 )
