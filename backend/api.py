@@ -155,6 +155,10 @@ def create_app(platform=None):
             raise HTTPException(409, "account exists") from None
         return {"account_id": body.account_id}
 
+    @app.get("/api/strategies")
+    def list_strategies():
+        return engine.strategies.list_registered()
+
     @app.post("/api/subscriptions", status_code=201)
     def subscribe(body: SubscriptionRequest):
         try:

@@ -37,11 +37,17 @@ class ReplayMarketDataProvider:
 class CandleBuilder:
     """UTC half-open buckets; close only upon next bucket, no invented gap candles."""
 
-    def __init__(self, max_seen_ids=100_000, *, max_seen=None):
+    def __init__(self, max_seen_ids=100_000, *, max_seen=None, intervals=(60, 300)):
         if max_seen is not None:
             max_seen_ids = max_seen
         if type(max_seen_ids) is not int or max_seen_ids < 1:
             raise ValueError("tick dedupe capacity must be a positive integer")
+        if not intervals:
+            raise ValueError("at least one candle interval is required")
+        for inv in intervals:
+            if type(inv) is not int or inv <= 0:
+                raise ValueError("candle intervals must be positive integers")
+        self.intervals = tuple(sorted(set(intervals)))
         self.max_seen = max_seen_ids
         self.active = {}
         self.seen = OrderedDict()
@@ -49,6 +55,12 @@ class CandleBuilder:
         self.accepted_ticks = 0
         self.duplicate_ticks = 0
         self.late_ticks = 0
+
+    def add_interval(self, interval: int):
+        if type(interval) is not int or interval <= 0:
+            raise ValueError("candle interval must be a positive integer")
+        if interval not in self.intervals:
+            self.intervals = tuple(sorted(set(self.intervals + (interval,))))
 
     def ingest(self, tick):
         _, closed = self.ingest_event(tick)
@@ -88,7 +100,7 @@ class CandleBuilder:
         self.last[tick.symbol] = tick.event_timestamp
         self.accepted_ticks += 1
         closed = []
-        for interval in (60, 300):
+        for interval in self.intervals:
             key = (tick.symbol, interval)
             start = tick.event_timestamp // interval * interval
             c = self.active.get(key)

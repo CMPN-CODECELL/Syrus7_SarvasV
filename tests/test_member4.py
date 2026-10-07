@@ -291,3 +291,128 @@ def test_api_preserves_money_and_prices_as_decimal_strings():
             assert isinstance(fill["price"], str)
             assert isinstance(fill["charges"], str)
     platform.store.close()
+
+
+def test_configurable_candle_builder_intervals_and_add_interval():
+    builder = CandleBuilder(intervals=(15, 60))
+    assert builder.intervals == (15, 60)
+    # Ticks spanning across 15-second boundaries
+    builder.ingest(Tick("XYZ", 0, D("100"), 10, "t1"))
+    builder.ingest(Tick("XYZ", 10, D("102"), 5, "t2"))
+    closed = builder.ingest(Tick("XYZ", 15, D("105"), 10, "t3"))
+    # The 15s candle [0, 15) should close when tick at 15 arrives
+    assert len(closed) == 1
+    assert closed[0].interval == 15
+    assert closed[0].start_time == 0
+    assert closed[0].open == D("100")
+    assert closed[0].high == D("102")
+    assert closed[0].close == D("102")
+    assert closed[0].volume == 15
+
+    # Test adding an interval dynamically
+    builder.add_interval(900)
+    assert 900 in builder.intervals
+
+    # Invalid intervals validation
+    try:
+        CandleBuilder(intervals=())
+    except ValueError as exc:
+        assert "at least one candle interval is required" in str(exc)
+
+    try:
+        CandleBuilder(intervals=(-10,))
+    except ValueError as exc:
+        assert "positive integers" in str(exc)
+
+
+def test_rsi_reversal_strategy_warmup_and_signals():
+    platform = configured_platform()
+    try:
+        platform.strategies.subscribe("a", "rsi_inst", "rsi_reversal", "X")
+        # 14 candles warmup - no signals should be produced
+        prices = [D("100") - D(i) for i in range(14)]
+        for i, p in enumerate(prices):
+            intents = platform.strategies.on_candle(
+                closed_candle(interval=60, start=i * 60, open_price=str(p), close_price=str(p)),
+                platform.clock(),
+            )
+            assert all(intent.strategy_instance_id != "rsi_inst" for intent in intents)
+
+        # 15th candle with another decline -> RSI will be oversold (< 30)
+        p15 = D("80")
+        intents = platform.strategies.on_candle(
+            closed_candle(interval=60, start=14 * 60, open_price=str(p15), close_price=str(p15)),
+            platform.clock(),
+        )
+        rsi_intents = [it for it in intents if it.strategy_instance_id == "rsi_inst"]
+        assert len(rsi_intents) == 1
+        assert rsi_intents[0].side == Side.BUY
+        assert "RSI oversold reversal" in rsi_intents[0].reason
+
+        # Now simulate a massive rally to push RSI > 70
+        for i in range(15, 30):
+            rally_p = D("80") + D((i - 14) * 10)
+            intents = platform.strategies.on_candle(
+                closed_candle(interval=60, start=i * 60, open_price=str(rally_p), close_price=str(rally_p)),
+                platform.clock(),
+            )
+        # Should have emitted a SELL signal when crossing into overbought
+        overbought_intents = [
+            signal for signal in platform.strategies.signals
+            if signal["strategy"] == "rsi_inst" and signal["side"] == "SELL"
+        ]
+        assert len(overbought_intents) >= 1
+        assert "overbought" in overbought_intents[0]["reason"]
+    finally:
+        platform.store.close()
+
+
+def test_dynamic_strategy_registration_and_api():
+    platform = Platform()
+    try:
+        # Register custom strategy
+        def custom_scalp(_sub, candle):
+            if candle.close > D("200"):
+                return Side.BUY, "custom price trigger"
+            return None
+
+        platform.strategies.register_strategy(
+            "custom_scalp",
+            custom_scalp,
+            interval=60,
+            warmup=1,
+            description="Scalping trigger when close > 200",
+        )
+
+        with TestClient(create_app(platform)) as client:
+            resp = client.get("/api/strategies")
+            assert resp.status_code == 200
+            registered = resp.json()
+            kinds = {item["kind"] for item in registered}
+            assert {"momentum", "mean_reversion", "breakout", "rsi_reversal", "custom_scalp"}.issubset(kinds)
+
+            # Subscribe to the custom strategy via API
+            client.post("/api/accounts", json={"account_id": "test_acc"})
+            sub_resp = client.post(
+                "/api/subscriptions",
+                json={
+                    "account_id": "test_acc",
+                    "strategy_instance_id": "scalp_1",
+                    "kind": "custom_scalp",
+                    "symbol": "X",
+                },
+            )
+            assert sub_resp.status_code == 201
+            platform.reliability.resume()
+
+            intents = platform.strategies.on_candle(
+                closed_candle(start=0, open_price="190", close_price="210"),
+                platform.clock(),
+            )
+            scalp_intents = [it for it in intents if it.strategy_instance_id == "scalp_1"]
+            assert len(scalp_intents) == 1
+            assert scalp_intents[0].side == Side.BUY
+            assert scalp_intents[0].reason == "custom price trigger"
+    finally:
+        platform.store.close()
+

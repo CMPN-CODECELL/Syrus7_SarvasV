@@ -5,7 +5,7 @@ from decimal import Decimal
 from backend.shared.contracts import OrderIntent, Side
 
 
-KINDS = {"momentum", "mean_reversion", "breakout"}
+KINDS = {"momentum", "mean_reversion", "breakout", "rsi_reversal"}
 
 
 class StrategyRuntime:
@@ -32,14 +32,70 @@ class StrategyRuntime:
             )
         ):
             self.errors.append(json.loads(row["payload"]))
-        self.handlers = {
-            "momentum": self._momentum,
-            "mean_reversion": self._mean_reversion,
-            "breakout": self._breakout,
+        self.registry = {
+            "momentum": {
+                "handler": self._momentum,
+                "interval": 60,
+                "warmup": 5,
+                "description": "3/5 EMA bullish/bearish crossover on 1m candles",
+            },
+            "mean_reversion": {
+                "handler": self._mean_reversion,
+                "interval": 60,
+                "warmup": 5,
+                "description": "5-period mean reversion (+/-0.5%) on 1m candles",
+            },
+            "breakout": {
+                "handler": self._breakout,
+                "interval": 300,
+                "warmup": 1,
+                "description": "Range high/low breakout on 5m candles",
+            },
+            "rsi_reversal": {
+                "handler": self._rsi_reversal,
+                "interval": 60,
+                "warmup": 14,
+                "description": "14-period RSI oversold (<30) and overbought (>70) reversal on 1m candles",
+            },
         }
+        self.handlers = {k: v["handler"] for k, v in self.registry.items()}
+
+    def register_strategy(
+        self,
+        kind: str,
+        handler,
+        *,
+        interval: int = 60,
+        warmup: int = 5,
+        description: str = "",
+    ):
+        kind = kind.strip().lower()
+        if not kind:
+            raise ValueError("strategy kind name required")
+        if not callable(handler):
+            raise ValueError("strategy handler must be callable")
+        self.registry[kind] = {
+            "handler": handler,
+            "interval": interval,
+            "warmup": warmup,
+            "description": description or f"Custom strategy {kind}",
+        }
+        self.handlers[kind] = handler
+        KINDS.add(kind)
+
+    def list_registered(self):
+        return [
+            {
+                "kind": kind,
+                "interval": meta.get("interval", 60),
+                "warmup": meta.get("warmup", 5),
+                "description": meta.get("description", ""),
+            }
+            for kind, meta in self.registry.items()
+        ]
 
     def subscribe(self, account, strategy, kind, symbol):
-        if kind not in KINDS:
+        if kind not in self.handlers:
             raise ValueError("unknown strategy")
         if not account or not strategy or not symbol:
             raise ValueError("account, strategy instance and symbol are required")
@@ -143,6 +199,50 @@ class StrategyRuntime:
             return Side.BUY, "5m close broke previous range high"
         if candle.close < previous_low:
             return Side.SELL, "5m close broke previous range low"
+        return None
+
+    def _rsi_reversal(self, subscription, candle):
+        if candle.interval != 60:
+            return None
+        state = self.indicators.setdefault(subscription["id"], {})
+        closes = state.setdefault("closes", deque(maxlen=15))
+        closes.append(candle.close)
+        if len(closes) < 15:
+            return None
+        gains = []
+        losses = []
+        for i in range(1, len(closes)):
+            diff = closes[i] - closes[i - 1]
+            if diff > 0:
+                gains.append(diff)
+                losses.append(Decimal(0))
+            elif diff < 0:
+                gains.append(Decimal(0))
+                losses.append(-diff)
+            else:
+                gains.append(Decimal(0))
+                losses.append(Decimal(0))
+
+        avg_gain = sum(gains, Decimal(0)) / Decimal(14)
+        avg_loss = sum(losses, Decimal(0)) / Decimal(14)
+
+        if avg_loss == Decimal(0):
+            rsi = Decimal(100) if avg_gain > Decimal(0) else Decimal(50)
+        else:
+            rs = avg_gain / avg_loss
+            rsi = Decimal(100) - (Decimal(100) / (Decimal(1) + rs))
+
+        previous_rsi = state.get("rsi")
+        state["rsi"] = rsi
+
+        if rsi < Decimal(30):
+            if previous_rsi is not None and previous_rsi < Decimal(30):
+                return None
+            return Side.BUY, f"14-period RSI oversold reversal ({rsi:.1f} < 30)"
+        if rsi > Decimal(70):
+            if previous_rsi is not None and previous_rsi > Decimal(70):
+                return None
+            return Side.SELL, f"14-period RSI overbought reversal ({rsi:.1f} > 70)"
         return None
 
     def _halt_failed_subscription(self, subscription, exc):
