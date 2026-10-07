@@ -2,7 +2,7 @@
 
 from decimal import Decimal
 
-from backend.shared.contracts import OrderIntent, Side
+from backend.shared.contracts import OrderIntent, Side, Tick
 
 
 class FailureLab:
@@ -22,6 +22,7 @@ class FailureLab:
             )
             strategy = f"lab-{scenario}-{counter}"
             p.strategies.subscribe("failure-lab", strategy, "momentum", "LAB")
+            p.tick(Tick("LAB", int(p.clock()), Decimal("100"), 0, strategy + ":mark"))
             p.reliability.resume()
             decisions = []
 

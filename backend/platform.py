@@ -16,6 +16,7 @@ class Platform:
     def __init__(self, path=":memory:", broker=None, clock=time.time, store=None):
         self.clock = clock
         self.store = store if store is not None else Store(path)
+        self.store.audit_clock = clock
         self.broker = (
             broker
             if broker is not None
@@ -52,19 +53,19 @@ class Platform:
             try:
                 return self.orders.ingest(fill)
             except Exception:
-                self.risk.state = "UNCERTAIN"
-                self.strategies.enabled = False
+                self.reliability.fail_closed("FILL_EVENT_REJECTED")
                 raise
 
-    def tick(self, tick):
+    def tick(self, tick, *, replay=False):
+        if replay:
+            self.require_offline_demo()
         with self.store.lock:
             try:
                 closed = self.candles.ingest(tick)
             except ValueError:
-                self.risk.state = "UNCERTAIN"
-                self.strategies.enabled = False
+                self.reliability.fail_closed("MARKET_EVENT_REJECTED")
                 raise
-            self.ledger.marks[tick.symbol] = tick.price
+            self.reliability.observe_tick(tick, replay=replay)
             for candle in closed:
                 self.closed_candles.append(candle)
                 for intent in self.strategies.on_candle(candle, self.clock()):
@@ -89,7 +90,6 @@ class Platform:
                 self.account("demo")
                 for kind in ("momentum", "mean_reversion", "breakout"):
                     self.strategies.subscribe("demo", kind, kind, "DEMO")
-            self.reliability.resume()
             previous = self.store.rows(
                 "SELECT id FROM orders WHERE strategy IN ('momentum','mean_reversion','breakout')"
             )
@@ -100,8 +100,11 @@ class Platform:
             ]
             start = max(starts, default=1_700_000_100) + 900
             self.demo_count += 1
-            for tick in ReplayMarketDataProvider.demo(start).ticks():
-                self.tick(tick)
+            events = iter(ReplayMarketDataProvider.demo(start).ticks())
+            self.tick(next(events), replay=True)
+            self.reliability.resume()
+            for tick in events:
+                self.tick(tick, replay=True)
             self.reliability.reconcile()
             # Demo stops safely after replay; subscriptions remain visible.
             return self.snapshot()
@@ -138,6 +141,7 @@ class Platform:
                 "mode": "MOCK / REPLAY",
                 "health": self.reliability.health,
                 "gate": self.risk.state,
+                "safety": self.reliability.evidence(),
                 "subscriptions": [
                     dict(r)
                     | {

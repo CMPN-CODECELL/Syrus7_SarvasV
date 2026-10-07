@@ -127,6 +127,16 @@ def create_app(platform=None):
         engine.reliability.resume()
         return engine.snapshot()
 
+    @app.post("/api/reduce-only")
+    def reduce_only():
+        engine.reliability.resume(reduce_only=True)
+        return engine.snapshot()
+
+    @app.post("/api/kill/reset")
+    def reset_kill():
+        engine.reliability.reset_kill()
+        return engine.snapshot()
+
     @app.post("/api/kill")
     def kill():
         return engine.kill()

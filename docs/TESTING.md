@@ -27,3 +27,5 @@ Database tests: `test_database.py` checks config precedence, additive migration 
 P0 integration tests (`test_p0.py`) recreate the platform and external mock from disk, verify corrupt evidence fails closed, and observe partial/rejected/risk-rejected orders and kill through HTTP. CI configuration is now present in `.github/workflows/tests.yml`.
 
 Risk policy tests (`test_risk_policies.py`) cover durable policy/loss halt after restart, invalid finite/integer limits, authoritative API changes, reservation conversion/release and lowered limits retaining open exposure. SQLite upgrades are additive/versioned; PostgreSQL hashes normalize newlines across operating systems.
+
+Recovery tests (`test_recovery.py`) verify incomplete/stale/conflicting/missing snapshots, zero-net missing history, event reordering, duplicate snapshot fills, fresh receive vs old LIVE event time, persisted marks/latch/certificate, verified reset and strict reduce-only behavior. Legacy safety fixtures now supply explicit fresh market evidence instead of assuming a price feed exists.

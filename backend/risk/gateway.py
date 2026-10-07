@@ -8,6 +8,7 @@ from backend.shared.contracts import (
     StrategyState,
 )
 from backend.risk.policies import PolicyRepository
+from backend.reliability.state import SafetyRepository
 
 
 class RiskGateway:
@@ -18,8 +19,30 @@ class RiskGateway:
             manager,
             clock,
         )
+        self.safety = SafetyRepository(store)
+        self._state = GlobalTradingState.RECOVERING
         self.state = GlobalTradingState.RECOVERING
         self.policies = PolicyRepository(store)
+        self.evidence_gate = lambda intent: "RISK_NO_HEALTH_EVIDENCE"
+        self.on_uncertain = lambda code: setattr(
+            self, "state", GlobalTradingState.UNCERTAIN
+        )
+
+    @property
+    def state(self):
+        return self._state
+
+    @state.setter
+    def state(self, value):
+        value = GlobalTradingState(value)
+        with self.store.transaction():
+            previous = self.safety.get("gate")
+            self._state = value
+            self.safety.set("gate", value)
+            if previous != value:
+                self.store.audit(
+                    "GLOBAL_GATE_CHANGED", {"previous": previous, "state": value}
+                )
 
     def strategy_state(self, strategy):
         rows = self.store.rows(
@@ -138,11 +161,14 @@ class RiskGateway:
             try:
                 self.manager.submit_reserved(intent)
             except Exception:
-                self.state = "UNCERTAIN"
+                self.on_uncertain("SUBMISSION_UNKNOWN")
             return decision
 
     def _check(self, intent):
-        if self.state != "RUNNING":
+        if self.state not in {
+            GlobalTradingState.RUNNING,
+            GlobalTradingState.REDUCE_ONLY,
+        } or self.safety.get("kill_latched", False):
             return "RISK_GLOBAL_GATE", None
         if self.store.rows("SELECT id FROM orders WHERE id=?", (intent.intent_id,)):
             return "RISK_DUPLICATE_INTENT", None
@@ -153,6 +179,22 @@ class RiskGateway:
             return "RISK_NOT_SUBSCRIBED", None
         policy = self.policies.get(intent.strategy_instance_id, RiskPolicy())
         now = self.clock()
+        unsafe = self.evidence_gate(intent)
+        if unsafe:
+            return unsafe, None
+        budget = self.budget(
+            intent.account_id, intent.strategy_instance_id, intent.symbol
+        )
+        q = budget["position"]["filled"]
+        reducing = (
+            not budget["position"]["reserved_buy"]
+            and not budget["position"]["reserved_sell"]
+            and q * intent.side.sign < 0
+            and intent.quantity <= abs(q)
+        )
+        reduce_only = self.state == GlobalTradingState.REDUCE_ONLY
+        if reduce_only and not reducing:
+            return "RISK_NOT_REDUCING", None
         if (
             self.ledger.daily_net(intent.account_id, intent.strategy_instance_id, now)
             <= -policy.max_daily_loss
@@ -162,8 +204,13 @@ class RiskGateway:
                 StrategyState.LOSS_HALTED,
                 "RISK_MAX_DAILY_LOSS",
             )
-            return "RISK_MAX_DAILY_LOSS", None
-        if self.strategy_state(intent.strategy_instance_id) != StrategyState.RUNNING:
+            if not (reduce_only and reducing):
+                return "RISK_MAX_DAILY_LOSS", None
+        strategy_state = self.strategy_state(intent.strategy_instance_id)
+        if strategy_state == StrategyState.HALTED or (
+            strategy_state == StrategyState.LOSS_HALTED
+            and not (reduce_only and reducing)
+        ):
             return "RISK_STRATEGY_HALTED", None
         orders = self.store.rows(
             "SELECT * FROM orders WHERE strategy=? AND account=? AND emergency=0",
@@ -191,5 +238,7 @@ class RiskGateway:
         # Opposing pending orders cannot be assumed to offset each other.
         projected = max(abs(q + buys), abs(q - sells))
         return (
-            "RISK_MAX_POSITION" if projected > policy.max_position else ""
+            "RISK_MAX_POSITION"
+            if projected > policy.max_position and not (reduce_only and reducing)
+            else ""
         ), projected

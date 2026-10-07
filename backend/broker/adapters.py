@@ -100,6 +100,7 @@ class MockBrokerAdapter:
             tuple(self.orders.values()),
             tuple(self.fills.values()),
             {k: v for k, v in positions.items() if v},
+            is_complete=True,
         )
 
 

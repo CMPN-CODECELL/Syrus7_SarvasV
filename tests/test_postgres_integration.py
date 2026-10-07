@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 
 from backend.platform import Platform
-from backend.shared.contracts import OrderIntent, Side
+from backend.shared.contracts import OrderIntent, Side, Tick
 from backend.shared.postgres import PostgresStore
 
 
@@ -28,6 +28,7 @@ def test_postgres_fill_reservation_recovery():
             with store.transaction():
                 p.account(key)
                 p.strategies.subscribe(key, key, "momentum", "TEST")
+                p.tick(Tick("TEST", int(p.clock()), Decimal("100"), 0, key))
                 p.reliability.resume()
                 intent = OrderIntent(key, key, key, "TEST", Side.BUY, 100, p.clock())
                 assert p.risk.submit(intent).allowed

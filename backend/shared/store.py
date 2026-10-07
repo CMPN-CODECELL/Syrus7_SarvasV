@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from threading import RLock
@@ -35,18 +36,23 @@ class Store:
                 payload TEXT NOT NULL);
         """)
         version = self.db.execute("PRAGMA user_version").fetchone()[0]
-        if version > 2:
+        self.audit_clock = time.time
+        if version > 3:
             raise ValueError("SQLite schema is newer than this application")
         if version < 1:
             self.db.execute("PRAGMA user_version=1")
         self.db.commit()
-        if version < 2:
-            sql = (
-                Path(__file__).parent / "sqlite_migrations/002_risk_policies.sql"
-            ).read_text(encoding="utf-8")
-            self.db.executescript(
-                "BEGIN IMMEDIATE;\n" + sql + "\nPRAGMA user_version=2;\nCOMMIT;"
-            )
+        for number, filename in (
+            (2, "002_risk_policies.sql"),
+            (3, "003_safety_state.sql"),
+        ):
+            if version < number:
+                sql = (
+                    Path(__file__).parent / "sqlite_migrations" / filename
+                ).read_text(encoding="utf-8")
+                self.db.executescript(
+                    f"BEGIN IMMEDIATE;\n{sql}\nPRAGMA user_version={number};\nCOMMIT;"
+                )
 
     @contextmanager
     def transaction(self):
@@ -71,8 +77,8 @@ class Store:
     def audit(self, event_type, payload):
         # Caller holds the transaction; event commits atomically with its transition.
         self.db.execute(
-            "INSERT INTO audit(type,payload) VALUES (?,?)",
-            (event_type, json.dumps(payload, default=str)),
+            "INSERT INTO audit(type,payload,recorded_at) VALUES (?,?,?)",
+            (event_type, json.dumps(payload, default=str), self.audit_clock()),
         )
 
     def close(self):

@@ -26,6 +26,7 @@ def p():
     engine.account("a")
     for name, kind in (("A", "momentum"), ("B", "mean_reversion"), ("C", "breakout")):
         engine.strategies.subscribe("a", name, kind, "X")
+    engine.tick(Tick("X", int(engine.clock()), D("100"), 0, "fresh-mark"))
     engine.reliability.resume()
     yield engine
     engine.store.close()
@@ -106,6 +107,7 @@ def test_restart_loads_and_reconciles(tmp_path):
     old = Platform(path, clock=Clock())
     old.account("a")
     old.strategies.subscribe("a", "A", "momentum", "X")
+    old.tick(Tick("X", int(old.clock()), D("100"), 0, "fresh-mark"))
     old.reliability.resume()
     old.risk.submit(intent(old, "one", 100))
     old.ingest(old.broker.execute("one", 40, D("100"), old.clock(), D("0.5")))
@@ -128,6 +130,7 @@ def test_fresh_mock_after_restart_cannot_fake_recovery(tmp_path):
     old = Platform(path, clock=Clock())
     old.account("a")
     old.strategies.subscribe("a", "A", "momentum", "X")
+    old.tick(Tick("X", int(old.clock()), D("100"), 0, "fresh-mark"))
     old.reliability.resume()
     old.risk.submit(intent(old, "one", 1))
     old.store.close()
@@ -175,6 +178,8 @@ def test_rate_limit_and_boundary(p):
     p.risk.submit(intent(p, "one", 1))
     assert p.risk.submit(intent(p, "two", 1)).reason_code == "RISK_RATE_LIMIT"
     p.clock.now += 60
+    p.tick(Tick("X", int(p.clock()), D("100"), 0, "fresh-rate-mark"))
+    p.reliability.resume()
     assert p.risk.submit(intent(p, "three", 1)).allowed
 
 

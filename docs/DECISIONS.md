@@ -292,3 +292,25 @@ Mutable process dictionaries and UI-authoritative limits were rejected.
 
 ### Reversal
 Migrate policy/control history through a versioned schema change and retain restart, validation and concurrent-reservation tests.
+
+## DEC-014 — Complete evidence, freshness and durable fail-closed recovery
+Date: 2026-10-07
+Status: ACCEPTED
+
+### Context
+Matching net positions alone could hide missing round-trip trades. Restart erased marks and kill latches; stale data had no risk effect.
+
+### Decision
+Snapshot completeness is an explicit fail-closed contract (default False). Validate identities, statuses, complete unique fill history, cumulative totals and positions before importing financial events. Persist safety state, kill latch/certificate, risk marks and timestamped audits via additive migration 003. Recovered marks preserve loss inputs; startup operational state stays RECOVERING. Add fresh broker/feed gating, explicit REDUCE_ONLY and verified operator kill reset.
+
+### Reason
+No green reconciliation from an empty/incomplete snapshot or stale cached price. Kill cannot silently unlatch after restart.
+
+### Impact
+Member 3 reliability/risk tests and APIs; minimal shared snapshot/validation/schema additions and mock completeness attestation. Existing states/fields retain names. Mock/replay is labeled explicitly; no 021 snapshot or volume behavior inferred.
+
+### Alternatives
+Implicitly complete snapshots, process-only latches and cancel-submitted success were rejected.
+
+### Reversal
+Any snapshot scope/freshness/session changes need documented provider evidence plus missing-history, stale-feed, reduce-only and restart tests.

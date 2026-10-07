@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from backend.api import create_app
 from backend.platform import Platform
-from backend.shared.contracts import OrderIntent, RiskPolicy, Side, StrategyState
+from backend.shared.contracts import OrderIntent, RiskPolicy, Side, StrategyState, Tick
 
 
 def subscribed(path=":memory:", broker=None, clock=lambda: 1_700_000_000):
@@ -13,6 +13,7 @@ def subscribed(path=":memory:", broker=None, clock=lambda: 1_700_000_000):
     if not p.store.rows("SELECT id FROM accounts WHERE id='a'"):
         p.account("a")
         p.strategies.subscribe("a", "A", "momentum", "X")
+    p.tick(Tick("X", int(p.clock()), Decimal("100"), 0, "fresh-mark"))
     p.reliability.resume()
     return p
 

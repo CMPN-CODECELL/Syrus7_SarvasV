@@ -59,6 +59,22 @@ class Tick:
     quantity: int
     event_id: str
 
+    def __post_init__(self):
+        if (
+            not isinstance(self.price, Decimal)
+            or not self.price.is_finite()
+            or self.price <= 0
+            or type(self.quantity) is not int
+            or self.quantity < 0
+        ):
+            raise ValueError("invalid tick economics")
+        if (
+            type(self.event_timestamp) is not int
+            or not self.symbol
+            or not self.event_id
+        ):
+            raise ValueError("invalid tick identity/timestamp")
+
 
 @dataclass(frozen=True)
 class Candle:
@@ -146,6 +162,33 @@ class Fill:
     timestamp: float
     charges: Decimal = Decimal("0")
 
+    def __post_init__(self):
+        if (
+            type(self.quantity) is not int
+            or self.quantity <= 0
+            or not isinstance(self.side, Side)
+        ):
+            raise ValueError("invalid fill quantity/side")
+        if (
+            not isinstance(self.price, Decimal)
+            or not self.price.is_finite()
+            or self.price <= 0
+            or not isinstance(self.charges, Decimal)
+            or not self.charges.is_finite()
+            or self.charges < 0
+        ):
+            raise ValueError("invalid fill economics")
+        if not isfinite(self.timestamp) or not all(
+            (
+                self.fill_id,
+                self.broker_order_id,
+                self.strategy_instance_id,
+                self.account_id,
+                self.symbol,
+            )
+        ):
+            raise ValueError("invalid fill attribution/timestamp")
+
 
 @dataclass(frozen=True)
 class StrategyPosition:
@@ -186,6 +229,8 @@ class BrokerSnapshot:
     orders: tuple[CanonicalOrder, ...]
     fills: tuple[Fill, ...]
     positions: dict[tuple[str, str], int]
+    is_complete: bool = False
+    observed_at: float | None = None
 
 
 @dataclass(frozen=True)

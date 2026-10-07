@@ -14,7 +14,7 @@ Canonical executable definitions: `backend/shared/contracts.py`. Documentation d
 - `Fill`: fill_id, broker_order_id, strategy_instance_id, account_id, symbol, side, quantity, price, timestamp, charges. IDs unique across configured provider/account; adapter must namespace them if broker IDs are only locally unique.
 - `StrategyPosition`: strategy_instance_id, symbol, net_quantity, average_price, realized_pnl, unrealized_pnl, charges, net_pnl. API adds account_id.
 - `RiskPolicy`: finite positive Decimal max_daily_loss, positive integer max_position/max_orders_per_minute. Gateway mapping persists configurable policies by globally unique strategy ID; durable strategy_controls preserve manual/loss halts. Unconfigured strategies use documented defaults.
-- `BrokerSnapshot`: complete orders/fills history and positions keyed by `(account_id,symbol)`. Adapter must reject incomplete/uncertain snapshots rather than return an empty success.
+- `BrokerSnapshot`: orders/fills history and positions keyed by `(account_id,symbol)`, is_complete (defaults False), observed_at (optional provider UTC epoch time). Mock explicitly attests completeness. Query completion time is used if no provider timestamp exists; stale/uncertain/incomplete evidence blocks reconciliation. Real adapters must attest complete paginated history for the configured platform scope and keep provider-specific identity mapping inside the adapter.
 - `KillCertificate`: status, elapsed_seconds, open_orders, broker_positions, virtual_positions_flat, reason. Unknown open count = -1, never verified safe.
 
 ## Interfaces and state transitions
@@ -25,14 +25,18 @@ Mock exposes `execute(...)` for deterministic fill injection; it is not part of 
 
 Order: RESERVED -> OPEN / REJECTED / UNKNOWN; OPEN -> PARTIALLY_FILLED -> FILLED, or CANCELLED. Late evidenced executions may increase executed quantity after cancel; full evidence produces FILLED. Snapshot confirmation resolves UNKNOWN. Order statuses never create financial state without fills.
 
-Global: RECOVERING -> STOPPED after successful reconciliation -> RUNNING after explicit resume; uncertainty -> UNCERTAIN; kill -> KILLING -> KILLED or UNCERTAIN. Health: RECOVERING / HEALTHY / DRIFTED. Runtime.enabled is actual callback state, not broker connectivity proof.
+Global: RECOVERING -> STOPPED after successful reconciliation -> RUNNING (or explicit REDUCE_ONLY) after resume; uncertainty -> UNCERTAIN; kill -> KILLING -> KILLED or UNCERTAIN. Health: RECOVERING / HEALTHY / DEGRADED / DRIFTED. REDUCE_ONLY admits only a non-reversing close with zero pending exposure for that strategy/symbol. Runtime.enabled is actual callback state, not broker connectivity proof.
 
-Audit schema: durable monotonic sequence, type, JSON payload; relevant state change and audit commit together. UTC audit timestamps/event envelopes are a follow-up contract extension. API state is a read projection with gate, health, subscriptions, positions, orders, fills, candles, audit, kill and explicit mock mode.
+Audit schema: durable monotonic sequence, type, JSON payload, recorded_at UTC epoch timestamp; relevant state change and audit commit together. Legacy rows have recorded_at=0 (unknown). API state adds safety and risk_budgets to its real state projection.
 
 ## Risk reasons
 
 ALLOWED, RISK_GLOBAL_GATE, RISK_DUPLICATE_INTENT, RISK_NOT_SUBSCRIBED, RISK_MAX_DAILY_LOSS, RISK_RATE_LIMIT, RISK_MAX_POSITION.
 
 RISK_STRATEGY_HALTED blocks manually/loss halted strategy instances. GlobalTradingState, StrategyState and ReconciliationState add typed names without renaming existing values. Policy PUT and strategy-control PUT are authoritative local development API actions. Budgets report directional capacity, not an assumption that opposite pending orders offset.
+
+RISK_NO_HEALTH_EVIDENCE, RISK_RECONCILIATION_REQUIRED, RISK_STALE_BROKER_STATE, RISK_STALE_MARKET_DATA, RISK_NOT_REDUCING. LIVE source event age and receive age both matter; labeled offline REPLAY uses receive age. Broker verification defaults to max age 5s; market freshness defaults to 15s. Persisted marks retain loss input, but do not establish fresh broker truth after restart.
+
+Kill latch/certificate and last reconciliation report persist in risk-owned safety_values. Startup always resets operational gate/health to RECOVERING. `/api/kill/reset` requires a new complete reconciliation, no open orders and zero broker/virtual positions, leaves STOPPED and never auto-resumes. Certificate remains historical after reset. Read freshness fields before treating historical reports as current evidence.
 
 No module may rename fields silently. Limit/modify, external positions, typed health/audit envelopes and real broker events are coordinated contract extensions, not fabricated 021 behavior.
