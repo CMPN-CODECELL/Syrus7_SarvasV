@@ -23,3 +23,5 @@ Adapter contract tests for real status/event mapping; snapshot completeness/pagi
 Tests passing in mock mode do not establish sponsor API correctness or live kill latency. Never weaken a test to fabricate a success state.
 
 Database tests: `test_database.py` checks config precedence, additive migration constraints/checksums, psycopg binding and sanitized initialization errors. `test_postgres_integration.py` is opt-in with ALGOSHIELD_TEST_DATABASE_URL pointing to an isolated pre-migrated DB; its writes roll back. Skipped integration is reported, never presented as remote verification. Do not use production for integration tests or demo seeds.
+
+P0 integration tests (`test_p0.py`) recreate the platform and external mock from disk, verify corrupt evidence fails closed, and observe partial/rejected/risk-rejected orders and kill through HTTP. CI configuration is now present in `.github/workflows/tests.yml`.

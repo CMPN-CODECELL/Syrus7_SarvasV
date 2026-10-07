@@ -248,3 +248,25 @@ No different project/branch; AI Gateway remains disabled; no automatic policy ov
 
 ### Reversal
 Review an explicit policy diff and affected backend contracts before enabling more services or changing deployment scope.
+
+## DEC-012 — Durable offline mock and P0 failure evidence
+Date: 2026-10-07
+Status: ACCEPTED
+
+### Context
+In-memory external mock state prevented teammates from restarting the runnable demo. Partial fills and rejections existed in code but were not observable through the frontend.
+
+### Decision
+Persist canonical mock orders/fills independently of the platform DB via atomic JSON replacement; load it only for offline SQLite mode. Add risk-routed deterministic Failure Lab scenarios, real order/candle displays and CI. Refuse all demo seeding against PostgreSQL.
+
+### Reason
+Restart reconciliation now compares independently retained external evidence; P0 is testable from API and dashboard without 021 or Neon authentication.
+
+### Impact
+Minimal cross-owner changes: mock persistence (Member 2), platform/API/frontend wiring (Members 3/4), P0 integration tests and ignores. Shared financial models/formulas are unchanged. `design.md` remains removed per user instruction.
+
+### Alternatives
+Reconstructing broker truth from the platform ledger would hide drift and was rejected.
+
+### Reversal
+Replace the mock fixture with an independently hosted simulator or a documented adapter, retaining recovery and drift tests.

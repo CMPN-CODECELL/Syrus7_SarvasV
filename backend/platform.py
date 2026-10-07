@@ -16,7 +16,13 @@ class Platform:
     def __init__(self, path=":memory:", broker=None, clock=time.time, store=None):
         self.clock = clock
         self.store = store if store is not None else Store(path)
-        self.broker = broker if broker is not None else MockBrokerAdapter()
+        self.broker = (
+            broker
+            if broker is not None
+            else MockBrokerAdapter(
+                f"{path}.broker.json" if path != ":memory:" and store is None else None
+            )
+        )
         self.ledger = Ledger(self.store)
         self.orders = OrderManager(self.store, self.broker, self.ledger)
         self.risk = RiskGateway(self.store, self.ledger, self.orders, clock)
@@ -78,18 +84,37 @@ class Platform:
 
     def demo(self):
         with self.store.lock:
+            self.require_offline_demo()
             if not self.store.rows("SELECT id FROM accounts WHERE id='demo'"):
                 self.account("demo")
                 for kind in ("momentum", "mean_reversion", "breakout"):
                     self.strategies.subscribe("demo", kind, kind, "DEMO")
             self.reliability.resume()
-            start = 1_700_000_100 + self.demo_count * 900
+            previous = self.store.rows(
+                "SELECT id FROM orders WHERE strategy IN ('momentum','mean_reversion','breakout')"
+            )
+            starts = [
+                int(r["id"].rsplit(":", 1)[1])
+                for r in previous
+                if r["id"].rsplit(":", 1)[1].isdigit()
+            ]
+            start = max(starts, default=1_700_000_100) + 900
             self.demo_count += 1
             for tick in ReplayMarketDataProvider.demo(start).ticks():
                 self.tick(tick)
             self.reliability.reconcile()
             # Demo stops safely after replay; subscriptions remain visible.
             return self.snapshot()
+
+    def require_offline_demo(self):
+        from backend.shared.postgres import PostgresStore
+
+        if isinstance(self.store, PostgresStore) or not isinstance(
+            self.broker, MockBrokerAdapter
+        ):
+            raise ValueError(
+                "demo/failure injection requires offline mock storage; production database is protected"
+            )
 
     def kill(self):
         def execute(order):

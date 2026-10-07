@@ -10,6 +10,7 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 - Last updated: 2026-10-07 16:05 Asia/Kolkata
 
 ## Completed
+- 2026-10-07: Minimum P0 wiring by Member 3: account/subscription forms, candles/orders/partial/rejection evidence, backend-unavailable UI and Failure Lab HTTP actions. Replay restart IDs remain unique. 27 tests pass, 1 PostgreSQL skipped; live server/API/frontend HTTP 200 verified.
 - 2026-10-07 Asia/Kolkata: Replay raw ticks, UTC 1m/5m buckets, three candle callbacks, subscriptions, FastAPI endpoints and backend-fed dashboard. Files: backend/market_data/candles.py; backend/strategies/runtime.py; backend/api.py; frontend/index.html. Tests: initial safety suite 20 passed, including mandatory S1-S7. Result: offline vertical slice functional; live 021 incomplete.
 
 ## In Progress

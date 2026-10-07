@@ -9,6 +9,7 @@ from psycopg.errors import UniqueViolation
 from backend.platform import Platform
 from backend.shared.config import settings
 from backend.shared.postgres import PostgresStore
+from backend.reliability.failure_lab import FailureLab
 
 
 class AccountRequest(BaseModel):
@@ -80,6 +81,10 @@ def create_app(platform=None):
     @app.post("/api/demo")
     def demo():
         return engine.demo()
+
+    @app.post("/api/failure-lab/{scenario}")
+    def failure_lab(scenario: str):
+        return FailureLab(engine).run(scenario)
 
     @app.post("/api/reconcile")
     def reconcile():

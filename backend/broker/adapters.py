@@ -2,6 +2,8 @@ from dataclasses import replace
 from decimal import Decimal
 from typing import Protocol
 
+from backend.broker.mock_persistence import MockPersistence
+
 from backend.shared.contracts import (
     BrokerSnapshot,
     CanonicalOrder,
@@ -21,10 +23,9 @@ class BrokerAdapter(Protocol):
 class MockBrokerAdapter:
     """External mock state survives Platform recreation if this object is retained."""
 
-    def __init__(self):
-        self.orders = {}
-        self.fills = {}
-        self.external_positions = {}
+    def __init__(self, path=None):
+        self.persistence = MockPersistence(path)
+        self.orders, self.fills, self.external_positions = self.persistence.load()
         self.connected = True
         self.reject_next = False
         self.timeout_after_accept = False
@@ -41,6 +42,7 @@ class MockBrokerAdapter:
         self.reject_next = False
         order = CanonicalOrder(intent.intent_id, intent, status)
         self.orders[order.order_id] = order
+        self.persist()
         if self.timeout_after_accept:
             self.timeout_after_accept = False
             raise TimeoutError("acceptance is ambiguous to caller")
@@ -75,6 +77,7 @@ class MockBrokerAdapter:
             if filled == intent.quantity
             else OrderStatus.PARTIALLY_FILLED,
         )
+        self.persist()
         return fill
 
     def cancel(self, order_id):
@@ -82,6 +85,10 @@ class MockBrokerAdapter:
         order = self.orders[order_id]
         if order.status not in TERMINAL:
             self.orders[order_id] = replace(order, status=OrderStatus.CANCELLED)
+            self.persist()
+
+    def persist(self):
+        self.persistence.save(self.orders, self.fills, self.external_positions)
 
     def snapshot(self):
         self._check()

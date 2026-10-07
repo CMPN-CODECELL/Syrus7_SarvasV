@@ -4,26 +4,31 @@
 Risk & Reliability; canonical responsibilities: ../TEAM_OWNERSHIP.md, Member 3.
 
 ## Current Status
-- Phase: mock/replay bootstrap; Neon persistence preparation
-- Current task: validate persistence/tracking handoff and external Neon setup
-- Status: BLOCKED
-- Last updated: 2026-10-07 16:05 Asia/Kolkata
+- Phase: P0 integrated; Member 3 hardening
+- Current task: durable policies/safety state, strict reconciliation, bounded kill
+- Status: IN_PROGRESS
+- Last updated: 2026-10-07 16:25 Asia/Kolkata
 
 ## Completed
+- 2026-10-07 16:25 Asia/Kolkata: P0 durable offline mock, restart/replay, real failure scenarios and dashboard order/candle/account wiring. Tests: 27 passed / 1 PostgreSQL skipped; Ruff passed; live uvicorn health, replay and frontend HTTP 200 verified. No browser automation available yet. Delivered directly to main per user instruction.
 - 2026-10-07 Asia/Kolkata: Serialized directional reservations, rate/loss limits, drift detection, explicit recovery/resume and verified mock kill; PostgreSQL store/migration prepared. Files: backend/risk/gateway.py; backend/reliability/control.py; backend/shared/postgres.py; backend/shared/migrate.py. Tests: initial safety suite 20 passed, including mandatory S1-S7. Result: offline vertical slice functional; live 021 incomplete.
 
 ## In Progress
-- Local configuration/database code validated. Remote Neon authentication, linking, schema inspection and deployment remain pending.
+- P1 durable validated policies and strategy states; position/rate/loss budgets and race tests.
+- P2 fail-closed persisted kill latch, fresh evidence and complete snapshot reconciliation.
+- P3 bounded convergent kill, cancel/fill races and uncertain calls.
+- P4 deterministic Failure Lab and invariant evidence; P5 query/state simplification.
 
 ## Blockers / Dependencies
 - Official 021 contract/credentials and sponsor session/charges/kill semantics.
 - Neon authentication/linkage and isolated database access required for remote validation.
 
 ## Next
-- Verify Neon production linkage and inspect schema after authentication.
-- Validate migrations on isolated PostgreSQL before production apply.
-- Persist kill/health/policy state and implement bounded live kill.
-- Add feed/broker freshness gates.
+- Persist validated risk policies and halted strategy state with additive migrations.
+- Track broker/feed evidence age and strict snapshot completeness.
+- Persist kill/recovery latch and certificate; implement bounded convergent kill.
+- Add deterministic race/failure/property tests and safety evidence API/UI.
+- Validate available PostgreSQL integration without touching production data.
 
 ## Handoff Notes
 One worker. UNKNOWN retains reservation. No synthetic drift fixes; opposing virtual exits need sponsor confirmation.

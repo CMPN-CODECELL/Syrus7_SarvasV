@@ -1,11 +1,12 @@
 # Integration Progress
 
 ## Current Status
-- Phase: mock/replay vertical slice plus Neon preparation
-- Status: BLOCKED
-- Last updated: 2026-10-07 16:05 Asia/Kolkata
+- Phase: P0 integrated; Member 3 hardening
+- Status: IN_PROGRESS
+- Last updated: 2026-10-07 16:25 Asia/Kolkata
 
 ## Completed Integrations
+- 2026-10-07: P0 live server/API/frontend HTTP checks passed. Independent durable mock survives actual restart; Failure Lab shows partial fills, broker rejection and risk rejection. Suite: 27 passed, 1 optional PostgreSQL skipped. Ruff passed. CI added. `main` delivery authorized; `docs/design.md` previously removed as requested.
 - Shared contracts -> candles -> three strategies -> risk reservation -> mock order -> fills -> accounting -> snapshot/dashboard.
 - Reconciliation checks orders/fills/positions; missing attributed fills recovered through ledger.
 - Partial-fill kill closes gate then verifies actual flat state.
@@ -26,7 +27,7 @@
 
 ## Blockers
 - Authentication/project access; isolated test DB for non-production tests; sponsor 021 contract.
-- Mock external state currently in-memory; fresh broker cannot match durable local history.
+- An explicitly injected fresh broker still cannot match existing local history; default offline mock now persists independent evidence.
 
 ## Next Integration Target
 Validate Neon linking/schema inspection and additive migration, then PostgreSQL accounting/recovery on isolated data. Do not seed replay into production.

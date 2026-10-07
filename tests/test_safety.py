@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.api import create_app
+from backend.broker.adapters import MockBrokerAdapter
 from backend.market_data.candles import CandleBuilder
 from backend.platform import Platform
 from backend.shared.contracts import OrderIntent, RiskPolicy, Side, Tick
@@ -130,7 +131,7 @@ def test_fresh_mock_after_restart_cannot_fake_recovery(tmp_path):
     old.reliability.resume()
     old.risk.submit(intent(old, "one", 1))
     old.store.close()
-    new = Platform(path)
+    new = Platform(path, broker=MockBrokerAdapter())
     assert not new.reliability.reconcile()
     new.store.close()
 
