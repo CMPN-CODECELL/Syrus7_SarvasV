@@ -619,6 +619,11 @@
             <strong>AlgoShield</strong><span>Strategy safety control</span>
           </div>
         </div>
+        <div id="user-auth-widget" style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.82rem;">
+          <a href="/login" style="color: var(--gold-dark); text-decoration: none; font-weight: 600;">Sign In</a>
+          <span style="color: var(--line);">|</span>
+          <a href="/register" style="color: var(--gold-dark); text-decoration: none; font-weight: 600;">Register</a>
+        </div>
         <div class="connection">
           <i id="connection-dot" class="connection-dot"></i
           ><span id="connection">Connecting</span
@@ -1195,6 +1200,36 @@
           };
         } catch (_) {}
       }
+      function initAuthWidget() {
+        const userStr = localStorage.getItem("algoshield_user");
+        if (userStr) {
+          try {
+            const user = JSON.parse(userStr);
+            const widget = $("user-auth-widget");
+            if (widget) {
+              widget.innerHTML = `<span style="color: var(--muted);">User: <strong style="color: var(--ink);">${user.username}</strong></span> <button id="btn-logout" type="button" style="background: none; border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px; font-size: 0.75rem; color: var(--muted); cursor: pointer;">Sign Out</button>`;
+              const btn = $("btn-logout");
+              if (btn) {
+                btn.addEventListener("click", async () => {
+                  const token = localStorage.getItem("algoshield_token");
+                  if (token) {
+                    try {
+                      await fetch("/api/auth/logout", {
+                        method: "POST",
+                        headers: { Authorization: `Bearer ${token}` },
+                      });
+                    } catch (_) {}
+                  }
+                  localStorage.removeItem("algoshield_token");
+                  localStorage.removeItem("algoshield_user");
+                  window.location.reload();
+                });
+              }
+            }
+          } catch (_) {}
+        }
+      }
+      initAuthWidget();
       refresh();
       setInterval(refresh, 2000);
       setupTelemetryStream();

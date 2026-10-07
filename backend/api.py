@@ -72,6 +72,40 @@ class MarketSessionRequest(BaseModel):
     status: str
 
 
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    account_id: str | None = None
+
+    @field_validator("username")
+    @classmethod
+    def normalize_username(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("username is required")
+        return value
+
+    @field_validator("password")
+    @classmethod
+    def normalize_password(cls, value):
+        if len(value) < 4:
+            raise ValueError("password must be at least 4 characters")
+        return value
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+    @field_validator("username")
+    @classmethod
+    def normalize_username(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("username is required")
+        return value
+
+
 def financial_json(value):
     return JSONResponse(content=jsonable_encoder(value, custom_encoder={Decimal: str}))
 
@@ -110,6 +144,71 @@ def create_app(platform=None):
         return FileResponse(
             Path(__file__).resolve().parent.parent / "frontend/index.html"
         )
+
+    @app.get("/login")
+    def login_page():
+        return FileResponse(
+            Path(__file__).resolve().parent.parent / "frontend/login.html"
+        )
+
+    @app.get("/register")
+    def register_page():
+        return FileResponse(
+            Path(__file__).resolve().parent.parent / "frontend/register.html"
+        )
+
+    @app.post("/api/auth/register", status_code=201)
+    def register(body: RegisterRequest):
+        try:
+            res = engine.auth.register(body.username, body.password, body.account_id)
+            return {
+                "user": {"username": res["username"], "account_id": res["account_id"]},
+                "token": res["token"],
+            }
+        except (sqlite3.IntegrityError, UniqueViolation):
+            raise HTTPException(409, "username already exists") from None
+        except ValueError as exc:
+            msg = str(exc)
+            if "already exists" in msg or "already taken" in msg:
+                raise HTTPException(409, msg) from None
+            raise HTTPException(400, msg) from None
+
+    @app.post("/api/auth/login")
+    def login(body: LoginRequest):
+        res = engine.auth.login(body.username, body.password)
+        if not res:
+            raise HTTPException(401, "invalid credentials")
+        return {
+            "user": {"username": res["username"], "account_id": res["account_id"]},
+            "token": res["token"],
+        }
+
+    @app.post("/api/auth/logout")
+    def logout(request: Request):
+        auth_header = request.headers.get("Authorization", "")
+        token = (
+            auth_header.removeprefix("Bearer ").strip()
+            if auth_header.startswith("Bearer ")
+            else ""
+        )
+        if token:
+            engine.auth.logout(token)
+        return {"status": "logged_out"}
+
+    @app.get("/api/auth/me")
+    def current_user(request: Request):
+        auth_header = request.headers.get("Authorization", "")
+        token = (
+            auth_header.removeprefix("Bearer ").strip()
+            if auth_header.startswith("Bearer ")
+            else ""
+        )
+        if not token:
+            raise HTTPException(401, "authentication required")
+        user = engine.auth.verify_token(token)
+        if not user:
+            raise HTTPException(401, "invalid or expired token")
+        return {"user": user}
 
     @app.get("/health")
     def health():
