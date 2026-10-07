@@ -30,7 +30,7 @@ class MockPersistence:
             for row in data["orders"]:
                 i = row["intent"]
                 i["side"] = Side(i["side"])
-                if i["limit_price"] is not None:
+                if i.get("limit_price") is not None:
                     i["limit_price"] = Decimal(i["limit_price"])
                 order = CanonicalOrder(
                     row["order_id"],

@@ -115,6 +115,7 @@ class HTTPMockBrokerAdapter:
             "side": intent.side.value,
             "quantity": intent.quantity,
             "order_type": intent.order_type,
+            "limit_price": str(intent.limit_price) if intent.limit_price is not None else None,
             "created_at": intent.created_at,
         }
         resp = self._request("POST", "/orders", json=payload)
