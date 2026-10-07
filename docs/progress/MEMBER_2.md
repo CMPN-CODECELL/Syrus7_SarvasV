@@ -4,12 +4,28 @@
 Broker & Order Execution; canonical responsibilities: ../TEAM_OWNERSHIP.md, Member 2.
 
 ## Current Status
-- Phase: Member 2 Task 2 Complete — Prototype Cancellation Flow
-- Current task: Task 2 complete; ready for Task 3 (Broker 021 adapter readiness / integration)
+- Phase: Member 2 Task 3 Complete — Lightweight Broker Update/Event Flow
+- Current task: Task 3 complete; ready for Task 4 (021 adapter contract readiness & execution viva prep)
 - Status: READY_FOR_NEXT_TASK
-- Last updated: 2026-10-07 19:30 Asia/Kolkata
+- Last updated: 2026-10-07 19:42 Asia/Kolkata
 
 ## Completed
+- 2026-10-07: Member 2 Task 3 — Lightweight Broker Update/Event Flow.
+  - Added canonical broker update model: [`BrokerUpdateType`](file:///C:/Users/dyara/AlgoShield/backend/shared/contracts.py) (`ORDER_ACCEPTED`, `ORDER_REJECTED`, `ORDER_CANCELLED`, `ORDER_STATUS`, `FILL`) and [`BrokerUpdate`](file:///C:/Users/dyara/AlgoShield/backend/shared/contracts.py) dataclass.
+  - Extended [`MockBrokerAdapter`](file:///C:/Users/dyara/AlgoShield/backend/broker/adapters.py) with deterministic in-memory update queue: automatically records updates on `submit`, `execute`, and `cancel`, and exposes `drain_updates()` and `emit_update()`.
+  - Defined clear adapter boundary in [`Broker021Adapter`](file:///C:/Users/dyara/AlgoShield/backend/broker/adapters.py) with `parse_update` hook ready for future 021 mapping without inventing 021 APIs.
+  - Added [`OrderManager.process_broker_update(update)`](file:///C:/Users/dyara/AlgoShield/backend/execution/orders.py):
+    - Reuses `ingest(fill)` for `FILL` events ensuring executed trades remain financial truth.
+    - Reuses Task 1 state machine validation (`validate_order_transition`, `transition_status`) for order status updates.
+    - Idempotent and safe: duplicate status and fill updates do not double count or corrupt state.
+    - Fails closed on attribution mismatches, missing orders, missing fill data, and illegal status regressions (e.g. `FILLED -> OPEN`).
+  - Added platform update orchestration: `Platform.process_broker_update`, `Platform.drain_broker_updates`, and `Platform.sync_broker_updates`.
+  - Added HTTP endpoint `POST /api/broker/updates/sync` in `backend/api.py`.
+  - Integrated `broker_update` scenario in `backend/reliability/failure_lab.py` demonstrating broker-originated partial fills and accounting updates.
+  - Audit telemetry: `BROKER_UPDATE_RECEIVED`, `BROKER_UPDATE_APPLIED`, `BROKER_UPDATE_REJECTED`.
+  - Files changed: `backend/shared/contracts.py`, `backend/broker/adapters.py`, `backend/reliability/broker_calls.py`, `backend/execution/orders.py`, `backend/platform.py`, `backend/reliability/failure_lab.py`, `backend/api.py`.
+  - Tests added: `tests/test_broker_updates.py` (10 focused prototype tests covering all scenarios).
+  - Validation: 127 passed, 1 skipped in pytest; Ruff check and format clean.
 - 2026-10-07: Member 2 Task 2 — Prototype Cancellation Flow.
   - Added `OrderManager.cancel(order_id, timeout=None) -> CanonicalOrder` implementing the full prototype cancellation flow:
     - Verifies order existence and state.
@@ -42,7 +58,7 @@ Broker & Order Execution; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 - 2026-10-07 Asia/Kolkata: Mock accept/reject/partial fills/cancel, attribution checks, durable order reservations and UNKNOWN timeout recovery. Files: backend/broker/adapters.py; backend/execution/orders.py. Tests: initial safety suite 20 passed, including mandatory S1-S7. Result: offline vertical slice functional; live 021 incomplete.
 
 ## In Progress
-- Member 2 Task 3 — Broker 021 adapter readiness and failure lab cancellation validation.
+- Member 2 Task 4 — Sponsor 021 contract readiness and execution viva prep.
 
 ## Blockers / Dependencies
 - Official 021 contract/credentials and sponsor session/charges/kill semantics.
@@ -53,7 +69,6 @@ Broker & Order Execution; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 - Live change request readiness for execution/order modifications.
 
 ## Handoff Notes
-- Execution state machine and cancellation flow are deterministic, authoritative, and fail-closed.
-- Fills remain financial truth; orders are requests; partial cancellation keeps filled quantity intact.
-- Kill orchestration handoff: Member 3's control loop directly orchestrates broker cancels and verifies via reconciliation snapshots.
-- Validation: pytest 117 passed / 1 skipped (isolated PostgreSQL URL); Ruff check + format passed; npm run check passed. No live Neon connectivity/deployment claim.
+- Execution state machine, cancellation flow, and broker update flow are deterministic, authoritative, and fail-closed.
+- Fills remain financial truth; order status is execution evidence.
+- Validation: pytest 127 passed / 1 skipped (isolated PostgreSQL URL); Ruff check + format passed; npm run check passed. No live Neon connectivity/deployment claim.

@@ -1,4 +1,11 @@
-from backend.shared.contracts import CanonicalOrder, OrderIntent, OrderStatus, Side
+from backend.shared.contracts import (
+    BrokerUpdate,
+    BrokerUpdateType,
+    CanonicalOrder,
+    OrderIntent,
+    OrderStatus,
+    Side,
+)
 
 
 class SubmissionBlocked(ValueError):
@@ -525,4 +532,162 @@ class OrderManager:
             final_row = self.store.rows("SELECT * FROM orders WHERE id=?", (order_id,))[
                 0
             ]
+            return self._row_to_canonical(final_row)
+
+    def process_broker_update(self, update: BrokerUpdate) -> CanonicalOrder:
+        """Process a canonical broker update (status or fill) with validation and state transition."""
+        if not isinstance(update, BrokerUpdate):
+            raise ValueError("invalid broker update")
+
+        with self.store.transaction():
+            self.store.audit(
+                "BROKER_UPDATE_RECEIVED",
+                {
+                    "update_id": update.update_id,
+                    "order_id": update.order_id,
+                    "type": update.update_type.value,
+                    "status": update.status.value if update.status else None,
+                    "has_fill": update.fill is not None,
+                },
+            )
+
+        if update.update_type == BrokerUpdateType.FILL:
+            if update.fill is None:
+                with self.store.transaction():
+                    self.store.audit(
+                        "BROKER_UPDATE_REJECTED",
+                        {
+                            "update_id": update.update_id,
+                            "order_id": update.order_id,
+                            "reason": "MISSING_FILL",
+                        },
+                    )
+                raise ValueError("fill missing in FILL update")
+            try:
+                applied = self.ingest(update.fill)
+            except Exception as exc:
+                with self.store.transaction():
+                    self.store.audit(
+                        "BROKER_UPDATE_REJECTED",
+                        {
+                            "update_id": update.update_id,
+                            "order_id": update.order_id,
+                            "reason": str(exc),
+                        },
+                    )
+                raise
+
+            with self.store.transaction():
+                self.store.audit(
+                    "BROKER_UPDATE_APPLIED",
+                    {
+                        "update_id": update.update_id,
+                        "order_id": update.order_id,
+                        "type": update.update_type.value,
+                        "fill_id": update.fill.fill_id,
+                        "applied": applied,
+                    },
+                )
+            row = self.store.rows(
+                "SELECT * FROM orders WHERE id=?", (update.order_id,)
+            )[0]
+            return self._row_to_canonical(row)
+
+        # Status update: ORDER_ACCEPTED, ORDER_REJECTED, ORDER_CANCELLED, ORDER_STATUS
+        target_status = update.status
+        if update.update_type == BrokerUpdateType.ORDER_ACCEPTED:
+            target_status = OrderStatus.OPEN
+        elif update.update_type == BrokerUpdateType.ORDER_REJECTED:
+            target_status = OrderStatus.REJECTED
+        elif update.update_type == BrokerUpdateType.ORDER_CANCELLED:
+            target_status = OrderStatus.CANCELLED
+
+        if target_status is None:
+            with self.store.transaction():
+                self.store.audit(
+                    "BROKER_UPDATE_REJECTED",
+                    {
+                        "update_id": update.update_id,
+                        "order_id": update.order_id,
+                        "reason": "MISSING_TARGET_STATUS",
+                    },
+                )
+            raise ValueError("target status required for order update")
+
+        with self.store.lock:
+            rows = self.store.rows(
+                "SELECT * FROM orders WHERE id=?", (update.order_id,)
+            )
+            if not rows:
+                with self.store.transaction():
+                    self.store.audit(
+                        "BROKER_UPDATE_REJECTED",
+                        {
+                            "update_id": update.update_id,
+                            "order_id": update.order_id,
+                            "reason": "ORDER_NOT_FOUND",
+                        },
+                    )
+                raise ValueError(f"order {update.order_id} not found")
+            row = rows[0]
+            current_status = OrderStatus(row["status"])
+            current_filled = row["filled"]
+            order_qty = row["quantity"]
+
+            # Idempotent status update if already at target
+            if current_status == target_status:
+                with self.store.transaction():
+                    self.store.audit(
+                        "BROKER_UPDATE_APPLIED",
+                        {
+                            "update_id": update.update_id,
+                            "order_id": update.order_id,
+                            "type": update.update_type.value,
+                            "status": target_status.value,
+                            "idempotent": True,
+                        },
+                    )
+                return self._row_to_canonical(row)
+
+            # Validate state transition
+            try:
+                validate_order_transition(
+                    current_status,
+                    target_status,
+                    current_filled=current_filled,
+                    target_filled=current_filled,
+                    order_quantity=order_qty,
+                )
+            except Exception as exc:
+                with self.store.transaction():
+                    self.store.audit(
+                        "BROKER_UPDATE_REJECTED",
+                        {
+                            "update_id": update.update_id,
+                            "order_id": update.order_id,
+                            "current_status": current_status.value,
+                            "target_status": target_status.value,
+                            "reason": str(exc),
+                        },
+                    )
+                raise
+
+            self.transition_status(
+                update.order_id, target_status, target_filled=current_filled
+            )
+            with self.store.transaction():
+                self.store.audit(
+                    "BROKER_UPDATE_APPLIED",
+                    {
+                        "update_id": update.update_id,
+                        "order_id": update.order_id,
+                        "type": update.update_type.value,
+                        "previous_status": current_status.value,
+                        "status": target_status.value,
+                        "filled": current_filled,
+                    },
+                )
+            final_row = self.store.rows(
+                "SELECT * FROM orders WHERE id=?", (update.order_id,)
+            )[0]
             return self._row_to_canonical(final_row)

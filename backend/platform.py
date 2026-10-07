@@ -82,6 +82,28 @@ class Platform:
     def cancel(self, order_id, timeout=None):
         return self.orders.cancel(order_id, timeout=timeout)
 
+    def process_broker_update(self, update):
+        with self.store.lock:
+            try:
+                return self.orders.process_broker_update(update)
+            except Exception:
+                self.reliability.fail_closed("BROKER_UPDATE_REJECTED")
+                raise
+
+    def drain_broker_updates(self):
+        adapter = getattr(self.broker_calls, "adapter", self.broker)
+        if hasattr(adapter, "drain_updates"):
+            return adapter.drain_updates()
+        return []
+
+    def sync_broker_updates(self):
+        """Drain and authoritatively apply pending broker updates."""
+        updates = self.drain_broker_updates()
+        results = []
+        for upd in updates:
+            results.append(self.process_broker_update(upd))
+        return results
+
     def tick(self, tick, *, replay=False):
         if replay:
             self.require_offline_demo()

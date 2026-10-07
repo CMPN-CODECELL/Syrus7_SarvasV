@@ -134,6 +134,11 @@ def create_app(platform=None):
                 raise HTTPException(404, str(exc)) from None
             raise HTTPException(400, str(exc)) from None
 
+    @app.post("/api/broker/updates/sync")
+    def sync_broker_updates():
+        results = engine.sync_broker_updates()
+        return financial_json({"processed": len(results), "updates": results})
+
     @app.post("/api/accounts", status_code=201)
     def account(body: AccountRequest):
         try:

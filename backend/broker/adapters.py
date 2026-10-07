@@ -6,6 +6,8 @@ from backend.broker.mock_persistence import MockPersistence
 
 from backend.shared.contracts import (
     BrokerSnapshot,
+    BrokerUpdate,
+    BrokerUpdateType,
     CanonicalOrder,
     Fill,
     OrderIntent,
@@ -18,6 +20,7 @@ class BrokerAdapter(Protocol):
     def submit(self, intent: OrderIntent) -> CanonicalOrder: ...
     def cancel(self, order_id: str) -> None: ...
     def snapshot(self) -> BrokerSnapshot: ...
+    def drain_updates(self) -> list[BrokerUpdate]: ...
 
 
 class MockBrokerAdapter:
@@ -31,6 +34,7 @@ class MockBrokerAdapter:
         self.connected = True
         self.reject_next = False
         self.timeout_after_accept = False
+        self.updates: list[BrokerUpdate] = []
 
     def _check(self):
         if not self.connected:
@@ -45,6 +49,19 @@ class MockBrokerAdapter:
         order = CanonicalOrder(intent.intent_id, intent, status)
         self.orders[order.order_id] = order
         self.persist()
+        self.updates.append(
+            BrokerUpdate(
+                update_id=f"upd-submit-{order.order_id}",
+                order_id=order.order_id,
+                update_type=(
+                    BrokerUpdateType.ORDER_REJECTED
+                    if status == OrderStatus.REJECTED
+                    else BrokerUpdateType.ORDER_ACCEPTED
+                ),
+                status=status,
+                timestamp=intent.created_at,
+            )
+        )
         if self.timeout_after_accept:
             self.timeout_after_accept = False
             raise TimeoutError("acceptance is ambiguous to caller")
@@ -99,6 +116,16 @@ class MockBrokerAdapter:
             status=status,
         )
         self.persist()
+        self.updates.append(
+            BrokerUpdate(
+                update_id=f"upd-fill-{fill.fill_id}",
+                order_id=order_id,
+                update_type=BrokerUpdateType.FILL,
+                status=status,
+                fill=fill,
+                timestamp=timestamp,
+            )
+        )
         return fill
 
     def cancel(self, order_id, timeout=None):
@@ -109,6 +136,23 @@ class MockBrokerAdapter:
         if order.status not in TERMINAL:
             self.orders[order_id] = replace(order, status=OrderStatus.CANCELLED)
             self.persist()
+            self.updates.append(
+                BrokerUpdate(
+                    update_id=f"upd-cancel-{order_id}",
+                    order_id=order_id,
+                    update_type=BrokerUpdateType.ORDER_CANCELLED,
+                    status=OrderStatus.CANCELLED,
+                    timestamp=order.intent.created_at,
+                )
+            )
+
+    def drain_updates(self) -> list[BrokerUpdate]:
+        updates = list(self.updates)
+        self.updates.clear()
+        return updates
+
+    def emit_update(self, update: BrokerUpdate) -> None:
+        self.updates.append(update)
 
     def persist(self):
         self.persistence.save(self.orders, self.fills, self.external_positions)
@@ -129,6 +173,14 @@ class MockBrokerAdapter:
 
 class Broker021Adapter:
     def __init__(self):
+        raise NotImplementedError(
+            "021 contract/credentials unconfirmed; see docs/021_API_UNKNOWN.md"
+        )
+
+    def parse_update(self, raw_payload: dict) -> BrokerUpdate:
+        """Future mapping hook: raw 021 payload -> canonical BrokerUpdate.
+        Specific 021 schema unconfirmed; see docs/021_API_UNKNOWN.md.
+        """
         raise NotImplementedError(
             "021 contract/credentials unconfirmed; see docs/021_API_UNKNOWN.md"
         )

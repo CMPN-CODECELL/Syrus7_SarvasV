@@ -19,6 +19,7 @@ SCENARIOS = {
     "drift",
     "clear_drift",
     "kill_partial",
+    "broker_update",
 }
 
 
@@ -128,12 +129,23 @@ class FailureLab:
                 p.broker.external_positions[("failure-lab", "INJECTED")] = 7
                 p.broker.persist()
                 p.reliability.reconcile()
+            elif scenario == "broker_update":
+                i = submit("broker-upd", 100)
+                p.sync_broker_updates()
+                execute(i, 40)
+                synced = p.sync_broker_updates()
+                evidence["order_id"] = i.intent_id
+                evidence["synced_updates_count"] = len(synced)
+                evidence["executed_quantity"] = p.ledger.quantity(
+                    "failure-lab", strategy, "LAB"
+                )
             if scenario in {
                 "partial",
                 "rejection",
                 "position_limit",
                 "duplicate_fill",
                 "spam",
+                "broker_update",
             }:
                 p.reliability.reconcile()
         with p.store.transaction():

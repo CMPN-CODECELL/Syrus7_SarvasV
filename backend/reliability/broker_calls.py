@@ -99,6 +99,11 @@ class BrokerSession:
                 raise BrokerCallUnsettled("BROKER_CALL_UNSETTLED")
             self.uncertain = False
 
+    def drain_updates(self):
+        if hasattr(self.adapter, "drain_updates"):
+            return self.adapter.drain_updates()
+        return []
+
 
 class Deadline:
     def __init__(self, seconds, clock=time.monotonic):

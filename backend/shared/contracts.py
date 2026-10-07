@@ -249,3 +249,33 @@ class KillCertificate:
     broker_positions: dict[str, int]
     virtual_positions_flat: bool
     reason: str
+
+
+class BrokerUpdateType(StrEnum):
+    ORDER_ACCEPTED = "ORDER_ACCEPTED"
+    ORDER_REJECTED = "ORDER_REJECTED"
+    ORDER_CANCELLED = "ORDER_CANCELLED"
+    ORDER_STATUS = "ORDER_STATUS"
+    FILL = "FILL"
+
+
+@dataclass(frozen=True)
+class BrokerUpdate:
+    update_id: str
+    order_id: str
+    update_type: BrokerUpdateType
+    status: OrderStatus | None = None
+    fill: Fill | None = None
+    timestamp: float = 0.0
+
+    def __post_init__(self):
+        if not self.update_id or not isinstance(self.update_id, str):
+            raise ValueError("invalid update_id")
+        if not self.order_id or not isinstance(self.order_id, str):
+            raise ValueError("invalid order_id")
+        if not isinstance(self.update_type, BrokerUpdateType):
+            raise ValueError("invalid update_type")
+        if self.update_type == BrokerUpdateType.FILL and self.fill is None:
+            raise ValueError("fill required for FILL update")
+        if self.fill is not None and self.fill.broker_order_id != self.order_id:
+            raise ValueError("fill broker_order_id must match update order_id")
