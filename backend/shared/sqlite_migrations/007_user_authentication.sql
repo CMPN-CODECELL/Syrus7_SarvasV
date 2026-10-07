@@ -1,0 +1,13 @@
+-- Add users table for authentication credentials
+CREATE TABLE IF NOT EXISTS users (
+    username TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL,
+    salt TEXT NOT NULL,
+    account_id TEXT NOT NULL REFERENCES accounts(id),
+    created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS user_tokens (
+    token TEXT PRIMARY KEY,
+    username TEXT NOT NULL REFERENCES users(username),
+    expires_at REAL NOT NULL
+);
