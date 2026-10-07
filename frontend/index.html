@@ -1191,11 +1191,11 @@
           <div class="evidence-grid" style="margin-bottom: 0; padding: 0 1.15rem 1.15rem;">
             <div>
               <p class="eyebrow" style="margin: 0.5rem 0 0.35rem;">Raw Safety State</p>
-              <pre id="safety-state">Loading safety state…</pre>
+              <pre id="safety-state-raw">Loading safety state…</pre>
             </div>
             <div>
               <p class="eyebrow" style="margin: 0.5rem 0 0.35rem;">Raw Risk Budgets</p>
-              <pre id="risk-budgets">Loading risk budgets…</pre>
+              <pre id="risk-budgets-raw">Loading risk budgets…</pre>
             </div>
           </div>
         </details>
@@ -1338,6 +1338,13 @@
         badge.append(dot, document.createTextNode(` ${status}`));
         return badge;
       }
+      function setSafetyIndicator(id, label, tone = "") {
+        const indicator = $(id);
+        if (!indicator) return;
+        indicator.className = `safety-indicator${tone ? ` ${tone}` : ""}`;
+        const s = indicator.querySelector("strong");
+        if (s) s.textContent = label;
+      }
       function renderSafety(snapshot) {
         const safety = snapshot.safety || {};
         const recon = safety.reconciliation || {};
@@ -1347,6 +1354,45 @@
         const unknownOrders = Array.isArray(safety.unknown_orders)
           ? safety.unknown_orders
           : [];
+
+        if ($("safety-reconciliation")) {
+          setSafetyIndicator(
+            "safety-reconciliation",
+            recon.verified ? "Verified" : "Fail closed",
+            recon.verified ? "verified" : "alert",
+          );
+        }
+        if ($("safety-position")) {
+          setSafetyIndicator(
+            "safety-position",
+            posComp.status || "Unknown",
+            posComp.status === "VERIFIED"
+              ? "verified"
+              : posComp.status === "UNKNOWN"
+                ? ""
+                : "alert",
+          );
+        }
+        if ($("safety-fills")) {
+          const fillSafe = Number(fills.rejected_events || 0) === 0;
+          setSafetyIndicator(
+            "safety-fills",
+            fillSafe ? "No conflicts" : "Review required",
+            fillSafe ? "verified" : "alert",
+          );
+        }
+        if ($("safety-kill")) {
+          const killStatus = snapshot.kill?.status;
+          setSafetyIndicator(
+            "safety-kill",
+            killStatus || "Not requested",
+            ["SUCCESS", "SAFE_LATE"].includes(killStatus)
+              ? "verified"
+              : killStatus === "FAILED"
+                ? "alert"
+                : "",
+          );
+        }
 
         // 1. Reconciliation
         let reconStatus = "REQUIRED";
@@ -1753,47 +1799,6 @@
         for (const item of items.slice().reverse().slice(0, 8))
           list.append(renderer(item));
       }
-      function setSafetyIndicator(id, label, tone = "") {
-        const indicator = $(id);
-        indicator.className = `safety-indicator${tone ? ` ${tone}` : ""}`;
-        indicator.querySelector("strong").textContent = label;
-      }
-      function renderSafety(snapshot) {
-        const safety = snapshot.safety || {};
-        const reconciliation = safety.reconciliation || {};
-        setSafetyIndicator(
-          "safety-reconciliation",
-          reconciliation.verified ? "Verified" : "Fail closed",
-          reconciliation.verified ? "verified" : "alert",
-        );
-        const position = safety.position_comparison || {};
-        setSafetyIndicator(
-          "safety-position",
-          position.status || "Unknown",
-          position.status === "VERIFIED"
-            ? "verified"
-            : position.status === "UNKNOWN"
-              ? ""
-              : "alert",
-        );
-        const fills = safety.fills || {};
-        const fillSafe = Number(fills.rejected_events || 0) === 0;
-        setSafetyIndicator(
-          "safety-fills",
-          fillSafe ? "No conflicts" : "Review required",
-          fillSafe ? "verified" : "alert",
-        );
-        const killStatus = snapshot.kill?.status;
-        setSafetyIndicator(
-          "safety-kill",
-          killStatus || "Not requested",
-          ["SUCCESS", "SAFE_LATE"].includes(killStatus)
-            ? "verified"
-            : killStatus === "FAILED"
-              ? "alert"
-              : "",
-        );
-      }
       function render(snapshot) {
         state = snapshot;
         $("mode").textContent = snapshot.mode;
@@ -1821,16 +1826,20 @@
         renderStrategies(snapshot);
         renderSafety(snapshot);
         renderRiskBudgets(snapshot);
-        $("safety-state").textContent = JSON.stringify(
-          snapshot.safety || { status: "UNKNOWN" },
-          null,
-          2,
-        );
-        $("risk-budgets").textContent = JSON.stringify(
-          snapshot.risk_budgets || {},
-          null,
-          2,
-        );
+        if ($("safety-state-raw")) {
+          $("safety-state-raw").textContent = JSON.stringify(
+            snapshot.safety || { status: "UNKNOWN" },
+            null,
+            2,
+          );
+        }
+        if ($("risk-budgets-raw")) {
+          $("risk-budgets-raw").textContent = JSON.stringify(
+            snapshot.risk_budgets || {},
+            null,
+            2,
+          );
+        }
         $("signal-count").textContent = `${snapshot.signals.length} emitted`;
         renderFeed(
           $("signals"),
