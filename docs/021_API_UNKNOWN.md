@@ -55,7 +55,7 @@ Do not assume answers until sponsor documentation or mentoring confirms them.
 - What live-change categories should architecture expect?
 
 ## Engineering rule
-All answers above belong in `021BrokerAdapter` / `021MarketDataProvider` configuration and mapping logic, not scattered throughout the codebase.
+All answers above belong in `021BrokerAdapter` / `MarketData021Provider` configuration and mapping logic, not scattered throughout the codebase.
 
 ## Research status (2026-10-07)
 Public 021 Carbon sign-up material was found, but no authoritative sandbox endpoint, authentication, tick/order/fill schema or charge table was established. No CONFIRMED_021_BEHAVIOR exists yet. See DECISIONS.md for sources and classification. Adapter placeholders raise NotImplementedError; mock behavior must not be presented as sponsor behavior.

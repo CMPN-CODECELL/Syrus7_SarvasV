@@ -68,7 +68,7 @@ Every broker order/fill must map back to `strategy_instance_id`.
 ### 5. Mock and real providers share the same interfaces
 We must be able to run the full platform with:
 - `MockBrokerAdapter` / `ReplayMarketDataProvider`
-- `021BrokerAdapter` / `021MarketDataProvider`
+- `021BrokerAdapter` / `MarketData021Provider`
 
 ### 6. Fail closed
 If broker state, reconciliation state, or critical market/execution data is uncertain, new risk-increasing actions must not continue blindly.
@@ -130,7 +130,7 @@ A change is complete only when:
 - README/docs are updated if the contract or behavior changed.
 
 ## Bootstrap operating constraints
-Use one backend worker. This is mock/replay only; do not claim sandbox completion. SQLite schema v1 supports offline mock/replay; Neon PostgreSQL is the accepted durable persistence layer. Real API details are absent. Read README for exact run/test commands and restart limitations. Never discard durable history to fake reconciliation. Preserve user-provided requirements even when the original sponsor statement is missing.
+Use one backend worker. This is mock/replay only; do not claim sandbox completion. SQLite schema v2 supports offline mock/replay; Neon PostgreSQL is the accepted durable persistence layer. Real API details are absent. Read README for exact run/test commands and restart limitations. Never discard durable history to fake reconciliation. Preserve user-provided requirements even when the original sponsor statement is missing.
 
 ## Persistent progress and decisions
 Before work: read canonical docs, relevant `docs/progress/MEMBER_N.md` and `docs/progress/INTEGRATION.md`, relevant ACCEPTED entries in `docs/DECISIONS.md`, and current code/tests.

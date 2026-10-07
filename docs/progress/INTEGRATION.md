@@ -3,7 +3,7 @@
 ## Current Status
 - Phase: mock/replay vertical slice with completed Member 4 hardening plus Neon preparation
 - Status: BLOCKED
-- Last updated: 2026-10-07 16:39 Asia/Kolkata
+- Last updated: 2026-10-07 16:58 Asia/Kolkata
 
 ## Completed Integrations
 - Shared contracts -> candles -> three strategies -> risk reservation -> mock order -> fills -> accounting -> snapshot/dashboard.
@@ -11,7 +11,7 @@
 - Partial-fill kill closes gate then verifies actual flat state.
 - Durable local restart with retained external mock passes explicit reconciliation/resume tests.
 - Initial deterministic safety/API suite: 20 passed.
-- Member 4 integration: durable strategy controls -> stopped-strategy risk rejection; callback fault -> isolated quarantine; completed 1m/5m candles -> EMA/mean/breakout signals -> audit/dashboard. Production PostgreSQL mode rejects replay demo seeding.
+- Member 4 integration: durable strategy controls -> stopped-strategy risk rejection; callback fault -> isolated quarantine; complete indicator warm-up -> completed 1m/5m candles -> EMA/mean/breakout signals -> exact-decimal API projection -> audit/dashboard. Production PostgreSQL mode rejects replay demo seeding.
 
 ## Current Integration State
 - PostgreSQL centralized Store implementation and scoped additive migrations 001/002 prepared; live connectivity unverified.
@@ -19,7 +19,7 @@
 - neon.ts and hello.ts match requested infrastructure policy; hello is not the trading backend.
 
 ## Failing Integration Tests
-- None in local SQLite suite. Expanded local checks: 31 passed, 1 isolated-PostgreSQL integration skipped; Ruff formatting/lint passed. Dashboard verified at narrow and 1440px breakpoints with no browser console errors. Remote PostgreSQL not verified.
+- None in local SQLite suite. Expanded local checks: 33 passed, 1 isolated-PostgreSQL integration skipped; Ruff formatting/lint and TypeScript checks passed. Dashboard verified at narrow and 1440px breakpoints with no browser console errors. Remote PostgreSQL not verified.
 
 ## Contract Mismatches
 - No confirmed 021 schema available; adapters intentionally unavailable.
