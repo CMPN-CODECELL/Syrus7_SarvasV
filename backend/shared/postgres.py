@@ -27,6 +27,7 @@ class Connection:
 
 
 class PostgresStore(Store):
+    backend_name = "POSTGRESQL"
     def __init__(self, database_url):
         self.lock = RLock()
         self.depth = 0

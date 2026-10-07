@@ -21,6 +21,11 @@ class OrderManager:
             raise
         if order.order_id != intent.intent_id or order.intent != intent:
             raise ValueError("broker response attribution mismatch")
+        if (
+            order.status not in {OrderStatus.OPEN, OrderStatus.REJECTED}
+            or order.filled_quantity
+        ):
+            raise ValueError("submission response requires execution reconciliation")
         with self.store.transaction() as db:
             if (
                 order.status in {OrderStatus.OPEN, OrderStatus.REJECTED}

@@ -1,4 +1,5 @@
 import time
+from collections import deque
 from dataclasses import asdict
 from decimal import Decimal
 
@@ -30,6 +31,10 @@ class Platform:
         self.orders = OrderManager(self.store, self.broker_calls, self.ledger)
         self.risk = RiskGateway(self.store, self.ledger, self.orders, clock)
         self.strategies = StrategyRuntime(self.store)
+        self.strategies.may_run = lambda strategy: (
+            not self.risk.kill_requested.is_set()
+            and self.risk.strategy_state(strategy) == "RUNNING"
+        )
         self.reliability = Reliability(
             self.store,
             self.broker_calls,
@@ -40,7 +45,7 @@ class Platform:
             clock,
         )
         self.candles = CandleBuilder()
-        self.closed_candles = []
+        self.closed_candles = deque(maxlen=128)
         self.demo_count = 0
 
     def account(self, account_id):
@@ -71,7 +76,13 @@ class Platform:
             intents = []
             for candle in closed:
                 self.closed_candles.append(candle)
-                intents.extend(self.strategies.on_candle(candle, self.clock()))
+                try:
+                    intents.extend(self.strategies.on_candle(candle, self.clock()))
+                except Exception:
+                    self.reliability.fail_closed("STRATEGY_CALLBACK_FAILED")
+                    raise ValueError(
+                        "strategy callback failed; execution stopped"
+                    ) from None
         for intent in intents:
             decision = self.risk.submit(intent)
             if (
@@ -148,7 +159,8 @@ class Platform:
     def snapshot(self):
         with self.store.lock:
             return {
-                "mode": "MOCK / REPLAY",
+                "mode": "MOCK / REPLAY" if isinstance(self.broker,MockBrokerAdapter) else "BROKER ADAPTER / LIVE",
+                "storage": self.store.backend_name,
                 "health": self.reliability.health,
                 "gate": self.risk.state,
                 "safety": self.reliability.evidence(),
@@ -169,9 +181,13 @@ class Platform:
                     self.risk.budget(r["account"], r["id"], r["symbol"])
                     for r in self.store.rows("SELECT * FROM subscriptions")
                 ],
-                "orders": [dict(r) for r in self.store.rows("SELECT * FROM orders")],
-                "fills": [dict(r) for r in self.store.rows("SELECT * FROM fills")],
-                "candles": [asdict(c) for c in self.closed_candles[-20:]],
+                "orders": list(reversed(self.history("orders")["items"])),
+                "fills": list(reversed(self.history("fills")["items"])),
+                "counts": {
+                    "orders": self.history_count("orders"),
+                    "fills": self.history_count("fills"),
+                },
+                "candles": [asdict(c) for c in list(self.closed_candles)[-20:]],
                 "audit": [
                     dict(r)
                     for r in self.store.rows(
@@ -181,4 +197,29 @@ class Platform:
                 "kill": asdict(self.reliability.certificate)
                 if self.reliability.certificate
                 else None,
+            }
+
+    def history_count(self, table):
+        if table not in {"orders", "fills"}:
+            raise ValueError("unsupported history")
+        return self.store.rows(f"SELECT COUNT(*) AS n FROM {table}")[0]["n"]
+
+    def history(self, table, limit=200, offset=0):
+        if table not in {"orders", "fills"} or not 1 <= limit <= 500 or offset < 0:
+            raise ValueError("invalid history query")
+        ordering = "created,id" if table == "orders" else "timestamp,id"
+        # Fixed allowlist; parameters bind pagination, never table/order input.
+        keys = ordering.replace(",", " DESC,") + " DESC"
+        with self.store.lock:
+            return {
+                "items": [
+                    dict(r)
+                    for r in self.store.rows(
+                        f"SELECT * FROM {table} ORDER BY {keys} LIMIT ? OFFSET ?",
+                        (limit, offset),
+                    )
+                ],
+                "total": self.history_count(table),
+                "limit": limit,
+                "offset": offset,
             }

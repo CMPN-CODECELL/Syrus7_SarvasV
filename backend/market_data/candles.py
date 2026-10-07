@@ -1,4 +1,5 @@
 from dataclasses import replace
+from collections import OrderedDict
 from decimal import Decimal
 from typing import Iterable, Protocol
 
@@ -35,19 +36,34 @@ class ReplayMarketDataProvider:
 class CandleBuilder:
     """UTC half-open buckets; close only upon next bucket, no invented gap candles."""
 
-    def __init__(self):
+    def __init__(self, max_seen=10000):
+        if type(max_seen) is not int or max_seen < 1:
+            raise ValueError("tick dedupe capacity must be a positive integer")
+        self.max_seen = max_seen
         self.active = {}
-        self.seen = set()
+        self.seen = OrderedDict()
         self.last = {}
 
     def ingest(self, tick):
         if tick.event_id in self.seen:
+            if self.seen[tick.event_id] != tick:
+                raise ValueError("conflicting duplicate tick")
             return []
         if tick.price <= 0 or tick.quantity < 0:
             raise ValueError("invalid tick")
         if tick.event_timestamp < self.last.get(tick.symbol, -1):
             raise ValueError("late tick: replay must be ordered before ingestion")
-        self.seen.add(tick.event_id)
+        if len(self.seen) >= self.max_seen:
+            _, oldest = next(iter(self.seen.items()))
+            watermark = (
+                tick.event_timestamp
+                if oldest.symbol == tick.symbol
+                else self.last.get(oldest.symbol, -1)
+            )
+            if oldest.event_timestamp >= watermark:
+                raise ValueError("tick dedupe capacity reached at current timestamp")
+            self.seen.popitem(last=False)
+        self.seen[tick.event_id] = tick
         self.last[tick.symbol] = tick.event_timestamp
         closed = []
         for interval in (60, 300):

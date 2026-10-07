@@ -2,9 +2,11 @@ import sqlite3
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.encoders import jsonable_encoder
+from contextlib import asynccontextmanager
+from pydantic import BaseModel, StrictInt
 from psycopg.errors import UniqueViolation
 
 from backend.platform import Platform
@@ -27,12 +29,16 @@ class SubscriptionRequest(BaseModel):
 
 class PolicyRequest(BaseModel):
     max_daily_loss: Decimal
-    max_position: int
-    max_orders_per_minute: int
+    max_position: StrictInt
+    max_orders_per_minute: StrictInt
 
 
 class StrategyStateRequest(BaseModel):
     state: StrategyState
+
+
+def financial_json(value):
+    return JSONResponse(content=jsonable_encoder(value, custom_encoder={Decimal: str}))
 
 
 def create_app(platform=None):
@@ -45,7 +51,16 @@ def create_app(platform=None):
         config["sqlite_path"],
         store=PostgresStore(config["database_url"]) if config["database_url"] else None,
     )
-    app = FastAPI(title="AlgoShield mock bootstrap")
+
+    @asynccontextmanager
+    async def lifespan(app):
+        try:
+            yield
+        finally:
+            if platform is None:
+                engine.store.close()
+
+    app = FastAPI(title="AlgoShield mock control plane", lifespan=lifespan)
     app.state.platform = engine
 
     @app.exception_handler(ValueError)
@@ -70,7 +85,15 @@ def create_app(platform=None):
 
     @app.get("/api/state")
     def state():
-        return engine.snapshot()
+        return financial_json(engine.snapshot())
+
+    @app.get("/api/fills")
+    def fills(limit: int = Query(200, ge=1, le=500), offset: int = Query(0, ge=0)):
+        return engine.history("fills", limit, offset)
+
+    @app.get("/api/orders")
+    def orders(limit: int = Query(200, ge=1, le=500), offset: int = Query(0, ge=0)):
+        return engine.history("orders", limit, offset)
 
     @app.post("/api/accounts", status_code=201)
     def account(body: AccountRequest):
@@ -92,12 +115,12 @@ def create_app(platform=None):
 
     @app.post("/api/demo")
     def demo():
-        return engine.demo()
+        return financial_json(engine.demo())
 
     @app.put("/api/risk/policies/{strategy}")
     def policy(strategy: str, body: PolicyRequest):
         engine.risk.policies[strategy] = RiskPolicy(**body.model_dump())
-        return engine.risk.policies[strategy]
+        return financial_json(engine.risk.policies[strategy])
 
     @app.put("/api/risk/strategies/{strategy}")
     def strategy_control(strategy: str, body: StrategyStateRequest):
@@ -109,33 +132,35 @@ def create_app(platform=None):
 
     @app.get("/api/risk/budgets")
     def budgets():
-        return engine.snapshot()["risk_budgets"]
+        return financial_json(engine.snapshot()["risk_budgets"])
 
     @app.post("/api/failure-lab/{scenario}")
     def failure_lab(scenario: str):
-        return FailureLab(engine).run(scenario)
+        return financial_json(FailureLab(engine).run(scenario))
 
     @app.post("/api/reconcile")
     def reconcile():
-        return {
-            "reconciled": engine.reliability.reconcile(),
-            "state": engine.snapshot(),
-        }
+        return financial_json(
+            {
+                "reconciled": engine.reliability.reconcile(),
+                "state": engine.snapshot(),
+            }
+        )
 
     @app.post("/api/resume")
     def resume():
         engine.reliability.resume()
-        return engine.snapshot()
+        return financial_json(engine.snapshot())
 
     @app.post("/api/reduce-only")
     def reduce_only():
         engine.reliability.resume(reduce_only=True)
-        return engine.snapshot()
+        return financial_json(engine.snapshot())
 
     @app.post("/api/kill/reset")
     def reset_kill():
         engine.reliability.reset_kill()
-        return engine.snapshot()
+        return financial_json(engine.snapshot())
 
     @app.post("/api/kill")
     def kill():

@@ -3,7 +3,6 @@ from backend.shared.contracts import (
     RiskDecision,
     RiskPolicy,
     Side,
-    TERMINAL,
     GlobalTradingState,
     StrategyState,
 )
@@ -137,26 +136,16 @@ class RiskGateway:
     def budget(self, account, strategy, symbol):
         policy = self.policies.get(strategy, RiskPolicy())
         q = self.ledger.quantity(account, strategy, symbol)
-        orders = self.store.rows(
-            "SELECT * FROM orders WHERE strategy=? AND account=? AND emergency=0",
-            (strategy, account),
-        )
-        buys = sum(
-            o["quantity"] - o["filled"]
-            for o in orders
-            if o["symbol"] == symbol
-            and o["side"] == Side.BUY
-            and o["status"] not in TERMINAL
-        )
-        sells = sum(
-            o["quantity"] - o["filled"]
-            for o in orders
-            if o["symbol"] == symbol
-            and o["side"] == Side.SELL
-            and o["status"] not in TERMINAL
-        )
         now = self.clock()
-        rate = sum(now - 60 < o["created"] <= now for o in orders)
+        usage = self.store.rows(
+            """SELECT
+            COALESCE(SUM(CASE WHEN symbol=? AND side='BUY' AND status NOT IN ('FILLED','CANCELLED','REJECTED') THEN quantity-filled ELSE 0 END),0) AS buys,
+            COALESCE(SUM(CASE WHEN symbol=? AND side='SELL' AND status NOT IN ('FILLED','CANCELLED','REJECTED') THEN quantity-filled ELSE 0 END),0) AS sells,
+            COALESCE(SUM(CASE WHEN created>? AND created<=? THEN 1 ELSE 0 END),0) AS rate
+            FROM orders WHERE strategy=? AND account=? AND emergency=0""",
+            (symbol, symbol, now - 60, now, strategy, account),
+        )[0]
+        buys, sells, rate = usage["buys"], usage["sells"], usage["rate"]
         loss = max(-self.ledger.daily_net(account, strategy, now), 0)
         return {
             "strategy_instance_id": strategy,
@@ -242,7 +231,6 @@ class RiskGateway:
         ):
             return "RISK_NOT_SUBSCRIBED", None
         policy = self.policies.get(intent.strategy_instance_id, RiskPolicy())
-        now = self.clock()
         unsafe = self.evidence_gate(intent)
         if unsafe:
             return unsafe, None
@@ -259,10 +247,7 @@ class RiskGateway:
         reduce_only = self.state == GlobalTradingState.REDUCE_ONLY
         if reduce_only and not reducing:
             return "RISK_NOT_REDUCING", None
-        if (
-            self.ledger.daily_net(intent.account_id, intent.strategy_instance_id, now)
-            <= -policy.max_daily_loss
-        ):
+        if budget["daily_loss"]["consumed"] >= policy.max_daily_loss:
             self.set_strategy_state(
                 intent.strategy_instance_id,
                 StrategyState.LOSS_HALTED,
@@ -276,25 +261,12 @@ class RiskGateway:
             and not (reduce_only and reducing)
         ):
             return "RISK_STRATEGY_HALTED", None
-        orders = self.store.rows(
-            "SELECT * FROM orders WHERE strategy=? AND account=? AND emergency=0",
-            (intent.strategy_instance_id, intent.account_id),
-        )
-        if (
-            sum(now - 60 < o["created"] <= now for o in orders)
-            >= policy.max_orders_per_minute
-        ):
+        if budget["rate"]["consumed"] >= policy.max_orders_per_minute:
             return "RISK_RATE_LIMIT", None
-        q = self.ledger.quantity(
-            intent.account_id, intent.strategy_instance_id, intent.symbol
+        buys, sells = (
+            budget["position"]["reserved_buy"],
+            budget["position"]["reserved_sell"],
         )
-        buys = sells = 0
-        for o in orders:
-            if o["symbol"] == intent.symbol and o["status"] not in TERMINAL:
-                if o["side"] == Side.BUY:
-                    buys += o["quantity"] - o["filled"]
-                else:
-                    sells += o["quantity"] - o["filled"]
         if intent.side == Side.BUY:
             buys += intent.quantity
         else:

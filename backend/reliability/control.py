@@ -1,6 +1,6 @@
 from dataclasses import asdict
 from decimal import Decimal
-from threading import RLock
+from threading import RLock, Event
 import time
 from backend.reliability.broker_calls import Deadline
 from uuid import uuid4
@@ -220,7 +220,10 @@ class Reliability:
             for r in self.report.get("broker_positions", [])
         }
         trusted = (
-            self.report.get("verified", False)
+            self.health == Health.HEALTHY
+            and not self.broker.uncertain
+            and self.risk.state != Gate.UNCERTAIN
+            and self.report.get("verified", False)
             and broker_fresh
             and not self.broker.unsettled
         )
@@ -299,10 +302,11 @@ class Reliability:
             self.store.audit("KILL_GATE_CLOSED", {})
         acquired = self.operation_lock.acquire(timeout=deadline.remaining)
         reason, safe, open_count, positions = "", False, -1, {}
-        self.kill_deadline = deadline
         try:
             if not acquired:
                 raise SnapshotError("KILL_CONTROLLER_BUSY")
+            self.kill_deadline = deadline
+            previous_evidence = None
             for _ in range(max_rounds):
                 if not deadline.remaining:
                     raise SnapshotError("KILL_DEADLINE_EXPIRED")
@@ -319,6 +323,15 @@ class Reliability:
                     for key, p in self.ledger.positions().items()
                     if p.net_quantity
                 ]
+                current_evidence = (
+                    open_count,
+                    tuple(sorted(positions.items())),
+                    tuple(virtual),
+                    self.report["unique_fills"],
+                )
+                if current_evidence == previous_evidence:
+                    Event().wait(min(0.05, deadline.remaining))
+                previous_evidence = current_evidence
                 if (
                     not open_count
                     and not positions

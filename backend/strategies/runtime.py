@@ -11,6 +11,7 @@ class StrategyRuntime:
         self.store = store
         self.enabled = False
         self.last_close = {}
+        self.may_run = lambda strategy: True
 
     def subscribe(self, account, strategy, kind, symbol):
         if kind not in KINDS:
@@ -33,6 +34,8 @@ class StrategyRuntime:
         for sub in self.store.rows(
             "SELECT * FROM subscriptions WHERE symbol=?", (candle.symbol,)
         ):
+            if not self.may_run(sub["id"]):
+                continue
             previous = self.last_close.get(sub["id"])
             self.last_close[sub["id"]] = candle.close
             if sub["kind"] == "momentum":

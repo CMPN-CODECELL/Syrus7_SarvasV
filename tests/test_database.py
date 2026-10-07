@@ -28,6 +28,7 @@ def test_additive_migration_constraints_and_checksum():
         "002_risk_policies.sql",
         "003_safety_state.sql",
         "004_dispatch_evidence.sql",
+        "005_history_indexes.sql",
     ]
     name, checksum, sql = items[0]
     assert name == "001_bootstrap.sql"

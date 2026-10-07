@@ -9,6 +9,7 @@ from threading import RLock
 
 
 class Store:
+    backend_name = "SQLITE_OFFLINE"
     def __init__(self, path=":memory:"):
         if path != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -37,7 +38,7 @@ class Store:
         """)
         version = self.db.execute("PRAGMA user_version").fetchone()[0]
         self.audit_clock = time.time
-        if version > 4:
+        if version > 5:
             raise ValueError("SQLite schema is newer than this application")
         if version < 1:
             self.db.execute("PRAGMA user_version=1")
@@ -46,6 +47,7 @@ class Store:
             (2, "002_risk_policies.sql"),
             (3, "003_safety_state.sql"),
             (4, "004_dispatch_evidence.sql"),
+            (5, "005_history_indexes.sql"),
         ):
             if version < number:
                 sql = (
