@@ -122,7 +122,11 @@ class OrderIntent:
         if self.order_type not in {"MARKET", "LIMIT"}:
             raise ValueError("order_type must be MARKET or LIMIT")
         if self.order_type == "LIMIT":
-            if self.limit_price is None or not isinstance(self.limit_price, Decimal) or self.limit_price <= 0:
+            if (
+                self.limit_price is None
+                or not isinstance(self.limit_price, Decimal)
+                or self.limit_price <= 0
+            ):
                 raise ValueError("LIMIT order requires positive limit_price Decimal")
         elif self.limit_price is not None:
             raise ValueError("MARKET order must not specify limit_price")

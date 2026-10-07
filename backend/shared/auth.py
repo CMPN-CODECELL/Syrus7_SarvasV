@@ -13,7 +13,9 @@ class AuthService:
     def _hash_password(self, password: str, salt: str) -> str:
         return hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
 
-    def register(self, username: str, password: str, account_id: str | None = None) -> dict:
+    def register(
+        self, username: str, password: str, account_id: str | None = None
+    ) -> dict:
         username = username.strip().lower()
         if not username or len(username) < 3:
             raise ValueError("username must be at least 3 characters")
@@ -44,7 +46,9 @@ class AuthService:
                 "INSERT INTO users (username, password_hash, salt, account_id, created_at) VALUES (?,?,?,?,?)",
                 (username, pwd_hash, salt, account_id, now),
             )
-            self.store.audit("USER_REGISTERED", {"username": username, "account_id": account_id})
+            self.store.audit(
+                "USER_REGISTERED", {"username": username, "account_id": account_id}
+            )
 
         token = self.create_token(username)
         return {

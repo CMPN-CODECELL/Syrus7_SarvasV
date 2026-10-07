@@ -504,4 +504,3 @@ def test_mock_broker_api_limit_order():
     assert order["order_type"] == "LIMIT"
     assert order["limit_price"] == "1450.50"
     assert order["status"] == "OPEN"
-
