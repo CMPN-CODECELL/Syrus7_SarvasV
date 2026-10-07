@@ -26,18 +26,19 @@ The Mock Broker HTTP API exposes an external broker boundary over HTTP. It allow
 The Mock Broker HTTP API is intentionally decoupled from AlgoShield's internal control-plane API (`backend/api.py`). It runs as an independent service and wraps the canonical [`MockBrokerAdapter`](file:///C:/Users/dyara/AlgoShield/backend/broker/adapters.py) engine.
 
 ```
-                           AlgoShield Platform (Port 8000)
-                                      |
-                            [Future HTTP Adapter]
-                                      | (HTTP)
-                                      v
-                      Mock Broker HTTP API (e.g., Port 9001)
-                                      |
-                            MockBrokerAdapter
-                         /          |          \
-                    Orders        Fills      Positions
-                         \          |          /
-                        MockPersistence (JSON)
+Strategy ↓
+RiskGateway ↓
+OrderManager ↓
+BrokerSession ↓
+HTTPMockBrokerAdapter (backend/broker/http_adapter.py)
+   |
+   | HTTP (REST)
+   v
+Mock Broker HTTP API (backend/broker/mock_api.py, Port 9001)
+   |
+MockBrokerAdapter (in-memory state engine)
+   |
+MockPersistence (JSON disk persistence)
 ```
 
 No platform risk checks, accounting virtual positions, or strategy logic live in the mock broker API; the mock broker represents external execution truth only.
@@ -63,6 +64,18 @@ Programmatic application factory:
 from backend.broker.mock_api import create_mock_broker_app
 
 app = create_mock_broker_app(storage_path="data/mock_broker.json")
+```
+
+To run AlgoShield with the HTTP Mock Broker:
+```bash
+# Terminal 1: Run Mock Broker HTTP API
+uvicorn backend.broker.mock_api:app --port 9001
+
+# Terminal 2: Run AlgoShield Platform with HTTP Mock Broker
+$env:MOCK_BROKER_URL = "http://127.0.0.1:9001"
+# Python Platform instantiation:
+# from backend.broker.http_adapter import HTTPMockBrokerAdapter
+# platform = Platform(broker=HTTPMockBrokerAdapter("http://127.0.0.1:9001"))
 ```
 
 ---
@@ -148,5 +161,14 @@ curl http://localhost:9001/snapshot
 
 ---
 
-## 7. Future HTTP Adapter Integration
-After this task, a future HTTP broker adapter (`HTTPMockBrokerAdapter`) implementing the [`BrokerAdapter`](file:///C:/Users/dyara/AlgoShield/backend/broker/adapters.py) protocol can point to this service over HTTP without altering AlgoShield's core risk, execution, or accounting layers.
+## 7. HTTP Broker Adapter Integration (`HTTPMockBrokerAdapter`)
+
+AlgoShield connects to the Mock Broker HTTP API through [`HTTPMockBrokerAdapter`](file:///C:/Users/dyara/AlgoShield/backend/broker/http_adapter.py):
+- Satisfies the canonical `BrokerAdapter` protocol (`submit`, `cancel`, `snapshot`, `drain_updates`, `disconnect`, `reconnect`).
+- Translates between internal domain objects (`OrderIntent`, `CanonicalOrder`, `Fill`, `BrokerSnapshot`, `BrokerUpdate`) and REST JSON payloads.
+- Strictly maps HTTP errors to domain exceptions:
+  - `503 Service Unavailable` $\to$ `ConnectionError`
+  - `504 Gateway Timeout` $\to$ `TimeoutError` (marks `UNKNOWN` without retrying)
+  - `404 Not Found` / `409 Conflict` $\to$ `ValueError`
+- Separate [`MockBrokerControlClient`](file:///C:/Users/dyara/AlgoShield/backend/broker/http_adapter.py) provides clean programmatic control for failure-injection and demo orchestration (`reject_next`, `timeout_after_accept`, `external_fill`, `reset`).
+- Both `MockBrokerAdapter` and `HTTPMockBrokerAdapter` pass the exact same behavioral contract test suite in [`tests/test_broker_adapter_contract.py`](file:///C:/Users/dyara/AlgoShield/tests/test_broker_adapter_contract.py).

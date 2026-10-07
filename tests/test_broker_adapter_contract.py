@@ -32,10 +32,22 @@ def make_intent(
     )
 
 
-@pytest.fixture
-def broker():
-    """Factory fixture for broker adapter testing."""
-    return MockBrokerAdapter()
+@pytest.fixture(params=["mock", "http"])
+def broker(request):
+    """Factory fixture for broker adapter testing across both in-process and HTTP adapters."""
+    if request.param == "mock":
+        yield MockBrokerAdapter()
+    elif request.param == "http":
+        from fastapi.testclient import TestClient
+
+        from backend.broker.http_adapter import HTTPMockBrokerAdapter
+        from backend.broker.mock_api import create_mock_broker_app
+
+        app = create_mock_broker_app()
+        client = TestClient(app)
+        adapter = HTTPMockBrokerAdapter(client=client)
+        yield adapter
+        adapter.close()
 
 
 # Contract A — Submission Identity

@@ -4,12 +4,30 @@
 Broker & Order Execution; canonical responsibilities: ../TEAM_OWNERSHIP.md, Member 2.
 
 ## Current Status
-- Phase: Mock Broker HTTP API Complete (External Prototype Broker Simulator)
-- Current task: Mock Broker HTTP API complete; offline prototype boundary verified
+- Phase: HTTP Mock Broker Adapter & End-to-End Integration Complete
+- Current task: HTTPMockBrokerAdapter + E2E integration complete; mock service boundary proven
 - Status: OFFLINE_PROTO_COMPLETE
-- Last updated: 2026-10-07 20:46 Asia/Kolkata
+- Last updated: 2026-10-07 21:03 Asia/Kolkata
 
 ## Completed
+- 2026-10-07: Member 2 — HTTP Mock Broker Adapter & End-to-End Integration.
+  - Implemented [`HTTPMockBrokerAdapter`](file:///C:/Users/dyara/AlgoShield/backend/broker/http_adapter.py) satisfying the canonical `BrokerAdapter` protocol over HTTP.
+  - Added `MockBrokerControlClient` in `backend/broker/http_adapter.py` cleanly isolating failure injection and testing controls (`reject_next`, `timeout_after_accept`, `external_fill`, `reset`).
+  - Promoted `httpx>=0.28,<1` to core runtime dependencies in `pyproject.toml`.
+  - Mapped HTTP errors cleanly to domain exceptions (`503 -> ConnectionError`, `504 -> TimeoutError`, `404/409 -> ValueError`).
+  - Parameterized `tests/test_broker_adapter_contract.py` to prove both `MockBrokerAdapter` and `HTTPMockBrokerAdapter` satisfy identical behavioral contract invariants across all tests.
+  - Added full end-to-end integration test suite `tests/test_http_broker_integration.py` (10 tests) verifying:
+    - `submit` -> `OPEN` in platform and broker.
+    - `reject-next` -> order `REJECTED`, no fills, position unchanged.
+    - Partial fill simulation + broker update sync -> order `PARTIALLY_FILLED` 40/100, ledger position updated to +40.
+    - Cancellation of partially filled order -> order `CANCELLED`, executed fill preserved, position preserved.
+    - Complete snapshot parsing into canonical domain objects.
+    - `timeout-after-accept` -> platform enters `UNCERTAIN`, order marked `UNKNOWN/RESERVED` without auto-retry, subsequent reconciliation discovers `OPEN` order and resolves state.
+    - Disconnect blocks trading (fails closed with `UNCERTAIN`).
+    - Missed broker execution during disconnect (`external_fill`) recovered upon reconnect and reconciliation without automatic resume.
+    - Duplicate fills safely ignored without corrupting position.
+  - Updated documentation in `docs/MOCK_BROKER_API.md`.
+  - Validation: 180 passed, 1 skipped in pytest; Ruff check and format clean.
 - 2026-10-07: Member 2 — Standalone Mock Broker HTTP API.
   - Built independent mock broker HTTP service in `backend/broker/mock_api.py` with `create_mock_broker_app()` and runnable `app` factory.
   - Reused `MockBrokerAdapter` as external state engine; decoupled from AlgoShield's internal control-plane API (`backend/api.py`).
@@ -135,4 +153,4 @@ Broker & Order Execution; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 - Member 2 mock/replay broker and execution responsibilities are complete for the offline prototype. Real 021 integration remains blocked on official sponsor API documentation/credentials.
 - Execution state machine, cancellation flow, broker update flow, disconnect/reconnect recovery, and broker adapter contracts are deterministic, authoritative, and fail-closed.
 - Fills remain financial truth; order status is execution evidence.
-- Validation: pytest 160 passed / 1 skipped (isolated PostgreSQL URL); Ruff check + format passed; npm run check passed. No live Neon connectivity/deployment claim.
+- Validation: pytest 180 passed / 1 skipped (isolated PostgreSQL URL); Ruff check + format passed; npm run check passed. No live Neon connectivity/deployment claim.
