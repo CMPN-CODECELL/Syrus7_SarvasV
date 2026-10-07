@@ -9,7 +9,7 @@ This is a vertical slice, **not completion of the official PS**. Runtime is seri
 ## Next: mandatory hardening before real execution
 
 Member 1: exact sponsor charges, durable configurable policy/session accounting, audit timestamps, charge corrections and stronger ledger projection/property tests.
-Member 2: durable external mock scenario, broker event stream, deadlines, explicit cancel acknowledgments, order modification and 021 contract fixtures once provided.
+Member 2 completed in mock/replay (T1–T5): authoritative state-machine invariants, explicit cancellation lifecycle, lightweight broker update flow, disconnect/reconnect recovery, and offline broker adapter behavioral contract suite. Remaining external work: real 021 contract fixtures and sandbox integration once sponsor documentation and credentials are provided.
 Member 3: durable kill/health latch, bounded kill orchestration, feed/broker freshness, external position quarantine, policy persistence and live opposing-close semantics.
 Member 4 completed in mock/replay: callback exception isolation with durable quarantine, fully idempotent bounded symbol-scoped tick dedupe, audited fail-closed tick rejection, full indicator warm-up, 3/5 EMA momentum, five-period mean reversion, 5-minute breakout, exact-decimal API projection, normalized account/subscription APIs, durable per-strategy controls and backend-evidence dashboard. Remaining external work: authoritative 021 normalization, reconnect/backfill, exchange-session/freshness fixtures and authenticated account boundaries.
 

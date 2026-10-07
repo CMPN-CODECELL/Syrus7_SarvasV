@@ -44,3 +44,20 @@ Kill latch/certificate and last reconciliation report persist in risk-owned safe
 No module may rename fields silently. Limit/modify, external positions, typed health/audit envelopes and real broker events are coordinated contract extensions, not fabricated 021 behavior.
 
 Orders persist dispatch_started: new reservations are 0; dispatch commits UNKNOWN/1 before the external call. Never-dispatched rejected reservations need not exist at the broker. A complete settled snapshot may resolve an absent UNKNOWN as rejected/0, never retry it automatically. BrokerSession bounds waits and blocks mutations after uncertain calls until reconciliation. Emergency orders require risk authorization of actual reducing strategy exposure and are permitted only under the latched KILLING gate. Kill uses a nine-second deadline and verifies cancellation/fills/flatness in repeated rounds.
+
+## Broker Adapter Contract
+
+Every broker adapter (including `MockBrokerAdapter` and the eventual `Broker021Adapter`) must satisfy this minimum behavioral contract:
+
+1. **Operations Provided**:
+   - `submit(intent: OrderIntent) -> CanonicalOrder`: Dispatches an approved order intent; returns canonical order state. Must preserve intent attribution (strategy, account, symbol, side, quantity).
+   - `cancel(order_id: str) -> None`: Cancels open or partially filled order. Must never undo or reverse already executed fills.
+   - `snapshot() -> BrokerSnapshot`: Provides complete authoritative view of orders, fills, and net positions. `is_complete` must be explicitly attested.
+   - `drain_updates() -> list[BrokerUpdate]`: Exposes canonical broker-originated updates (`ORDER_ACCEPTED`, `ORDER_REJECTED`, `ORDER_CANCELLED`, `ORDER_STATUS`, `FILL`).
+   - `disconnect() / reconnect()`: Explicit connection lifecycle. Operations must fail safely when disconnected rather than fabricating success.
+2. **Attribution & Mapping Invariants**:
+   - Deterministic mapping from broker evidence back to the original approved `intent_id`.
+   - Fills must possess stable, unique identifiers suitable for idempotent deduplication.
+   - Partial fills must accurately report `filled_quantity` and remaining quantity.
+   - A real adapter (`Broker021Adapter`) must translate broker-specific payloads (e.g. 021 JSON schemas) into AlgoShield's canonical contracts inside the adapter; raw provider payloads must never leak into execution, risk, or accounting modules.
+

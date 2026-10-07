@@ -4,12 +4,30 @@
 Broker & Order Execution; canonical responsibilities: ../TEAM_OWNERSHIP.md, Member 2.
 
 ## Current Status
-- Phase: Member 2 Task 4 Complete — Prototype Broker Disconnect & Recovery Flow
-- Current task: Task 4 complete; ready for Task 5 (Sponsor 021 contract readiness / live change request prep)
-- Status: READY_FOR_NEXT_TASK
-- Last updated: 2026-10-07 20:00 Asia/Kolkata
+- Phase: Member 2 Task 5 Complete — Final Offline Broker Contract & Prototype Finalization
+- Current task: Task 5 complete; offline prototype responsibilities finalized
+- Status: OFFLINE_PROTO_COMPLETE
+- Last updated: 2026-10-07 20:35 Asia/Kolkata
 
 ## Completed
+- 2026-10-07: Member 2 Task 5 — Final Offline Broker Contract & Prototype Finalization.
+  - Defined authoritative Broker Adapter Contract in `docs/CONTRACTS.md` specifying mandatory behavior across submission identity & attribution, rejection, partial/full fills, fill identity, cancellation, broker update ingestion, disconnect/reconnect fail-closed semantics, and snapshot consistency.
+  - Implemented explicit behavioral contract test suite `tests/test_broker_adapter_contract.py` (12 focused tests) covering:
+    - Contract A: Submission identity & deterministic intent attribution.
+    - Contract B: Rejection produces `REJECTED`, `filled_quantity=0`, zero fabricated fills.
+    - Contract C: Partial & full fill execution; canonical `Fill` attribution (broker order ID, strategy, account, symbol, side, qty, price, timestamp, charges).
+    - Contract D: Fill identity & deterministic deduplication keys.
+    - Contract E: Cancellation on open order (`OPEN -> CANCELLED`) and partially filled order (`PARTIALLY_FILLED -> CANCELLED` without reversing executed quantity).
+    - Contract F: Canonical broker updates exposed via `drain_updates()` (`ORDER_ACCEPTED`, `FILL`, `ORDER_CANCELLED`).
+    - Contract G: Disconnect behavior (broker operations fail closed with `ConnectionError` when disconnected).
+    - Contract H: Reconnect + snapshot returns usable canonical snapshot (`is_complete=True`).
+    - Contract I: Snapshot consistency (order `PARTIALLY_FILLED 40/100`, fill history 40, position +40).
+    - Contract J: Ambiguous submission timeout (`timeout_after_accept = True` does not mean rejection; order exists at broker and can be discovered).
+    - Contract K: External persistence across restart (broker is external truth surviving AlgoShield recreation).
+    - Contract Honesty: `Broker021Adapter` stubs raise `NotImplementedError` referencing `docs/021_API_UNKNOWN.md`.
+  - Updated `Broker021Adapter` stubs in `backend/broker/adapters.py` with interface method parity (`submit`, `cancel`, `snapshot`, `drain_updates`, `disconnect`, `reconnect`, `parse_update`), explicitly raising `NotImplementedError` referencing `docs/021_API_UNKNOWN.md` without inventing sponsor endpoints or schemas.
+  - Updated roadmap in `docs/PHASE_PLAN.md` reflecting completion of offline Member 2 prototype tasks (T1–T5).
+  - Validation: 147 passed, 1 skipped in pytest; Ruff check and format clean.
 - 2026-10-07: Member 2 Task 4 — Prototype Broker Disconnect & Recovery Flow.
   - Added explicit connection lifecycle methods: `disconnect()` and `reconnect()` on [`MockBrokerAdapter`](file:///C:/Users/dyara/AlgoShield/backend/broker/adapters.py#L25) and delegated through [`BrokerSession`](file:///C:/Users/dyara/AlgoShield/backend/reliability/broker_calls.py#L31).
   - Added [`Platform.disconnect_broker()`](file:///C:/Users/dyara/AlgoShield/backend/platform.py#L107):
@@ -77,17 +95,21 @@ Broker & Order Execution; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 - 2026-10-07 Asia/Kolkata: Mock accept/reject/partial fills/cancel, attribution checks, durable order reservations and UNKNOWN timeout recovery. Files: backend/broker/adapters.py; backend/execution/orders.py. Tests: initial safety suite 20 passed, including mandatory S1-S7. Result: offline vertical slice functional; live 021 incomplete.
 
 ## In Progress
-- Member 2 Task 5 — Sponsor 021 contract readiness and live change request prep.
+- None (Member 2 offline prototype responsibilities complete).
 
 ## Blockers / Dependencies
-- Official 021 contract/credentials and sponsor session/charges/kill semantics.
+- Real 021 integration remains blocked on official sponsor API documentation/credentials.
 - Neon authentication/linkage and isolated database access required for remote validation.
 
 ## Next
-- Real 021 adapter contract fixtures once sponsor contracts are provided.
-- Live change request readiness for execution/order modifications.
+- Once official 021 documentation and credentials become available:
+  - Implement `Broker021Adapter` against sponsor API endpoints, authentication, and WebSocket stream.
+  - Map sponsor payloads to AlgoShield's canonical contracts (`CanonicalOrder`, `Fill`, `BrokerUpdate`, `BrokerSnapshot`).
+  - Validate `Broker021Adapter` against `tests/test_broker_adapter_contract.py`.
+- Live change request readiness for execution/order modifications during hackathon evaluation.
 
 ## Handoff Notes
-- Execution state machine, cancellation flow, and broker update flow are deterministic, authoritative, and fail-closed.
+- Member 2 mock/replay broker and execution responsibilities are complete for the offline prototype. Real 021 integration remains blocked on official sponsor API documentation/credentials.
+- Execution state machine, cancellation flow, broker update flow, disconnect/reconnect recovery, and broker adapter contracts are deterministic, authoritative, and fail-closed.
 - Fills remain financial truth; order status is execution evidence.
-- Validation: pytest 127 passed / 1 skipped (isolated PostgreSQL URL); Ruff check + format passed; npm run check passed. No live Neon connectivity/deployment claim.
+- Validation: pytest 147 passed / 1 skipped (isolated PostgreSQL URL); Ruff check + format passed; npm run check passed. No live Neon connectivity/deployment claim.

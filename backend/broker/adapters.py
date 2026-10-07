@@ -185,6 +185,36 @@ class Broker021Adapter:
             "021 contract/credentials unconfirmed; see docs/021_API_UNKNOWN.md"
         )
 
+    def submit(self, intent: OrderIntent) -> CanonicalOrder:
+        raise NotImplementedError(
+            "021 contract/credentials unconfirmed; see docs/021_API_UNKNOWN.md"
+        )
+
+    def cancel(self, order_id: str) -> None:
+        raise NotImplementedError(
+            "021 contract/credentials unconfirmed; see docs/021_API_UNKNOWN.md"
+        )
+
+    def snapshot(self) -> BrokerSnapshot:
+        raise NotImplementedError(
+            "021 contract/credentials unconfirmed; see docs/021_API_UNKNOWN.md"
+        )
+
+    def drain_updates(self) -> list[BrokerUpdate]:
+        raise NotImplementedError(
+            "021 contract/credentials unconfirmed; see docs/021_API_UNKNOWN.md"
+        )
+
+    def disconnect(self) -> None:
+        raise NotImplementedError(
+            "021 contract/credentials unconfirmed; see docs/021_API_UNKNOWN.md"
+        )
+
+    def reconnect(self) -> None:
+        raise NotImplementedError(
+            "021 contract/credentials unconfirmed; see docs/021_API_UNKNOWN.md"
+        )
+
     def parse_update(self, raw_payload: dict) -> BrokerUpdate:
         """Future mapping hook: raw 021 payload -> canonical BrokerUpdate.
         Specific 021 schema unconfirmed; see docs/021_API_UNKNOWN.md.
