@@ -518,6 +518,234 @@
         background: var(--danger-wash);
         color: var(--danger);
       }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.2rem 0.55rem;
+        border-radius: 9999px;
+        font-size: 0.72rem;
+        font-weight: 650;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        border: 1px solid transparent;
+        line-height: 1.2;
+      }
+      .badge-dot {
+        width: 0.45rem;
+        height: 0.45rem;
+        border-radius: 50%;
+        display: inline-block;
+        background: currentColor;
+      }
+      .badge-success {
+        background: #eef6f2;
+        color: var(--success);
+        border-color: #cde4d9;
+      }
+      .badge-warning {
+        background: var(--gold-wash);
+        color: var(--warning);
+        border-color: #ebdcb9;
+      }
+      .badge-danger {
+        background: var(--danger-wash);
+        color: var(--danger);
+        border-color: #f2c7ce;
+      }
+      .badge-muted {
+        background: var(--soft);
+        color: var(--muted);
+        border-color: var(--line);
+      }
+      .safety-card {
+        display: flex;
+        flex-direction: column;
+        padding: 1.15rem;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+        min-height: 100%;
+      }
+      .subpanel-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.95rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid var(--line);
+      }
+      .subpanel-head h3 {
+        margin: 0;
+        font-size: 0.95rem;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+      .safety-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+        margin-bottom: 1.1rem;
+        flex: 1;
+      }
+      .safety-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 0.75rem;
+        padding: 0.65rem 0.8rem;
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+      }
+      .safety-item-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+        min-width: 0;
+      }
+      .safety-item-title {
+        font-size: 0.82rem;
+        font-weight: 620;
+        color: var(--ink);
+      }
+      .safety-item-desc {
+        font-size: 0.73rem;
+        color: var(--muted);
+        word-break: break-word;
+      }
+      .safety-stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.5rem;
+        padding-top: 0.85rem;
+        border-top: 1px solid var(--line);
+      }
+      .safety-stat {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding: 0.5rem 0.3rem;
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+      }
+      .safety-stat-num {
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+        line-height: 1.1;
+      }
+      .safety-stat-lbl {
+        font-size: 0.66rem;
+        color: var(--muted);
+        margin-top: 0.25rem;
+        line-height: 1.15;
+      }
+      .safety-stat.highlight-danger {
+        background: var(--danger-wash);
+        border-color: #f2c7ce;
+      }
+      .safety-stat.highlight-danger .safety-stat-num {
+        color: var(--danger);
+      }
+      .risk-budget-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+      .risk-card {
+        padding: 0.85rem 0.95rem;
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+      }
+      .risk-card-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .risk-card-title {
+        display: flex;
+        align-items: baseline;
+        gap: 0.45rem;
+        font-size: 0.84rem;
+        font-weight: 650;
+        color: var(--ink);
+      }
+      .risk-card-title small {
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: normal;
+      }
+      .risk-metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.6rem;
+      }
+      .risk-metric-box {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+      .risk-metric-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.68rem;
+        color: var(--muted);
+        font-weight: 550;
+      }
+      .risk-metric-val {
+        font-size: 0.78rem;
+        font-weight: 650;
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+      }
+      .progress-bar {
+        width: 100%;
+        height: 0.35rem;
+        background: var(--line);
+        border-radius: 9999px;
+        overflow: hidden;
+      }
+      .progress-fill {
+        height: 100%;
+        background: var(--gold-dark);
+        border-radius: 9999px;
+        transition: width 240ms ease;
+      }
+      .progress-fill.fill-safe {
+        background: var(--success);
+      }
+      .progress-fill.fill-warn {
+        background: var(--warning);
+      }
+      .progress-fill.fill-danger {
+        background: var(--danger);
+      }
+      .risk-reserved-note {
+        font-size: 0.68rem;
+        color: var(--muted);
+        padding-top: 0.25rem;
+        border-top: 1px dashed var(--line);
+        display: flex;
+        justify-content: space-between;
+      }
+      .dev-details {
+        border-top: 1px solid var(--line);
+      }
+      .dev-details summary {
+        color: var(--muted);
+        font-size: 0.78rem;
+        font-weight: 600;
+        padding: 0.85rem 1.15rem;
+      }
       footer {
         max-width: 1280px;
         margin: auto;
@@ -603,6 +831,12 @@
         }
         h1 {
           font-size: 2.65rem;
+        }
+        .safety-stats {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .risk-metrics-grid {
+          grid-template-columns: 1fr;
         }
       }
     </style>
@@ -786,16 +1020,66 @@
           </div>
           <span id="safety-source">Backend state</span>
         </div>
-        <div class="evidence-grid">
-          <div>
-            <h3>Safety state</h3>
-            <pre id="safety-state">Loading safety state…</pre>
+        <div class="evidence-grid" style="padding: 1.15rem 1.15rem 0; margin-bottom: 0;">
+          <div class="safety-card">
+            <div class="subpanel-head">
+              <h3>Safety state</h3>
+              <span id="safety-overall-badge" class="badge badge-warning"><i class="badge-dot" aria-hidden="true"></i> RECOVERING</span>
+            </div>
+            <div id="safety-items" class="safety-list">
+              <div class="safety-item">
+                <div class="safety-item-info">
+                  <span class="safety-item-title">Reconciliation</span>
+                  <small class="safety-item-desc">Waiting for state…</small>
+                </div>
+                <span class="badge badge-warning"><i class="badge-dot" aria-hidden="true"></i> REQUIRED</span>
+              </div>
+            </div>
+            <div class="safety-stats">
+              <div class="safety-stat">
+                <span class="safety-stat-num" id="stat-fills-applied">0</span>
+                <span class="safety-stat-lbl">Applied fills</span>
+              </div>
+              <div class="safety-stat">
+                <span class="safety-stat-num" id="stat-fills-dupes">0</span>
+                <span class="safety-stat-lbl">Duplicates ignored</span>
+              </div>
+              <div class="safety-stat">
+                <span class="safety-stat-num" id="stat-fills-rejected">0</span>
+                <span class="safety-stat-lbl">Rejected events</span>
+              </div>
+              <div class="safety-stat" id="stat-orders-review-box">
+                <span class="safety-stat-num" id="stat-orders-review">0</span>
+                <span class="safety-stat-lbl">Orders for review</span>
+              </div>
+            </div>
           </div>
-          <div>
-            <h3>Risk budgets</h3>
-            <pre id="risk-budgets">Loading risk budgets…</pre>
+          <div class="safety-card">
+            <div class="subpanel-head">
+              <h3>Risk budgets</h3>
+              <span id="risk-budgets-count" class="badge badge-muted">0 active</span>
+            </div>
+            <div id="risk-budgets-container">
+              <div class="empty" style="padding: 2.2rem 1rem;">
+                <p style="margin: 0 0 0.35rem; font-weight: 600; color: var(--ink);">No active risk budgets</p>
+                <p style="margin: 0; font-size: 0.8rem; color: var(--muted);">Risk limits will appear here once strategies have active reservations.</p>
+              </div>
+            </div>
           </div>
         </div>
+        <details class="dev-details" style="margin-top: 1.15rem;">
+          <summary>Developer details (raw telemetry)</summary>
+          <div class="evidence-grid" style="margin-bottom: 0; padding: 0 1.15rem 1.15rem;">
+            <div>
+              <p class="eyebrow" style="margin: 0.5rem 0 0.35rem;">Raw Safety State</p>
+              <pre id="safety-state">Loading safety state…</pre>
+            </div>
+            <div>
+              <p class="eyebrow" style="margin: 0.5rem 0 0.35rem;">Raw Risk Budgets</p>
+              <pre id="risk-budgets">Loading risk budgets…</pre>
+            </div>
+          </div>
+        </details>
       </section>
       <section aria-labelledby="evidence-title">
         <div class="section-heading">
@@ -883,6 +1167,388 @@
         node.textContent = text;
         if (className) node.className = className;
         return node;
+      }
+      function badgeClass(status) {
+        const s = String(status || "").toUpperCase();
+        if (
+          [
+            "VERIFIED",
+            "HEALTHY",
+            "SAFE",
+            "READY",
+            "MATCHED",
+            "ACTIVE",
+            "SUCCESS",
+          ].includes(s)
+        ) {
+          return "badge-success";
+        }
+        if (
+          [
+            "FAILED",
+            "DRIFTED",
+            "UNCERTAIN",
+            "LATCHED",
+            "KILLED",
+            "HALTED",
+          ].includes(s)
+        ) {
+          return "badge-danger";
+        }
+        if (
+          [
+            "REQUIRED",
+            "RECOVERING",
+            "UNKNOWN",
+            "STALE",
+            "UNSETTLED",
+            "REDUCE_ONLY",
+            "NOT VERIFIED",
+          ].includes(s)
+        ) {
+          return "badge-warning";
+        }
+        return "badge-muted";
+      }
+      function createBadge(status) {
+        const badge = document.createElement("span");
+        badge.className = `badge ${badgeClass(status)}`;
+        const dot = document.createElement("i");
+        dot.className = "badge-dot";
+        dot.setAttribute("aria-hidden", "true");
+        badge.append(dot, document.createTextNode(` ${status}`));
+        return badge;
+      }
+      function renderSafety(snapshot) {
+        const safety = snapshot.safety || {};
+        const recon = safety.reconciliation || {};
+        const broker = safety.broker || {};
+        const posComp = safety.position_comparison || {};
+        const fills = safety.fills || {};
+        const unknownOrders = Array.isArray(safety.unknown_orders)
+          ? safety.unknown_orders
+          : [];
+
+        // 1. Reconciliation
+        let reconStatus = "REQUIRED";
+        let reconDesc = "Startup verification pending";
+        if (recon.verified) {
+          reconStatus = "VERIFIED";
+          reconDesc = "Broker and local state agree";
+        } else if (recon.reason) {
+          if (recon.reason === "STARTUP_RECONCILIATION_REQUIRED") {
+            reconDesc = "Startup verification pending";
+          } else if (recon.reason === "SNAPSHOT_VERIFICATION_FAILED") {
+            reconDesc = "Snapshot verification failed";
+          } else {
+            reconDesc = String(recon.reason).replace(/_/g, " ").toLowerCase();
+          }
+        }
+
+        // 2. Broker evidence
+        let brokerStatus = "NOT VERIFIED";
+        let brokerDesc = "Waiting for first verified snapshot";
+        if (broker.call_unsettled) {
+          brokerStatus = "UNSETTLED";
+          brokerDesc = "Unsettled broker submission pending";
+        } else if (broker.requires_reconciliation) {
+          brokerStatus = "REQUIRED";
+          brokerDesc = "Broker uncertainty requires reconciliation";
+        } else if (broker.fresh && broker.last_verified_at) {
+          brokerStatus = "VERIFIED";
+          brokerDesc = "Broker snapshot is fresh";
+        } else if (broker.last_verified_at) {
+          brokerStatus = "STALE";
+          brokerDesc = "Broker snapshot is stale";
+        }
+
+        // 3. Position comparison
+        const posStatus = posComp.status || "UNKNOWN";
+        let posDesc = "No verified broker comparison yet";
+        if (posStatus === "VERIFIED") {
+          posDesc = "Broker and virtual positions match";
+        } else if (posStatus === "FAILED") {
+          posDesc = "Virtual and broker drift detected";
+        }
+
+        // 4. Kill switch
+        const killLatched = Boolean(safety.kill_latched);
+        const killStatus = killLatched ? "LATCHED" : "READY";
+        const killDesc = killLatched
+          ? "Kill latched · operator reset required"
+          : "Emergency flattening armed · ready";
+
+        // Overall badge
+        const overallBadge = $("safety-overall-badge");
+        if (overallBadge) {
+          let overall = "RECOVERING";
+          if (killLatched) {
+            overall = "LATCHED";
+          } else if (posStatus === "FAILED" || broker.requires_reconciliation) {
+            overall = "UNCERTAIN";
+          } else if (
+            recon.verified &&
+            broker.fresh &&
+            posStatus === "VERIFIED"
+          ) {
+            overall = "VERIFIED";
+          }
+          overallBadge.className = `badge ${badgeClass(overall)}`;
+          overallBadge.replaceChildren();
+          const dot = document.createElement("i");
+          dot.className = "badge-dot";
+          dot.setAttribute("aria-hidden", "true");
+          overallBadge.append(dot, document.createTextNode(` ${overall}`));
+        }
+
+        // Render safety items list
+        const container = $("safety-items");
+        if (container) {
+          container.replaceChildren();
+          const items = [
+            { title: "Reconciliation", status: reconStatus, desc: reconDesc },
+            {
+              title: "Broker evidence",
+              status: brokerStatus,
+              desc: brokerDesc,
+            },
+            { title: "Position match", status: posStatus, desc: posDesc },
+            { title: "Kill switch", status: killStatus, desc: killDesc },
+          ];
+          for (const item of items) {
+            const row = document.createElement("div");
+            row.className = "safety-item";
+
+            const info = document.createElement("div");
+            info.className = "safety-item-info";
+            info.append(
+              textNode("span", item.title, "safety-item-title"),
+              textNode("small", item.desc, "safety-item-desc"),
+            );
+
+            row.append(info, createBadge(item.status));
+            container.append(row);
+          }
+        }
+
+        // Stat counters
+        $("stat-fills-applied").textContent = String(
+          fills.unique_applied ?? 0,
+        );
+        $("stat-fills-dupes").textContent = String(
+          fills.duplicates_ignored ?? 0,
+        );
+        $("stat-fills-rejected").textContent = String(
+          fills.rejected_events ?? 0,
+        );
+
+        const reviewCount = unknownOrders.length;
+        $("stat-orders-review").textContent = String(reviewCount);
+        const reviewBox = $("stat-orders-review-box");
+        if (reviewBox) {
+          reviewBox.className = `safety-stat${reviewCount > 0 ? " highlight-danger" : ""}`;
+        }
+      }
+      function renderRiskBudgets(snapshot) {
+        const container = $("risk-budgets-container");
+        const countBadge = $("risk-budgets-count");
+        if (!container) return;
+
+        const budgets = Array.isArray(snapshot.risk_budgets)
+          ? snapshot.risk_budgets
+          : [];
+        if (countBadge) {
+          countBadge.textContent = `${budgets.length} active`;
+          countBadge.className = `badge ${budgets.length ? "badge-success" : "badge-muted"}`;
+        }
+
+        container.replaceChildren();
+
+        if (!budgets.length) {
+          const emptyBox = document.createElement("div");
+          emptyBox.className = "empty";
+          emptyBox.style.padding = "2.2rem 1rem";
+
+          const strong = document.createElement("p");
+          strong.style.margin = "0 0 0.35rem";
+          strong.style.fontWeight = "600";
+          strong.style.color = "var(--ink)";
+          strong.textContent = "No active risk budgets";
+
+          const note = document.createElement("p");
+          note.style.margin = "0";
+          note.style.fontSize = "0.8rem";
+          note.style.color = "var(--muted)";
+          note.textContent =
+            "Risk limits will appear here once strategies have active reservations.";
+
+          emptyBox.append(strong, note);
+          container.append(emptyBox);
+          return;
+        }
+
+        const list = document.createElement("div");
+        list.className = "risk-budget-list";
+
+        for (const b of budgets) {
+          const card = document.createElement("article");
+          card.className = "risk-card";
+
+          // Card header
+          const head = document.createElement("div");
+          head.className = "risk-card-head";
+
+          const title = document.createElement("div");
+          title.className = "risk-card-title";
+          const stratId = b.strategy_instance_id || "strategy";
+          const sym = b.symbol || "—";
+          title.append(
+            textNode("span", stratId),
+            textNode("small", `· ${sym}`),
+          );
+
+          const stratState = b.state || "ACTIVE";
+          head.append(title, createBadge(stratState));
+
+          // Metrics grid
+          const grid = document.createElement("div");
+          grid.className = "risk-metrics-grid";
+
+          // 1. Position metric
+          const posBox = document.createElement("div");
+          posBox.className = "risk-metric-box";
+          const posUsed = b.position?.used ?? b.position?.filled ?? 0;
+          const posLimit = b.position?.limit ?? 0;
+          const posPct =
+            posLimit > 0
+              ? Math.min(
+                  100,
+                  Math.max(
+                    0,
+                    Math.round((Math.abs(posUsed) / posLimit) * 100),
+                  ),
+                )
+              : 0;
+
+          const posLbl = document.createElement("div");
+          posLbl.className = "risk-metric-label";
+          posLbl.append(
+            textNode("span", "Position"),
+            textNode("span", posLimit > 0 ? `${posPct}%` : ""),
+          );
+          const posVal = textNode(
+            "div",
+            posLimit > 0 ? `${posUsed} / ${posLimit}` : String(posUsed),
+            "risk-metric-val",
+          );
+          posBox.append(posLbl, posVal);
+          if (posLimit > 0) {
+            const bar = document.createElement("div");
+            bar.className = "progress-bar";
+            const fill = document.createElement("div");
+            fill.className = `progress-fill ${posPct >= 90 ? "fill-danger" : posPct >= 60 ? "fill-warn" : "fill-safe"}`;
+            fill.style.width = `${posPct}%`;
+            bar.append(fill);
+            posBox.append(bar);
+          }
+          grid.append(posBox);
+
+          // 2. Orders / min metric
+          const rateBox = document.createElement("div");
+          rateBox.className = "risk-metric-box";
+          const rateUsed = b.rate?.consumed ?? 0;
+          const rateLimit = b.rate?.limit ?? 0;
+          const ratePct =
+            rateLimit > 0
+              ? Math.min(
+                  100,
+                  Math.max(0, Math.round((rateUsed / rateLimit) * 100)),
+                )
+              : 0;
+
+          const rateLbl = document.createElement("div");
+          rateLbl.className = "risk-metric-label";
+          rateLbl.append(
+            textNode("span", "Orders / min"),
+            textNode("span", rateLimit > 0 ? `${ratePct}%` : ""),
+          );
+          const rateVal = textNode(
+            "div",
+            rateLimit > 0 ? `${rateUsed} / ${rateLimit}` : String(rateUsed),
+            "risk-metric-val",
+          );
+          rateBox.append(rateLbl, rateVal);
+          if (rateLimit > 0) {
+            const bar = document.createElement("div");
+            bar.className = "progress-bar";
+            const fill = document.createElement("div");
+            fill.className = `progress-fill ${ratePct >= 90 ? "fill-danger" : ratePct >= 60 ? "fill-warn" : "fill-safe"}`;
+            fill.style.width = `${ratePct}%`;
+            bar.append(fill);
+            rateBox.append(bar);
+          }
+          grid.append(rateBox);
+
+          // 3. Daily loss metric
+          const lossBox = document.createElement("div");
+          lossBox.className = "risk-metric-box";
+          const lossUsed = Number(b.daily_loss?.consumed ?? 0);
+          const lossLimit = Number(b.daily_loss?.limit ?? 0);
+          const lossPct =
+            lossLimit > 0
+              ? Math.min(
+                  100,
+                  Math.max(0, Math.round((lossUsed / lossLimit) * 100)),
+                )
+              : 0;
+
+          const lossLbl = document.createElement("div");
+          lossLbl.className = "risk-metric-label";
+          lossLbl.append(
+            textNode("span", "Daily loss"),
+            textNode("span", lossLimit > 0 ? `${lossPct}%` : ""),
+          );
+          const lossVal = textNode(
+            "div",
+            lossLimit > 0
+              ? `${money(lossUsed)} / ${money(lossLimit)}`
+              : money(lossUsed),
+            "risk-metric-val",
+          );
+          lossBox.append(lossLbl, lossVal);
+          if (lossLimit > 0) {
+            const bar = document.createElement("div");
+            bar.className = "progress-bar";
+            const fill = document.createElement("div");
+            fill.className = `progress-fill ${lossPct >= 90 ? "fill-danger" : lossPct >= 60 ? "fill-warn" : "fill-safe"}`;
+            fill.style.width = `${lossPct}%`;
+            bar.append(fill);
+            lossBox.append(bar);
+          }
+          grid.append(lossBox);
+
+          card.append(head, grid);
+
+          // Reserved exposure note if pending
+          const reservedBuy = b.position?.reserved_buy ?? 0;
+          const reservedSell = b.position?.reserved_sell ?? 0;
+          if (reservedBuy > 0 || reservedSell > 0) {
+            const resNote = document.createElement("div");
+            resNote.className = "risk-reserved-note";
+            resNote.append(
+              textNode("span", "Pending reservations:"),
+              textNode(
+                "span",
+                `+${reservedBuy} buy / −${reservedSell} sell`,
+              ),
+            );
+            card.append(resNote);
+          }
+
+          list.append(card);
+        }
+
+        container.append(list);
       }
       function renderStrategies(snapshot) {
         const body = $("strategy-rows");
@@ -993,6 +1659,8 @@
         $("tick-note").textContent =
           `${snapshot.market_data.duplicate_ticks} duplicate · ${snapshot.market_data.late_ticks} late`;
         renderStrategies(snapshot);
+        renderSafety(snapshot);
+        renderRiskBudgets(snapshot);
         $("safety-state").textContent = JSON.stringify(
           snapshot.safety || { status: "UNKNOWN" },
           null,
