@@ -777,6 +777,25 @@
           </aside>
         </div>
       </section>
+      <section class="panel" aria-labelledby="safety-title">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Platform controls</p>
+            <h2 id="safety-title">Fail-closed safety evidence</h2>
+          </div>
+          <span id="safety-source">Backend state</span>
+        </div>
+        <div class="evidence-grid">
+          <div>
+            <h3>Safety state</h3>
+            <pre id="safety-state">Loading safety state…</pre>
+          </div>
+          <div>
+            <h3>Risk budgets</h3>
+            <pre id="risk-budgets">Loading risk budgets…</pre>
+          </div>
+        </div>
+      </section>
       <section aria-labelledby="evidence-title">
         <div class="section-heading">
           <div>
@@ -973,6 +992,16 @@
         $("tick-note").textContent =
           `${snapshot.market_data.duplicate_ticks} duplicate · ${snapshot.market_data.late_ticks} late`;
         renderStrategies(snapshot);
+        $("safety-state").textContent = JSON.stringify(
+          snapshot.safety || { status: "UNKNOWN" },
+          null,
+          2,
+        );
+        $("risk-budgets").textContent = JSON.stringify(
+          snapshot.risk_budgets || {},
+          null,
+          2,
+        );
         $("signal-count").textContent = `${snapshot.signals.length} emitted`;
         renderFeed(
           $("signals"),
