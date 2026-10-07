@@ -69,11 +69,13 @@ class Platform:
     def tick(self, tick):
         with self.store.lock:
             try:
-                closed = self.candles.ingest(tick)
+                accepted, closed = self.candles.ingest_event(tick)
             except ValueError:
                 self.risk.state = "UNCERTAIN"
                 self.strategies.enabled = False
                 raise
+            if not accepted:
+                return
             self.ledger.marks[tick.symbol] = tick.price
             for candle in closed:
                 self.closed_candles.append(candle)

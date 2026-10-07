@@ -49,10 +49,15 @@ class CandleBuilder:
         self.late_ticks = 0
 
     def ingest(self, tick):
+        _, closed = self.ingest_event(tick)
+        return closed
+
+    def ingest_event(self, tick):
+        """Return whether the tick was accepted and any newly closed candles."""
         identity = (tick.symbol, tick.event_id)
         if identity in self.seen:
             self.duplicate_ticks += 1
-            return []
+            return False, []
         if (
             not tick.symbol
             or not tick.event_id
@@ -101,7 +106,7 @@ class CandleBuilder:
                     volume=c.volume + tick.quantity,
                 )
             self.active[key] = c
-        return closed
+        return True, closed
 
     def stats(self):
         return {

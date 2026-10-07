@@ -174,6 +174,24 @@ def test_tick_deduplication_is_symbol_scoped_and_bounded():
     assert builder.stats()["tracked_event_ids"] == 2
 
 
+def test_duplicate_tick_cannot_overwrite_latest_market_mark():
+    platform = Platform()
+    try:
+        platform.tick(Tick("X", 0, D("100"), 1, "event-1"))
+        platform.tick(Tick("X", 0, D("999"), 1, "event-1"))
+
+        assert platform.ledger.marks["X"] == D("100")
+        assert platform.candles.stats() == {
+            "accepted_ticks": 1,
+            "duplicate_ticks": 1,
+            "late_ticks": 0,
+            "tracked_event_ids": 1,
+            "last_event_timestamp": {"X": 0},
+        }
+    finally:
+        platform.store.close()
+
+
 def test_subscription_api_normalizes_inputs_and_controls_state():
     platform = Platform()
     with TestClient(create_app(platform)) as client:
