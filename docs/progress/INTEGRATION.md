@@ -62,3 +62,6 @@ Neon CLI 8.0.11 installed. Requested project/branch not yet authenticated/linked
 - Dashboard telemetry now uses a persistent WebSocket snapshot stream with a bounded
   polling fallback. The transport reports backend changes but does not invent market
   activity when no ticks or fills are arriving.
+- An explicit Run replay action can now start a bounded local HTTP-mock tick loop;
+  kill and shutdown stop it. This remains simulator-only and does not auto-resume
+  after a process restart.

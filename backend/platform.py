@@ -1,6 +1,7 @@
 import time
 from collections import deque
 from itertools import chain
+from threading import Event, Thread
 from dataclasses import asdict
 from decimal import Decimal
 
@@ -72,6 +73,8 @@ class Platform:
         self.closed_candles = deque(maxlen=128)
         self.auth = AuthService(self.store)
         self.demo_count = 0
+        self._replay_stop = Event()
+        self._replay_thread = None
 
     def account(self, account_id):
         if not account_id:
@@ -248,6 +251,52 @@ class Platform:
         self.reliability.reconcile()
         return self.snapshot()
 
+    def start_replay_stream(self, interval=0.75):
+        """Continue local mock ticks after an explicit replay action.
+
+        This is intentionally available only for the HTTP mock adapter. It is
+        a deterministic local simulator, not a live market-data connection.
+        """
+        if not isinstance(self.broker, HTTPMockBrokerAdapter):
+            return False
+        if self._replay_thread and self._replay_thread.is_alive():
+            return True
+        self._replay_stop.clear()
+
+        def run():
+            self.reliability.resume()
+            while not self._replay_stop.is_set():
+                start = int(self.clock()) + 60
+                with self.store.lock:
+                    symbols = {"DEMO"}
+                    symbols.update(
+                        row["symbol"]
+                        for row in self.store.rows(
+                            "SELECT symbol FROM subscriptions WHERE enabled=1"
+                        )
+                    )
+                events = chain.from_iterable(
+                    ReplayMarketDataProvider.demo(start, symbol).ticks()
+                    for symbol in sorted(symbols)
+                )
+                for replay_tick in events:
+                    if self._replay_stop.wait(interval):
+                        return
+                    try:
+                        self.tick(replay_tick, replay=True)
+                    except (ConnectionError, TimeoutError, ValueError):
+                        self.reliability.fail_closed("REPLAY_STREAM_FAILED")
+                        return
+
+        self._replay_thread = Thread(
+            target=run, daemon=True, name="algoshield-replay-stream"
+        )
+        self._replay_thread.start()
+        return True
+
+    def stop_replay_stream(self):
+        self._replay_stop.set()
+
     def require_offline_demo(self):
         from backend.shared.postgres import PostgresStore
 
@@ -268,6 +317,8 @@ class Platform:
             )
 
     def kill(self):
+        self.stop_replay_stream()
+
         def execute(order):
             price = self.ledger.marks.get(order.intent.symbol, Decimal("100"))
             if order.status != "REJECTED":
