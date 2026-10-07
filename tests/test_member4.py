@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal as D
 
 from fastapi.testclient import TestClient
@@ -516,5 +517,30 @@ def test_market_session_api_and_snapshot():
             assert bad_resp.status_code == 400
     finally:
         platform.store.close()
+
+
+def test_telemetry_stream_endpoint():
+    platform = Platform()
+    try:
+        with TestClient(create_app(platform)) as client:
+            with client.stream("GET", "/api/stream/telemetry?max_events=1") as response:
+                assert response.status_code == 200
+                assert "text/event-stream" in response.headers["content-type"]
+                event_type = None
+                payload = None
+                for line in response.iter_lines():
+                    if line.startswith("event:"):
+                        event_type = line[len("event:"):].strip()
+                    elif line.startswith("data:"):
+                        payload = json.loads(line[len("data:"):].strip())
+                        break
+                assert event_type == "snapshot"
+                assert payload is not None
+                assert "gate" in payload
+                assert "market_data" in payload
+                assert "market_session" in payload
+    finally:
+        platform.store.close()
+
 
 

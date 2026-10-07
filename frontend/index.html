@@ -1176,8 +1176,28 @@
       $("subscription-form").addEventListener("submit", (event) =>
         submitForm(event, "/api/subscriptions"),
       );
+      function setupTelemetryStream() {
+        if (!window.EventSource) return;
+        try {
+          const sse = new EventSource("/api/stream/telemetry");
+          const onData = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              render(data);
+              $("connection").textContent = "Live Stream";
+              $("connection-dot").className = "connection-dot ok";
+            } catch (_) {}
+          };
+          sse.addEventListener("snapshot", onData);
+          sse.addEventListener("telemetry", onData);
+          sse.onerror = () => {
+            $("connection").textContent = "Polling";
+          };
+        } catch (_) {}
+      }
       refresh();
       setInterval(refresh, 2000);
+      setupTelemetryStream();
     </script>
   </body>
 </html>

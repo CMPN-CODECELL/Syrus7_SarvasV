@@ -1,11 +1,13 @@
+import asyncio
+import json
 import sqlite3
 from contextlib import asynccontextmanager
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, StrictInt, field_validator
 from psycopg.errors import UniqueViolation
 
@@ -120,6 +122,44 @@ def create_app(platform=None):
     @app.get("/api/state")
     def state():
         return financial_json(engine.snapshot())
+
+    @app.get("/api/stream/telemetry")
+    async def stream_telemetry(
+        request: Request,
+        max_events: int | None = Query(None, ge=1),
+    ):
+        async def event_generator():
+            count = 0
+            snapshot = engine.snapshot()
+            payload = json.dumps(
+                jsonable_encoder(snapshot, custom_encoder={Decimal: str})
+            )
+            yield f"event: snapshot\ndata: {payload}\n\n"
+            count += 1
+            if max_events is not None and count >= max_events:
+                return
+            while True:
+                if await request.is_disconnected():
+                    break
+                await asyncio.sleep(1.0)
+                snapshot = engine.snapshot()
+                payload = json.dumps(
+                    jsonable_encoder(snapshot, custom_encoder={Decimal: str})
+                )
+                yield f"event: telemetry\ndata: {payload}\n\n"
+                count += 1
+                if max_events is not None and count >= max_events:
+                    break
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     @app.get("/api/fills")
     def fills(limit: int = Query(200, ge=1, le=500), offset: int = Query(0, ge=0)):
