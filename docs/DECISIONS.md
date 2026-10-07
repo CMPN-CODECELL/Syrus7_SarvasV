@@ -270,3 +270,25 @@ Reconstructing broker truth from the platform ledger would hide drift and was re
 
 ### Reversal
 Replace the mock fixture with an independently hosted simulator or a documented adapter, retaining recovery and drift tests.
+
+## DEC-013 — Durable validated policies and risk budgets
+Date: 2026-10-07
+Status: ACCEPTED
+
+### Context
+Restart reset configurable risk policies and individual halt state. There was no authoritative API to inspect pending exposure or change limits.
+
+### Decision
+Add risk-owned risk_policies/strategy_controls via additive PostgreSQL and versioned SQLite migrations. Validate finite positive loss limits and strict positive integer quantities/limits. Preserve existing policy mapping access. Derive loss/rate consumption from durable fills/orders; persist loss halts. Extend RiskDecision additively with reason/time/reservation details and introduce enums retaining existing state values. Expose budgets and policy/state APIs. Normalize migration SQL line endings before hashing.
+
+### Reason
+Restarts cannot erase configured limits or loss evidence; pending exposure survives policy changes. Canonical hashes stay stable across Windows/Linux checkouts.
+
+### Impact
+Member 3 risk service/API/tests, shared contracts/store/migration packaging and documentation. No accounting formula changes. PostgreSQL migration execution remains unverified until isolated DB access is available.
+
+### Alternatives
+Mutable process dictionaries and UI-authoritative limits were rejected.
+
+### Reversal
+Migrate policy/control history through a versioned schema change and retain restart, validation and concurrent-reservation tests.

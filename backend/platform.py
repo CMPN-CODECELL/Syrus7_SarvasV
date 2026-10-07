@@ -139,12 +139,21 @@ class Platform:
                 "health": self.reliability.health,
                 "gate": self.risk.state,
                 "subscriptions": [
-                    dict(r) | {"running": self.strategies.enabled}
+                    dict(r)
+                    | {
+                        "running": self.strategies.enabled
+                        and self.risk.strategy_state(r["id"]) == "RUNNING",
+                        "strategy_state": self.risk.strategy_state(r["id"]),
+                    }
                     for r in self.store.rows("SELECT * FROM subscriptions")
                 ],
                 "positions": [
                     asdict(p) | {"account_id": a}
                     for (a, _, _), p in self.ledger.positions().items()
+                ],
+                "risk_budgets": [
+                    self.risk.budget(r["account"], r["id"], r["symbol"])
+                    for r in self.store.rows("SELECT * FROM subscriptions")
                 ],
                 "orders": [dict(r) for r in self.store.rows("SELECT * FROM orders")],
                 "fills": [dict(r) for r in self.store.rows("SELECT * FROM fills")],

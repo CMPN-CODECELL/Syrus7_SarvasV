@@ -10,11 +10,11 @@ Risk & Reliability; canonical responsibilities: ../TEAM_OWNERSHIP.md, Member 3.
 - Last updated: 2026-10-07 16:25 Asia/Kolkata
 
 ## Completed
+- 2026-10-07: P1 durable validated policies, strategy manual/loss halts, structured decisions and authoritative budgets/API. Added migration 002 for both stores and query indexes. Tests: 36 passed, 1 PostgreSQL skipped; Ruff passed. P0 commit `3b08e29` pushed to main.
 - 2026-10-07 16:25 Asia/Kolkata: P0 durable offline mock, restart/replay, real failure scenarios and dashboard order/candle/account wiring. Tests: 27 passed / 1 PostgreSQL skipped; Ruff passed; live uvicorn health, replay and frontend HTTP 200 verified. No browser automation available yet. Delivered directly to main per user instruction.
 - 2026-10-07 Asia/Kolkata: Serialized directional reservations, rate/loss limits, drift detection, explicit recovery/resume and verified mock kill; PostgreSQL store/migration prepared. Files: backend/risk/gateway.py; backend/reliability/control.py; backend/shared/postgres.py; backend/shared/migrate.py. Tests: initial safety suite 20 passed, including mandatory S1-S7. Result: offline vertical slice functional; live 021 incomplete.
 
 ## In Progress
-- P1 durable validated policies and strategy states; position/rate/loss budgets and race tests.
 - P2 fail-closed persisted kill latch, fresh evidence and complete snapshot reconciliation.
 - P3 bounded convergent kill, cancel/fill races and uncertain calls.
 - P4 deterministic Failure Lab and invariant evidence; P5 query/state simplification.
@@ -24,7 +24,6 @@ Risk & Reliability; canonical responsibilities: ../TEAM_OWNERSHIP.md, Member 3.
 - Neon authentication/linkage and isolated database access required for remote validation.
 
 ## Next
-- Persist validated risk policies and halted strategy state with additive migrations.
 - Track broker/feed evidence age and strict snapshot completeness.
 - Persist kill/recovery latch and certificate; implement bounded convergent kill.
 - Add deterministic race/failure/property tests and safety evidence API/UI.

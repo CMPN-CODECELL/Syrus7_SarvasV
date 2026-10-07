@@ -33,9 +33,20 @@ class Store:
             CREATE TABLE IF NOT EXISTS audit(
                 sequence INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL,
                 payload TEXT NOT NULL);
-            PRAGMA user_version=1;
         """)
+        version = self.db.execute("PRAGMA user_version").fetchone()[0]
+        if version > 2:
+            raise ValueError("SQLite schema is newer than this application")
+        if version < 1:
+            self.db.execute("PRAGMA user_version=1")
         self.db.commit()
+        if version < 2:
+            sql = (
+                Path(__file__).parent / "sqlite_migrations/002_risk_policies.sql"
+            ).read_text(encoding="utf-8")
+            self.db.executescript(
+                "BEGIN IMMEDIATE;\n" + sql + "\nPRAGMA user_version=2;\nCOMMIT;"
+            )
 
     @contextmanager
     def transaction(self):

@@ -23,7 +23,7 @@ def test_environment_precedence_and_local_file(monkeypatch, tmp_path):
 
 def test_additive_migration_constraints_and_checksum():
     items = list(migrations())
-    assert len(items) == 1
+    assert [i[0] for i in items] == ["001_bootstrap.sql", "002_risk_policies.sql"]
     name, checksum, sql = items[0]
     assert name == "001_bootstrap.sql"
     assert checksum == hashlib.sha256(sql.encode()).hexdigest()

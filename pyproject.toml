@@ -23,4 +23,4 @@ target-version = "py311"
 
 
 [tool.setuptools.package-data]
-"backend.shared" = ["migrations/*.sql"]
+"backend.shared" = ["migrations/*.sql", "sqlite_migrations/*.sql"]

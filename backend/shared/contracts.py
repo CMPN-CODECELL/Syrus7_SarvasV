@@ -3,6 +3,30 @@
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
+from math import isfinite
+
+
+class GlobalTradingState(StrEnum):
+    RECOVERING = "RECOVERING"
+    STOPPED = "STOPPED"
+    RUNNING = "RUNNING"
+    REDUCE_ONLY = "REDUCE_ONLY"
+    KILLING = "KILLING"
+    KILLED = "KILLED"
+    UNCERTAIN = "UNCERTAIN"
+
+
+class StrategyState(StrEnum):
+    RUNNING = "RUNNING"
+    HALTED = "HALTED"
+    LOSS_HALTED = "LOSS_HALTED"
+
+
+class ReconciliationState(StrEnum):
+    RECOVERING = "RECOVERING"
+    HEALTHY = "HEALTHY"
+    DEGRADED = "DEGRADED"
+    DRIFTED = "DRIFTED"
 
 
 class Side(StrEnum):
@@ -64,7 +88,20 @@ class OrderIntent:
     reason: str = ""
 
     def __post_init__(self):
-        if self.quantity <= 0 or not self.symbol or not self.intent_id:
+        if (
+            type(self.quantity) is not int
+            or self.quantity <= 0
+            or not all(
+                isinstance(v, str) and v.strip()
+                for v in (
+                    self.symbol,
+                    self.intent_id,
+                    self.strategy_instance_id,
+                    self.account_id,
+                )
+            )
+            or not isfinite(self.created_at)
+        ):
             raise ValueError("positive quantity, symbol and intent ID required")
         if self.order_type != "MARKET" or self.limit_price is not None:
             raise ValueError("bootstrap supports MARKET orders only")
@@ -78,6 +115,10 @@ class RiskDecision:
     allowed: bool
     reason_code: str
     projected_position: int | None = None
+    reason_text: str = ""
+    rule_results: tuple[str, ...] = ()
+    created_at: float = 0
+    reservation_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -123,6 +164,21 @@ class RiskPolicy:
     max_daily_loss: Decimal = Decimal("1000")
     max_position: int = 100
     max_orders_per_minute: int = 10
+
+    def __post_init__(self):
+        if (
+            not isinstance(self.max_daily_loss, Decimal)
+            or not self.max_daily_loss.is_finite()
+            or self.max_daily_loss <= 0
+        ):
+            raise ValueError("max_daily_loss must be a finite positive Decimal")
+        if type(self.max_position) is not int or self.max_position <= 0:
+            raise ValueError("max_position must be a positive integer")
+        if (
+            type(self.max_orders_per_minute) is not int
+            or self.max_orders_per_minute <= 0
+        ):
+            raise ValueError("max_orders_per_minute must be a positive integer")
 
 
 @dataclass(frozen=True)

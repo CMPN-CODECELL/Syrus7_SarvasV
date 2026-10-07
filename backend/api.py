@@ -1,4 +1,5 @@
 import sqlite3
+from decimal import Decimal
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -10,6 +11,7 @@ from backend.platform import Platform
 from backend.shared.config import settings
 from backend.shared.postgres import PostgresStore
 from backend.reliability.failure_lab import FailureLab
+from backend.shared.contracts import RiskPolicy, StrategyState
 
 
 class AccountRequest(BaseModel):
@@ -21,6 +23,16 @@ class SubscriptionRequest(BaseModel):
     strategy_instance_id: str
     kind: str
     symbol: str
+
+
+class PolicyRequest(BaseModel):
+    max_daily_loss: Decimal
+    max_position: int
+    max_orders_per_minute: int
+
+
+class StrategyStateRequest(BaseModel):
+    state: StrategyState
 
 
 def create_app(platform=None):
@@ -81,6 +93,23 @@ def create_app(platform=None):
     @app.post("/api/demo")
     def demo():
         return engine.demo()
+
+    @app.put("/api/risk/policies/{strategy}")
+    def policy(strategy: str, body: PolicyRequest):
+        engine.risk.policies[strategy] = RiskPolicy(**body.model_dump())
+        return engine.risk.policies[strategy]
+
+    @app.put("/api/risk/strategies/{strategy}")
+    def strategy_control(strategy: str, body: StrategyStateRequest):
+        engine.risk.set_strategy_state(strategy, body.state)
+        return {
+            "strategy_instance_id": strategy,
+            "state": engine.risk.strategy_state(strategy),
+        }
+
+    @app.get("/api/risk/budgets")
+    def budgets():
+        return engine.snapshot()["risk_budgets"]
 
     @app.post("/api/failure-lab/{scenario}")
     def failure_lab(scenario: str):
