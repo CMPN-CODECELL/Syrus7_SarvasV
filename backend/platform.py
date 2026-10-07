@@ -79,6 +79,9 @@ class Platform:
                 self.reliability.fail_closed("FILL_EVENT_REJECTED")
                 raise
 
+    def cancel(self, order_id, timeout=None):
+        return self.orders.cancel(order_id, timeout=timeout)
+
     def tick(self, tick, *, replay=False):
         if replay:
             self.require_offline_demo()

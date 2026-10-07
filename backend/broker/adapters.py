@@ -101,9 +101,11 @@ class MockBrokerAdapter:
         self.persist()
         return fill
 
-    def cancel(self, order_id):
+    def cancel(self, order_id, timeout=None):
         self._check()
-        order = self.orders[order_id]
+        order = self.orders.get(order_id)
+        if order is None:
+            raise ValueError(f"order {order_id} not found at broker")
         if order.status not in TERMINAL:
             self.orders[order_id] = replace(order, status=OrderStatus.CANCELLED)
             self.persist()

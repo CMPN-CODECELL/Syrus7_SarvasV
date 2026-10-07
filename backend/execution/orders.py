@@ -1,4 +1,4 @@
-from backend.shared.contracts import OrderStatus
+from backend.shared.contracts import CanonicalOrder, OrderIntent, OrderStatus, Side
 
 
 class SubmissionBlocked(ValueError):
@@ -401,3 +401,128 @@ class OrderManager:
                     },
                 )
             return target
+
+    def _row_to_canonical(self, row) -> CanonicalOrder:
+        intent = OrderIntent(
+            intent_id=row["id"],
+            strategy_instance_id=row["strategy"],
+            account_id=row["account"],
+            symbol=row["symbol"],
+            side=Side(row["side"]),
+            quantity=row["quantity"],
+            created_at=row["created"],
+        )
+        return CanonicalOrder(
+            order_id=row["id"],
+            intent=intent,
+            status=OrderStatus(row["status"]),
+            filled_quantity=row["filled"],
+        )
+
+    def cancel(self, order_id: str, timeout: float | None = None) -> CanonicalOrder:
+        """Cancel an open or partially filled order with broker confirmation and state validation."""
+        with self.store.lock:
+            rows = self.store.rows("SELECT * FROM orders WHERE id=?", (order_id,))
+            if not rows:
+                raise ValueError(f"order {order_id} not found")
+            row = rows[0]
+            current_status = OrderStatus(row["status"])
+            filled = row["filled"]
+            quantity = row["quantity"]
+
+            # Terminal states cannot be cancelled
+            if current_status in {
+                OrderStatus.FILLED,
+                OrderStatus.REJECTED,
+                OrderStatus.CANCELLED,
+            }:
+                return self._row_to_canonical(row)
+
+            # Undispatched reservation: reject locally without calling broker
+            if current_status == OrderStatus.RESERVED:
+                self.transition_status(order_id, OrderStatus.REJECTED)
+                updated_row = self.store.rows(
+                    "SELECT * FROM orders WHERE id=?", (order_id,)
+                )[0]
+                return self._row_to_canonical(updated_row)
+
+            # UNKNOWN state is uncertain; cannot assume broker state
+            if current_status == OrderStatus.UNKNOWN:
+                raise ValueError(
+                    f"order {order_id} is in UNKNOWN state; reconciliation required before cancellation"
+                )
+
+            # Order is OPEN or PARTIALLY_FILLED
+            self.store.audit(
+                "ORDER_CANCEL_REQUESTED",
+                {
+                    "order_id": order_id,
+                    "status": current_status.value,
+                    "filled": filled,
+                    "remaining": quantity - filled,
+                },
+            )
+
+        # Call broker adapter outside store lock using bounded mechanism
+        try:
+            if hasattr(self.broker, "start") and hasattr(self.broker, "wait"):
+                call = self.broker.start("cancel", order_id)
+                self.broker.wait(call, timeout=timeout)
+            elif hasattr(self.broker, "cancel"):
+                try:
+                    self.broker.cancel(order_id, timeout=timeout)
+                except TypeError:
+                    self.broker.cancel(order_id)
+            else:
+                raise ValueError("broker does not support cancellation")
+        except Exception:
+            with self.store.transaction():
+                self.store.audit("ORDER_CANCEL_FAILED", {"order_id": order_id})
+            raise
+
+        # Verify broker state if accessible
+        adapter = getattr(self.broker, "adapter", self.broker)
+        broker_orders = getattr(adapter, "orders", None)
+        if isinstance(broker_orders, dict) and order_id in broker_orders:
+            bo = broker_orders[order_id]
+            if bo.status not in {OrderStatus.CANCELLED, OrderStatus.FILLED}:
+                with self.store.transaction():
+                    self.store.audit(
+                        "ORDER_CANCEL_FAILED",
+                        {
+                            "order_id": order_id,
+                            "reason": "UNCONFIRMED_BROKER_STATUS",
+                            "broker_status": bo.status.value,
+                        },
+                    )
+                raise RuntimeError(
+                    f"broker order {order_id} status is {bo.status.value}, cancellation not confirmed"
+                )
+
+        # Confirm cancellation and update local state
+        with self.store.lock:
+            fresh_rows = self.store.rows("SELECT * FROM orders WHERE id=?", (order_id,))
+            fresh = fresh_rows[0]
+            fresh_status = OrderStatus(fresh["status"])
+            fresh_filled = fresh["filled"]
+
+            # If order was filled by a racing fill while cancel was in flight, do not regress FILLED
+            if fresh_status == OrderStatus.FILLED:
+                return self._row_to_canonical(fresh)
+
+            self.transition_status(order_id, OrderStatus.CANCELLED)
+
+            with self.store.transaction():
+                self.store.audit(
+                    "ORDER_CANCELLED",
+                    {
+                        "order_id": order_id,
+                        "previous_status": fresh_status.value,
+                        "filled": fresh_filled,
+                        "cancelled_quantity": fresh["quantity"] - fresh_filled,
+                    },
+                )
+            final_row = self.store.rows("SELECT * FROM orders WHERE id=?", (order_id,))[
+                0
+            ]
+            return self._row_to_canonical(final_row)

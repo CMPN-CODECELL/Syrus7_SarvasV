@@ -125,6 +125,15 @@ def create_app(platform=None):
     def orders(limit: int = Query(200, ge=1, le=500), offset: int = Query(0, ge=0)):
         return engine.history("orders", limit, offset)
 
+    @app.post("/api/orders/{order_id}/cancel")
+    def cancel_order(order_id: str):
+        try:
+            return financial_json(engine.cancel(order_id))
+        except ValueError as exc:
+            if "not found" in str(exc):
+                raise HTTPException(404, str(exc)) from None
+            raise HTTPException(400, str(exc)) from None
+
     @app.post("/api/accounts", status_code=201)
     def account(body: AccountRequest):
         try:
