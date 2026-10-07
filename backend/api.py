@@ -148,6 +148,7 @@ def create_app(platform=None):
             yield
         finally:
             if platform is None:
+                engine.stop_replay_stream()
                 if broker is not None:
                     broker.close()
                 engine.store.close()
@@ -395,7 +396,9 @@ def create_app(platform=None):
         # bypass an actual drift/uncertainty result.
         if engine.risk.state == "RECOVERING" and not engine.reliability.reconcile():
             raise HTTPException(409, "reconciliation required")
-        return financial_json(engine.demo())
+        state = engine.demo()
+        engine.start_replay_stream()
+        return financial_json(state)
 
     @app.put("/api/risk/policies/{strategy}")
     def policy(strategy: str, body: PolicyRequest):

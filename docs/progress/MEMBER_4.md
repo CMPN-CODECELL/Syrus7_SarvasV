@@ -33,6 +33,10 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
   (`/api/stream/ws`) and reconnecting polling fallback. The existing SSE endpoint is
   retained for compatibility; browser state now receives backend snapshots over a
   persistent connection. Added WebSocket endpoint coverage.
+- 2026-10-07: Added explicit-action continuous local replay for the HTTP mock broker.
+  After Run replay, synthetic ticks continue through the normal strategy/risk/order
+  path and stop on kill or process shutdown; no live/021 source is implied. Added
+  stream continuation coverage.
 
 ## In Progress
 - No further 021 implementation is safe without an authoritative tick/reconnect/backfill contract. Existing adapter remains intentionally unavailable.

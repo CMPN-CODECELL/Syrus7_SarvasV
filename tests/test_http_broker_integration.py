@@ -1,4 +1,5 @@
 from decimal import Decimal
+import time
 
 from fastapi.testclient import TestClient
 import pytest
@@ -282,6 +283,20 @@ def test_http_broker_replay_executes_fills_and_reconciles():
         assert state["safety"]["position_comparison"]["status"] == "VERIFIED"
         assert any(fill["strategy"] == "configured-momentum" for fill in state["fills"])
     finally:
+        adapter.close()
+
+
+def test_http_broker_replay_stream_continues_after_explicit_start():
+    app = create_mock_broker_app()
+    client = TestClient(app)
+    adapter = HTTPMockBrokerAdapter(client=client)
+    platform = Platform(path=":memory:", broker=adapter, demo_enabled=True)
+    try:
+        assert platform.start_replay_stream(interval=0.01)
+        time.sleep(0.08)
+        assert platform.snapshot()["market_data"]["accepted_ticks"] > 0
+    finally:
+        platform.stop_replay_stream()
         adapter.close()
 
 
