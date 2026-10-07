@@ -576,3 +576,16 @@ def test_telemetry_stream_endpoint():
                 assert "market_session" in payload
     finally:
         platform.store.close()
+
+
+def test_websocket_stream_pushes_backend_snapshot():
+    platform = Platform()
+    try:
+        with TestClient(create_app(platform)) as client:
+            with client.websocket_connect("/api/stream/ws") as websocket:
+                payload = websocket.receive_json()
+                assert payload["mode"] == "MOCK / REPLAY"
+                assert "counts" in payload
+                assert "market_data" in payload
+    finally:
+        platform.store.close()

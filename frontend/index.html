@@ -1300,23 +1300,38 @@
         submitForm(event, "/api/subscriptions"),
       );
       function setupTelemetryStream() {
-        if (!window.EventSource) return;
+        if (!window.WebSocket) return;
+        let fallbackTimer;
+        const fallback = () => {
+          if (!fallbackTimer) fallbackTimer = setInterval(refresh, 5000);
+          $("connection").textContent = "Polling fallback";
+        };
         try {
-          const sse = new EventSource("/api/stream/telemetry");
-          const onData = (event) => {
+          const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+          const socket = new WebSocket(`${protocol}://${window.location.host}/api/stream/ws`);
+          socket.onopen = () => {
+            if (fallbackTimer) {
+              clearInterval(fallbackTimer);
+              fallbackTimer = undefined;
+            }
+            $("connection").textContent = "Live WebSocket";
+            $("connection-dot").className = "connection-dot ok";
+          };
+          socket.onmessage = (event) => {
             try {
-              const data = JSON.parse(event.data);
-              render(data);
-              $("connection").textContent = "Live Stream";
+              render(JSON.parse(event.data));
+              $("connection").textContent = "Live WebSocket";
               $("connection-dot").className = "connection-dot ok";
             } catch (_) {}
           };
-          sse.addEventListener("snapshot", onData);
-          sse.addEventListener("telemetry", onData);
-          sse.onerror = () => {
-            $("connection").textContent = "Polling";
+          socket.onerror = fallback;
+          socket.onclose = () => {
+            fallback();
+            window.setTimeout(setupTelemetryStream, 3000);
           };
-        } catch (_) {}
+        } catch (_) {
+          fallback();
+        }
       }
       async function initAuthWidget() {
         try {
@@ -1344,7 +1359,6 @@
       async function initialize() {
         await initAuthWidget();
         await refresh();
-        setInterval(refresh, 2000);
         setupTelemetryStream();
       }
       initialize();

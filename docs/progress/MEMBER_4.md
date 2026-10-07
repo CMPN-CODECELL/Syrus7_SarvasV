@@ -29,6 +29,10 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
   `HTTPMockBrokerAdapter` from `MOCK_BROKER_URL`, permits replay with PostgreSQL only
   for loopback mock URLs, and auto-executes simulated fills through the same broker
   boundary. Added an end-to-end HTTP replay test; full suite: 219 passed / 1 skipped.
+- 2026-10-07: Replaced dashboard telemetry polling with a WebSocket snapshot stream
+  (`/api/stream/ws`) and reconnecting polling fallback. The existing SSE endpoint is
+  retained for compatibility; browser state now receives backend snapshots over a
+  persistent connection. Added WebSocket endpoint coverage.
 
 ## In Progress
 - No further 021 implementation is safe without an authoritative tick/reconnect/backfill contract. Existing adapter remains intentionally unavailable.

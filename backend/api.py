@@ -6,7 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response, WebSocket
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import (
     FileResponse,
@@ -16,6 +16,7 @@ from fastapi.responses import (
 )
 from pydantic import BaseModel, ConfigDict, StrictInt, field_validator
 from psycopg.errors import UniqueViolation
+from starlette.websockets import WebSocketDisconnect
 
 from backend.platform import Platform
 from backend.broker.http_adapter import HTTPMockBrokerAdapter
@@ -293,6 +294,20 @@ def create_app(platform=None):
                 "X-Accel-Buffering": "no",
             },
         )
+
+    @app.websocket("/api/stream/ws")
+    async def stream_websocket(websocket: WebSocket):
+        """Push backend snapshots over a persistent browser connection."""
+        await websocket.accept()
+        try:
+            while True:
+                snapshot = engine.snapshot()
+                await websocket.send_json(
+                    jsonable_encoder(snapshot, custom_encoder={Decimal: str})
+                )
+                await asyncio.sleep(1.0)
+        except WebSocketDisconnect:
+            return
 
     @app.get("/api/fills")
     def fills(limit: int = Query(200, ge=1, le=500), offset: int = Query(0, ge=0)):

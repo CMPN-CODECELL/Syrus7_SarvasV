@@ -59,3 +59,6 @@ Neon CLI 8.0.11 installed. Requested project/branch not yet authenticated/linked
 - 2026-10-07 16:03 Asia/Kolkata: commits `55beeb2` and `8dc8e34` pushed to `origin/bootstrap/safety-vertical-slice` before further Neon setup, as requested.
 - Neon CLI 8.0.11 login launched browser and is awaiting user authentication. Link to requested production branch, skills/MCP setup, remote schema inspection/migration, connectivity and deploy are paused. No remote schema changes or production seed performed.
 - Action needed: complete browser sign-in, then continue the requested Neon workflow. PostgreSQL implementation is locally tested only; isolated integration remains skipped.
+- Dashboard telemetry now uses a persistent WebSocket snapshot stream with a bounded
+  polling fallback. The transport reports backend changes but does not invent market
+  activity when no ticks or fills are arriving.
