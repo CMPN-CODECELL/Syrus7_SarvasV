@@ -1,6 +1,6 @@
+import json
 from collections import deque
 from decimal import Decimal
-import json
 
 from backend.shared.contracts import OrderIntent, Side
 
