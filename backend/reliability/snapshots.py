@@ -27,6 +27,8 @@ def verify_snapshot(store, snapshot, now, max_age=5):
         if row is None:
             raise SnapshotError("UNKNOWN_BROKER_ORDER")
         i = order.intent
+        if order.status not in set(OrderStatus):
+            raise SnapshotError("INVALID_BROKER_STATUS")
         if (
             row["strategy"],
             row["account"],

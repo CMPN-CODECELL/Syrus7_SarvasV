@@ -210,13 +210,56 @@ class Reliability:
     def evidence(self):
         now = self.clock()
         marks = self.store.rows("SELECT * FROM risk_marks")
+        broker_fresh = (
+            self.last_broker_at is not None
+            and -1 <= now - self.last_broker_at <= self.max_broker_age
+        )
+        virtual = self.ledger.aggregate()
+        observed = {
+            (r["account_id"], r["symbol"]): r["quantity"]
+            for r in self.report.get("broker_positions", [])
+        }
+        trusted = (
+            self.report.get("verified", False)
+            and broker_fresh
+            and not self.broker.unsettled
+        )
         return {
+            "position_comparison": {
+                "status": "VERIFIED"
+                if trusted and virtual == observed
+                else "FAILED"
+                if trusted
+                else "UNKNOWN",
+                "virtual": [
+                    {"account_id": a, "symbol": s, "quantity": q}
+                    for (a, s), q in virtual.items()
+                ],
+                "broker": self.report.get("broker_positions"),
+            },
+            "fills": {
+                "unique_applied": self.store.rows("SELECT COUNT(*) AS n FROM fills")[0][
+                    "n"
+                ],
+                "duplicates_ignored": self.store.rows(
+                    "SELECT COUNT(*) AS n FROM audit WHERE type='DUPLICATE_FILL_IGNORED'"
+                )[0]["n"],
+                "rejected_events": self.store.rows(
+                    "SELECT COUNT(*) AS n FROM audit WHERE type='SAFETY_RESTRICTED' AND payload LIKE '%FILL_EVENT_REJECTED%'"
+                )[0]["n"],
+                "unattributed_in_last_verified_snapshot": self.report.get(
+                    "unattributed_fills"
+                )
+                if trusted
+                else None,
+            },
             "reconciliation": self.report,
             "kill_latched": self.kill_latched,
             "broker": {
+                "call_unsettled": self.broker.unsettled,
+                "requires_reconciliation": self.broker.uncertain,
                 "last_verified_at": self.last_broker_at,
-                "fresh": self.last_broker_at is not None
-                and -1 <= now - self.last_broker_at <= self.max_broker_age,
+                "fresh": broker_fresh,
             },
             "feeds": [
                 {

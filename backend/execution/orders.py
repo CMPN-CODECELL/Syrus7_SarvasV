@@ -96,6 +96,8 @@ class OrderManager:
             if not prior and o["filled"] + fill.quantity > o["quantity"]:
                 raise ValueError("overfill")
             applied = self.ledger.apply(fill)
+            if not applied:
+                self.store.audit("DUPLICATE_FILL_IGNORED", {"fill_id": fill.fill_id})
             if applied:
                 filled = o["filled"] + fill.quantity
                 status = (
