@@ -12,6 +12,14 @@ from backend.shared.store import Store
 from backend.strategies.runtime import StrategyRuntime
 
 
+def _contract_dict(value):
+    """Serialize dataclass fields without converting exact decimals to floats."""
+    return {
+        key: str(field) if isinstance(field, Decimal) else field
+        for key, field in asdict(value).items()
+    }
+
+
 class Platform:
     def __init__(
         self,
@@ -137,12 +145,12 @@ class Platform:
                     for r in self.store.rows("SELECT * FROM subscriptions")
                 ],
                 "positions": [
-                    asdict(p) | {"account_id": a}
+                    _contract_dict(p) | {"account_id": a}
                     for (a, _, _), p in self.ledger.positions().items()
                 ],
                 "orders": [dict(r) for r in self.store.rows("SELECT * FROM orders")],
                 "fills": [dict(r) for r in self.store.rows("SELECT * FROM fills")],
-                "candles": [asdict(c) for c in self.closed_candles[-20:]],
+                "candles": [_contract_dict(c) for c in self.closed_candles[-20:]],
                 "signals": list(self.strategies.signals),
                 "strategy_errors": list(self.strategies.errors),
                 "market_data": self.candles.stats(),

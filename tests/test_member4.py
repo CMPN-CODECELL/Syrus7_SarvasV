@@ -219,3 +219,32 @@ def test_demo_is_forbidden_when_persistent_mode_disables_it():
         assert response.status_code == 403
         assert not platform.store.rows("SELECT id FROM accounts")
     platform.store.close()
+
+
+def test_api_preserves_money_and_prices_as_decimal_strings():
+    platform = Platform()
+    with TestClient(create_app(platform)) as client:
+        response = client.post("/api/demo")
+        assert response.status_code == 200
+        state = response.json()
+
+        assert state["positions"]
+        for position in state["positions"]:
+            for field in (
+                "average_price",
+                "realized_pnl",
+                "unrealized_pnl",
+                "charges",
+                "net_pnl",
+            ):
+                assert isinstance(position[field], str)
+
+        assert state["candles"]
+        for candle in state["candles"]:
+            for field in ("open", "high", "low", "close"):
+                assert isinstance(candle[field], str)
+
+        for fill in state["fills"]:
+            assert isinstance(fill["price"], str)
+            assert isinstance(fill["charges"], str)
+    platform.store.close()
