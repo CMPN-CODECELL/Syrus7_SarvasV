@@ -1,0 +1,142 @@
+"""Canonical domain contracts. Money is Decimal; timestamps are UTC epoch seconds."""
+
+from dataclasses import dataclass
+from decimal import Decimal
+from enum import StrEnum
+
+
+class Side(StrEnum):
+    BUY = "BUY"
+    SELL = "SELL"
+
+    @property
+    def sign(self):
+        return 1 if self == Side.BUY else -1
+
+
+class OrderStatus(StrEnum):
+    RESERVED = "RESERVED"
+    OPEN = "OPEN"
+    PARTIALLY_FILLED = "PARTIALLY_FILLED"
+    FILLED = "FILLED"
+    CANCELLED = "CANCELLED"
+    REJECTED = "REJECTED"
+    UNKNOWN = "UNKNOWN"
+
+
+TERMINAL = {OrderStatus.FILLED, OrderStatus.CANCELLED, OrderStatus.REJECTED}
+
+
+@dataclass(frozen=True)
+class Tick:
+    symbol: str
+    event_timestamp: int
+    price: Decimal
+    quantity: int
+    event_id: str
+
+
+@dataclass(frozen=True)
+class Candle:
+    symbol: str
+    interval: int
+    start_time: int
+    end_time: int
+    open: Decimal
+    high: Decimal
+    low: Decimal
+    close: Decimal
+    volume: int
+    is_closed: bool = True
+
+
+@dataclass(frozen=True)
+class OrderIntent:
+    intent_id: str
+    strategy_instance_id: str
+    account_id: str
+    symbol: str
+    side: Side
+    quantity: int
+    created_at: float
+    order_type: str = "MARKET"
+    limit_price: Decimal | None = None
+    reason: str = ""
+
+    def __post_init__(self):
+        if self.quantity <= 0 or not self.symbol or not self.intent_id:
+            raise ValueError("positive quantity, symbol and intent ID required")
+        if self.order_type != "MARKET" or self.limit_price is not None:
+            raise ValueError("bootstrap supports MARKET orders only")
+        if not isinstance(self.side, Side):
+            raise ValueError("side must be canonical Side")
+
+
+@dataclass(frozen=True)
+class RiskDecision:
+    intent_id: str
+    allowed: bool
+    reason_code: str
+    projected_position: int | None = None
+
+
+@dataclass(frozen=True)
+class CanonicalOrder:
+    order_id: str
+    intent: OrderIntent
+    status: OrderStatus
+    filled_quantity: int = 0
+
+    @property
+    def remaining_quantity(self):
+        return self.intent.quantity - self.filled_quantity
+
+
+@dataclass(frozen=True)
+class Fill:
+    fill_id: str
+    broker_order_id: str
+    strategy_instance_id: str
+    account_id: str
+    symbol: str
+    side: Side
+    quantity: int
+    price: Decimal
+    timestamp: float
+    charges: Decimal = Decimal("0")
+
+
+@dataclass(frozen=True)
+class StrategyPosition:
+    strategy_instance_id: str
+    symbol: str
+    net_quantity: int
+    average_price: Decimal
+    realized_pnl: Decimal
+    unrealized_pnl: Decimal
+    charges: Decimal
+    net_pnl: Decimal
+
+
+@dataclass(frozen=True)
+class RiskPolicy:
+    max_daily_loss: Decimal = Decimal("1000")
+    max_position: int = 100
+    max_orders_per_minute: int = 10
+
+
+@dataclass(frozen=True)
+class BrokerSnapshot:
+    orders: tuple[CanonicalOrder, ...]
+    fills: tuple[Fill, ...]
+    positions: dict[tuple[str, str], int]
+
+
+@dataclass(frozen=True)
+class KillCertificate:
+    status: str
+    elapsed_seconds: float
+    open_orders: int
+    broker_positions: dict[str, int]
+    virtual_positions_flat: bool
+    reason: str
