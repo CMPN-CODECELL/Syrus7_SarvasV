@@ -104,6 +104,14 @@ class BrokerSession:
             return self.adapter.drain_updates()
         return []
 
+    def disconnect(self):
+        if hasattr(self.adapter, "disconnect"):
+            self.adapter.disconnect()
+
+    def reconnect(self):
+        if hasattr(self.adapter, "reconnect"):
+            self.adapter.reconnect()
+
 
 class Deadline:
     def __init__(self, seconds, clock=time.monotonic):

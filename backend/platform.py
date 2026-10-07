@@ -104,6 +104,30 @@ class Platform:
             results.append(self.process_broker_update(upd))
         return results
 
+    def disconnect_broker(self):
+        """Simulate broker loss of connectivity and fail closed."""
+        adapter = getattr(self.broker_calls, "adapter", self.broker)
+        if hasattr(adapter, "disconnect"):
+            adapter.disconnect()
+        with self.store.transaction():
+            self.store.audit("BROKER_DISCONNECTED", {})
+        self.reliability.fail_closed("BROKER_DISCONNECTED")
+        return {"connected": False, "state": self.snapshot()}
+
+    def reconnect_broker(self, *, timeout=None):
+        """Restore broker connectivity and reconcile local state with broker truth."""
+        adapter = getattr(self.broker_calls, "adapter", self.broker)
+        if hasattr(adapter, "reconnect"):
+            adapter.reconnect()
+        with self.store.transaction():
+            self.store.audit("BROKER_RECONNECTED", {})
+        reconciled = self.reliability.reconcile(timeout=timeout)
+        return {
+            "connected": getattr(adapter, "connected", True),
+            "reconciled": reconciled,
+            "state": self.snapshot(),
+        }
+
     def tick(self, tick, *, replay=False):
         if replay:
             self.require_offline_demo()

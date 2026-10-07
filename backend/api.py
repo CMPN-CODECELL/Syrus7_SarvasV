@@ -139,6 +139,14 @@ def create_app(platform=None):
         results = engine.sync_broker_updates()
         return financial_json({"processed": len(results), "updates": results})
 
+    @app.post("/api/broker/disconnect")
+    def disconnect_broker():
+        return financial_json(engine.disconnect_broker())
+
+    @app.post("/api/broker/reconnect")
+    def reconnect_broker():
+        return financial_json(engine.reconnect_broker())
+
     @app.post("/api/accounts", status_code=201)
     def account(body: AccountRequest):
         try:

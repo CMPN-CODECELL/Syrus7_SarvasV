@@ -4,12 +4,31 @@
 Broker & Order Execution; canonical responsibilities: ../TEAM_OWNERSHIP.md, Member 2.
 
 ## Current Status
-- Phase: Member 2 Task 3 Complete — Lightweight Broker Update/Event Flow
-- Current task: Task 3 complete; ready for Task 4 (021 adapter contract readiness & execution viva prep)
+- Phase: Member 2 Task 4 Complete — Prototype Broker Disconnect & Recovery Flow
+- Current task: Task 4 complete; ready for Task 5 (Sponsor 021 contract readiness / live change request prep)
 - Status: READY_FOR_NEXT_TASK
-- Last updated: 2026-10-07 19:42 Asia/Kolkata
+- Last updated: 2026-10-07 20:00 Asia/Kolkata
 
 ## Completed
+- 2026-10-07: Member 2 Task 4 — Prototype Broker Disconnect & Recovery Flow.
+  - Added explicit connection lifecycle methods: `disconnect()` and `reconnect()` on [`MockBrokerAdapter`](file:///C:/Users/dyara/AlgoShield/backend/broker/adapters.py#L25) and delegated through [`BrokerSession`](file:///C:/Users/dyara/AlgoShield/backend/reliability/broker_calls.py#L31).
+  - Added [`Platform.disconnect_broker()`](file:///C:/Users/dyara/AlgoShield/backend/platform.py#L107):
+    - Disconnects broker adapter.
+    - Emits `BROKER_DISCONNECTED` audit.
+    - Calls `Reliability.fail_closed("BROKER_DISCONNECTED")` to transition platform risk gate to `UNCERTAIN` and stop strategy execution.
+    - While disconnected, all broker operations fail safely (`ConnectionError` / `BrokerCallError`).
+  - Added [`Platform.reconnect_broker()`](file:///C:/Users/dyara/AlgoShield/backend/platform.py#L117):
+    - Reconnects broker adapter.
+    - Emits `BROKER_RECONNECTED` audit.
+    - Reuses Member 3's authoritative `Reliability.reconcile()` to obtain complete broker snapshot, resolve missing fills via `OrderManager.ingest()`, repair order statuses, and verify position alignment.
+    - Preserves explicit resume policy: platform transitions to `STOPPED` (or `KILLED` if latched), never automatically to `RUNNING`.
+    - Returns structured recovery evidence: `{"connected": True, "reconciled": bool, "state": Platform.snapshot()}`.
+  - API endpoints added: `POST /api/broker/disconnect` and `POST /api/broker/reconnect`.
+  - Failure Lab integration: added `"disconnect_recovery"` scenario to [`FailureLab`](file:///C:/Users/dyara/AlgoShield/backend/reliability/failure_lab.py#L23) demonstrating order placement $\to$ disconnect $\to$ broker execution $\to$ reconnect $\to$ reconciliation $\to$ state repair.
+  - Audit telemetry: `BROKER_DISCONNECTED`, `BROKER_RECONNECTED`, `SAFETY_RESTRICTED`, `RECONCILED`.
+  - Files changed: `backend/broker/adapters.py`, `backend/reliability/broker_calls.py`, `backend/platform.py`, `backend/reliability/failure_lab.py`, `backend/api.py`.
+  - Tests added: `tests/test_disconnect_recovery.py` (8 focused tests covering disconnect failure, reconnect snapshot, missed fill recovery, no automatic resume, UNKNOWN recovery, incomplete snapshot fail-closed, API routes, and Failure Lab scenario).
+  - Validation: 135 passed, 1 skipped in pytest; Ruff check and format clean.
 - 2026-10-07: Member 2 Task 3 — Lightweight Broker Update/Event Flow.
   - Added canonical broker update model: [`BrokerUpdateType`](file:///C:/Users/dyara/AlgoShield/backend/shared/contracts.py) (`ORDER_ACCEPTED`, `ORDER_REJECTED`, `ORDER_CANCELLED`, `ORDER_STATUS`, `FILL`) and [`BrokerUpdate`](file:///C:/Users/dyara/AlgoShield/backend/shared/contracts.py) dataclass.
   - Extended [`MockBrokerAdapter`](file:///C:/Users/dyara/AlgoShield/backend/broker/adapters.py) with deterministic in-memory update queue: automatically records updates on `submit`, `execute`, and `cancel`, and exposes `drain_updates()` and `emit_update()`.
@@ -58,7 +77,7 @@ Broker & Order Execution; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 - 2026-10-07 Asia/Kolkata: Mock accept/reject/partial fills/cancel, attribution checks, durable order reservations and UNKNOWN timeout recovery. Files: backend/broker/adapters.py; backend/execution/orders.py. Tests: initial safety suite 20 passed, including mandatory S1-S7. Result: offline vertical slice functional; live 021 incomplete.
 
 ## In Progress
-- Member 2 Task 4 — Sponsor 021 contract readiness and execution viva prep.
+- Member 2 Task 5 — Sponsor 021 contract readiness and live change request prep.
 
 ## Blockers / Dependencies
 - Official 021 contract/credentials and sponsor session/charges/kill semantics.

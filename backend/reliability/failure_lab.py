@@ -20,6 +20,7 @@ SCENARIOS = {
     "clear_drift",
     "kill_partial",
     "broker_update",
+    "disconnect_recovery",
 }
 
 
@@ -34,11 +35,11 @@ class FailureLab:
             raise ValueError("unknown failure scenario")
         decisions, evidence = [], {}
         if scenario == "disconnect":
-            p.broker.connected = False
+            p.disconnect_broker()
             p.reliability.reconcile()
         elif scenario == "reconnect":
-            p.broker.connected = True
-            p.reliability.reconcile()
+            p.reconnect_broker()
+
         elif scenario == "clear_drift":
             p.broker.external_positions.pop(("failure-lab", "INJECTED"), None)
             p.broker.persist()
@@ -139,6 +140,38 @@ class FailureLab:
                 evidence["executed_quantity"] = p.ledger.quantity(
                     "failure-lab", strategy, "LAB"
                 )
+            elif scenario == "disconnect_recovery":
+                i = submit("disc-rec", 100)
+                evidence["before_disconnect"] = {
+                    "order_id": i.intent_id,
+                    "status": "OPEN",
+                    "filled": 0,
+                }
+                p.disconnect_broker()
+                evidence["during_disconnect"] = {
+                    "connected": False,
+                    "platform_state": p.risk.state.value,
+                }
+                adapter = getattr(p.broker_calls, "adapter", p.broker)
+                adapter.connected = True
+                adapter.execute(i.intent_id, 40, Decimal("100"), p.clock())
+                adapter.connected = False
+                evidence["broker_truth"] = {
+                    "order_id": i.intent_id,
+                    "status": "PARTIALLY_FILLED",
+                    "filled": 40,
+                }
+                rec = p.reconnect_broker()
+                evidence["reconciliation_result"] = rec["reconciled"]
+                row = p.store.rows("SELECT * FROM orders WHERE id=?", (i.intent_id,))[0]
+                evidence["after_reconciliation"] = {
+                    "order_id": i.intent_id,
+                    "status": row["status"],
+                    "filled": row["filled"],
+                }
+                evidence["recovered_fill_quantity"] = row["filled"]
+                evidence["position"] = p.ledger.quantity("failure-lab", strategy, "LAB")
+
             if scenario in {
                 "partial",
                 "rejection",

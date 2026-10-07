@@ -21,6 +21,8 @@ class BrokerAdapter(Protocol):
     def cancel(self, order_id: str) -> None: ...
     def snapshot(self) -> BrokerSnapshot: ...
     def drain_updates(self) -> list[BrokerUpdate]: ...
+    def disconnect(self) -> None: ...
+    def reconnect(self) -> None: ...
 
 
 class MockBrokerAdapter:
@@ -35,6 +37,12 @@ class MockBrokerAdapter:
         self.reject_next = False
         self.timeout_after_accept = False
         self.updates: list[BrokerUpdate] = []
+
+    def disconnect(self):
+        self.connected = False
+
+    def reconnect(self):
+        self.connected = True
 
     def _check(self):
         if not self.connected:
