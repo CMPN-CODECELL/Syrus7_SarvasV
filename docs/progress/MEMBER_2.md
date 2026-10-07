@@ -4,12 +4,35 @@
 Broker & Order Execution; canonical responsibilities: ../TEAM_OWNERSHIP.md, Member 2.
 
 ## Current Status
-- Phase: Member 2 Task 5 Complete — Final Offline Broker Contract & Prototype Finalization
-- Current task: Task 5 complete; offline prototype responsibilities finalized
+- Phase: Mock Broker HTTP API Complete (External Prototype Broker Simulator)
+- Current task: Mock Broker HTTP API complete; offline prototype boundary verified
 - Status: OFFLINE_PROTO_COMPLETE
-- Last updated: 2026-10-07 20:35 Asia/Kolkata
+- Last updated: 2026-10-07 20:46 Asia/Kolkata
 
 ## Completed
+- 2026-10-07: Member 2 — Standalone Mock Broker HTTP API.
+  - Built independent mock broker HTTP service in `backend/broker/mock_api.py` with `create_mock_broker_app()` and runnable `app` factory.
+  - Reused `MockBrokerAdapter` as external state engine; decoupled from AlgoShield's internal control-plane API (`backend/api.py`).
+  - Added core broker endpoints:
+    - `GET /health`: reports service status and connectivity (never fails closed).
+    - `POST /orders`: accepts canonical `OrderIntent` attributes, returns `201 Created` with canonical order evidence.
+    - `GET /orders` & `GET /orders/{order_id}`: order retrieval with 404 for unknown orders.
+    - `POST /orders/{order_id}/fills`: executes partial/complete fills, validates quantities/prices, returns `201 Created` with `Fill` evidence.
+    - `GET /fills` & `GET /orders/{order_id}/fills`: retrieve executed fill history.
+    - `POST /orders/{order_id}/cancel`: cancel open/partially-filled orders safely without erasing previous fills.
+    - `GET /positions`: authoritative mock broker account-level positions.
+    - `GET /snapshot`: authoritative broker snapshot (`orders`, `fills`, `positions`, `is_complete = True`, `observed_at`).
+    - `GET /updates` & `POST /updates/drain`: inspect and atomically drain queued canonical broker updates.
+  - Added controlled failure injection endpoints under `/mock/*`:
+    - `POST /mock/reject-next`: arm next order rejection.
+    - `POST /mock/timeout-after-accept`: simulates ambiguous submission returning `504 Gateway Timeout` while persisting order at broker.
+    - `POST /mock/disconnect` & `POST /mock/reconnect`: disconnect toggle returning `503 Service Unavailable` on operational routes.
+    - `POST /mock/orders/{order_id}/external-fill`: simulates external broker execution while client is disconnected.
+    - `POST /mock/reset`: resets mock orders, fills, positions, updates, flags, and persistence to clean state.
+  - Added `execute_external()` and `reset()` helpers to `MockBrokerAdapter` in `backend/broker/adapters.py`.
+  - Added documentation in `docs/MOCK_BROKER_API.md` with explicit disclaimer that this is an internal prototype simulator, not an imitation of the undocumented 021 API.
+  - Added test suite `tests/test_mock_broker_api.py` (13 tests covering health, orders, fills, positions, cancel, rejection, snapshot, updates, disconnect/reconnect, external fills, timeout-after-accept, reset, and persistence).
+  - Validation: 160 passed, 1 skipped in pytest; Ruff check and format clean.
 - 2026-10-07: Member 2 Task 5 — Final Offline Broker Contract & Prototype Finalization.
   - Defined authoritative Broker Adapter Contract in `docs/CONTRACTS.md` specifying mandatory behavior across submission identity & attribution, rejection, partial/full fills, fill identity, cancellation, broker update ingestion, disconnect/reconnect fail-closed semantics, and snapshot consistency.
   - Implemented explicit behavioral contract test suite `tests/test_broker_adapter_contract.py` (12 focused tests) covering:
@@ -112,4 +135,4 @@ Broker & Order Execution; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 - Member 2 mock/replay broker and execution responsibilities are complete for the offline prototype. Real 021 integration remains blocked on official sponsor API documentation/credentials.
 - Execution state machine, cancellation flow, broker update flow, disconnect/reconnect recovery, and broker adapter contracts are deterministic, authoritative, and fail-closed.
 - Fills remain financial truth; order status is execution evidence.
-- Validation: pytest 147 passed / 1 skipped (isolated PostgreSQL URL); Ruff check + format passed; npm run check passed. No live Neon connectivity/deployment claim.
+- Validation: pytest 160 passed / 1 skipped (isolated PostgreSQL URL); Ruff check + format passed; npm run check passed. No live Neon connectivity/deployment claim.

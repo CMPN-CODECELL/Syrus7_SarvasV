@@ -75,7 +75,7 @@ class MockBrokerAdapter:
             raise TimeoutError("acceptance is ambiguous to caller")
         return order
 
-    def execute(
+    def _execute_internal(
         self,
         order_id,
         quantity,
@@ -84,8 +84,9 @@ class MockBrokerAdapter:
         charges=Decimal(0),
         allow_late=False,
     ):
-        self._check()
-        order = self.orders[order_id]
+        order = self.orders.get(order_id)
+        if order is None:
+            raise ValueError(f"order {order_id} not found at broker")
         if (
             (order.status in {OrderStatus.FILLED, OrderStatus.REJECTED})
             or (order.status == OrderStatus.CANCELLED and not allow_late)
@@ -135,6 +136,55 @@ class MockBrokerAdapter:
             )
         )
         return fill
+
+    def execute(
+        self,
+        order_id,
+        quantity,
+        price,
+        timestamp,
+        charges=Decimal(0),
+        allow_late=False,
+    ):
+        self._check()
+        return self._execute_internal(
+            order_id,
+            quantity,
+            price,
+            timestamp,
+            charges=charges,
+            allow_late=allow_late,
+        )
+
+    def execute_external(
+        self,
+        order_id,
+        quantity,
+        price,
+        timestamp,
+        charges=Decimal(0),
+        allow_late=False,
+    ):
+        """Simulate broker-side execution while normal client connection is marked disconnected."""
+        return self._execute_internal(
+            order_id,
+            quantity,
+            price,
+            timestamp,
+            charges=charges,
+            allow_late=allow_late,
+        )
+
+    def reset(self):
+        """Reset mock broker state, queued updates, failure flags, and persistence."""
+        self.orders.clear()
+        self.fills.clear()
+        self.external_positions.clear()
+        self.updates.clear()
+        self.reject_next = False
+        self.timeout_after_accept = False
+        self.connected = True
+        self.persist()
 
     def cancel(self, order_id, timeout=None):
         self._check()
