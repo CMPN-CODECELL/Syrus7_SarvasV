@@ -8,6 +8,8 @@ Untrusted strategies express intent. Platform services own execution authority. 
 
 Composition lives in `backend/platform.py`; domain modules import `backend/shared/contracts.py`, never raw 021 payloads. Runtime receives candles and emits intents, with no broker reference. Built-in strategies are trusted code implementations representing untrusted decision logic; accepting arbitrary executable user code would require process isolation and capability restrictions.
 
+Member 4 runtime uses completed 1-minute candles for 3/5 EMA crossover and five-period mean reversion, and completed 5-minute candles for previous-range breakout. Indicator state is process-local and warms up after restart. Subscription enablement is durable; a callback exception atomically disables only that subscription and records a sanitized audit event. The risk gateway independently rejects intents from stopped subscriptions. Recent signal and callback evidence is restored from durable audit history for the dashboard.
+
 ## Execution and concurrency
 
 A single process-wide reentrant lock serializes risk checks, durable reservations, dispatch, fill processing and kill gate changes. Run **one backend worker**. A reservation is an order row committed before broker submission. UNKNOWN submissions retain exposure and stop the gate; do not blindly retry. Reconcile by client identity/history through the adapter. Real integration must add bounded network deadlines so a broker call cannot indefinitely delay kill.
@@ -34,12 +36,12 @@ Opposing virtual positions can externally net to zero while still carrying strat
 
 | Failure | Bootstrap response / next work |
 |---|---|
-| Strategy error | Built-ins only; per-callback isolation and halt pending |
+| Strategy error | Faulted subscription is durably stopped and audited; other callbacks continue |
 | Partial/rejected order | Filled quantity only; release terminal remainder |
 | Duplicate fill | Same payload ignored, conflicting payload blocks |
 | Missed/out-of-order fills | Snapshot replay; deterministic timestamp/ID accounting order |
 | Timeout/disconnect | UNKNOWN reservation, gate uncertain, snapshot reconciliation |
-| Late tick | Reject and disable trading; ordered replay required |
+| Duplicate/late tick | Bounded symbol-scoped dedupe; late unique tick rejects and disables trading |
 | Concurrent intents | Check/reserve/dispatch serialized |
 | Drift/manual position | Fail closed; external position model pending |
 | Restart | Recover durable local state; no automatic resume |

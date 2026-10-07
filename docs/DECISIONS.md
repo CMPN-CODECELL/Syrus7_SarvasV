@@ -248,3 +248,25 @@ No different project/branch; AI Gateway remains disabled; no automatic policy ov
 
 ### Reversal
 Review an explicit policy diff and affected backend contracts before enabling more services or changing deployment scope.
+
+## DEC-012 — Durable subscription control and callback quarantine
+Date: 2026-10-07
+Status: ACCEPTED
+
+### Context
+Global runtime enablement did not let an operator stop one strategy, and one callback exception could interrupt the complete candle fan-out. A process-local stop would reset after restart and would not prevent a direct intent from reaching risk.
+
+### Decision
+DESIGN_DECISION: Persist an `enabled` flag per subscription. Strategy runtime emits only for enabled subscriptions; a callback exception atomically disables only the faulted subscription and records a sanitized audit event. Risk independently rejects disabled subscriptions with `RISK_STRATEGY_STOPPED`. Re-enablement is an explicit account-scoped operator action.
+
+### Reason
+Individual strategy state must survive restart and remain non-bypassable at the risk boundary while healthy strategies continue processing the same candle.
+
+### Impact
+SQLite schema v2, PostgreSQL migration 002, strategy runtime, risk reasons, account/subscription APIs, dashboard state and Member 4 tests.
+
+### Alternatives
+Process-local halted sets and UI-only stop controls were rejected because they reset on restart and could be bypassed by direct intent submission.
+
+### Reversal
+A future subscription state machine may replace the boolean only through an additive migration and coordinated contract tests preserving stopped-strategy risk rejection.

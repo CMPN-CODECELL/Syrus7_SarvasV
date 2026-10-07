@@ -17,10 +17,10 @@ python -m pip install -e ".[dev]"
 python -m uvicorn backend.api:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
-Open http://127.0.0.1:8000 and click **Run replay demo**. Three built-in strategies consume completed candles concurrently in one serialized event loop. The demo stops after replay and displays actual orders, unique fills, charges, virtual positions and audit events. Click **Kill all strategies** to cancel, flatten and verify. API docs: http://127.0.0.1:8000/docs.
+Open http://127.0.0.1:8000 and click **Run replay**. Three built-in strategies consume completed candles concurrently in one serialized event loop: a 3/5 EMA crossover, five-period mean reversion and a 5-minute range breakout. The demo stops after replay and displays actual signals, orders, unique fills, charges, virtual positions, market-data counters and audit events. The dashboard also supports account creation, strategy subscription and durable per-strategy start/stop controls. Click **Kill all** to cancel, flatten and verify. API docs: http://127.0.0.1:8000/docs.
 
 ```sh
-python -m pytest -q --basetemp=.pytest_cache/tmp
+python -m pytest -q --basetemp=.pytest-tmp
 python -m ruff check .
 python -m ruff format --check .
 ```
@@ -29,7 +29,7 @@ Docker alternative: `docker build -t algoshield .`, then `docker run --rm -p 800
 
 ## Current implementation and limits
 
-Mock/replay bootstrap only; **021 sandbox integration remains mandatory and incomplete**. FastAPI serves a static dashboard with two-second state polling. SQLite offline schema v1 stores accounts, subscriptions, approved orders, fills and audit events. Decimal amounts are serialized as strings. Start with `RECOVERING`; explicit reconciliation and resume are required. Configure the DB with `ALGOSHIELD_DB` (default `data/platform.db`); Copy `.env.example` to ignored `.env.local` if needed. Process environment overrides `.env.local`, which overrides `.env`. Never put real values in tracked examples.
+Mock/replay bootstrap only; **021 sandbox integration remains mandatory and incomplete**. FastAPI serves a responsive static dashboard with two-second state polling. SQLite offline schema v2 stores accounts, durable subscription enablement, approved orders, fills and audit events. Strategy callback failures quarantine only the affected subscription; risk rejects stopped strategies. Decimal values remain exact in persistence, although FastAPI currently emits position Decimals as JSON numbers. Start with `RECOVERING`; explicit reconciliation and resume are required. Configure the DB with `ALGOSHIELD_DB` (default `data/platform.db`); copy `.env.example` to ignored `.env.local` if needed. Process environment overrides `.env.local`, which overrides `.env`. Never put real values in tracked examples.
 
 Mock broker state is external to platform state and currently lives in memory. Recreating the server with an existing local DB and a fresh broker correctly fails reconciliation. For a fresh demo use a new DB path; do not erase execution history to pretend recovery succeeded. Restart tests retain an external mock broker while recreating the platform. A durable broker fixture or documented 021 history is the next integration step.
 
@@ -45,6 +45,7 @@ This is a local development tool, not a production service: no authentication, a
 - `backend/market_data`, `backend/strategies`: Member 4, replay, candles, subscriptions and signals.
 - `backend/platform.py`, `backend/api.py`: composition and API; frontend panels follow module ownership.
 - `tests/test_safety.py`: deterministic unit and integration foundation.
+- `tests/test_member4.py`: market-data, strategy, subscription and dashboard coverage.
 - `docs/PHASE_PLAN.md`: current completion status and remaining mandatory work.
 
 Read the [architecture](docs/ARCHITECTURE.md), [decisions](docs/DECISIONS.md), [contracts](docs/CONTRACTS.md), [safety invariants](docs/SAFETY_INVARIANTS.md) and [021 unknowns](docs/021_API_UNKNOWN.md) before extending the system.

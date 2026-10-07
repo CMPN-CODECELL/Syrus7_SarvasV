@@ -27,6 +27,7 @@ abs(filled position - pending SELL - new SELL) <= limit
 
 ## I6 — Kill gate
 If global trading state is not `RUNNING`, new risk-increasing strategy intents cannot reach the broker.
+An individually stopped or callback-faulted subscription also cannot reach the broker even while the global gate is `RUNNING`.
 
 ## I7 — Restart safety
 Strategies must not auto-resume after process restart until reconciliation succeeds.

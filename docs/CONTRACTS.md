@@ -14,6 +14,7 @@ Canonical executable definitions: `backend/shared/contracts.py`. Documentation d
 - `Fill`: fill_id, broker_order_id, strategy_instance_id, account_id, symbol, side, quantity, price, timestamp, charges. IDs unique across configured provider/account; adapter must namespace them if broker IDs are only locally unique.
 - `StrategyPosition`: strategy_instance_id, symbol, net_quantity, average_price, realized_pnl, unrealized_pnl, charges, net_pnl. API adds account_id.
 - `RiskPolicy`: max_daily_loss, max_position, max_orders_per_minute. Gateway dictionary keyed by globally unique strategy instance ID. Bootstrap defaults reset on restart; editable durable policies are pending.
+- Subscription rows: globally unique strategy instance ID, account, kind, symbol and durable `enabled` flag. Disabled subscriptions emit no callbacks and are rejected independently by risk. `READY` means enabled while the global runtime is stopped; it is not a claim of broker connectivity.
 - `BrokerSnapshot`: complete orders/fills history and positions keyed by `(account_id,symbol)`. Adapter must reject incomplete/uncertain snapshots rather than return an empty success.
 - `KillCertificate`: status, elapsed_seconds, open_orders, broker_positions, virtual_positions_flat, reason. Unknown open count = -1, never verified safe.
 
@@ -27,10 +28,10 @@ Order: RESERVED -> OPEN / REJECTED / UNKNOWN; OPEN -> PARTIALLY_FILLED -> FILLED
 
 Global: RECOVERING -> STOPPED after successful reconciliation -> RUNNING after explicit resume; uncertainty -> UNCERTAIN; kill -> KILLING -> KILLED or UNCERTAIN. Health: RECOVERING / HEALTHY / DRIFTED. Runtime.enabled is actual callback state, not broker connectivity proof.
 
-Audit schema: durable monotonic sequence, type, JSON payload; relevant state change and audit commit together. UTC audit timestamps/event envelopes are a follow-up contract extension. API state is a read projection with gate, health, subscriptions, positions, orders, fills, candles, audit, kill and explicit mock mode.
+Audit schema: durable monotonic sequence, type, JSON payload; relevant state change and audit commit together. UTC audit timestamps/event envelopes are a follow-up contract extension. Strategy signal and sanitized callback-failure events provide durable Member 4 evidence. API state is a read projection with gate, health, subscriptions, positions, orders, fills, candles, signals, callback errors, market-data counters, audit, kill and explicit mode.
 
 ## Risk reasons
 
-ALLOWED, RISK_GLOBAL_GATE, RISK_DUPLICATE_INTENT, RISK_NOT_SUBSCRIBED, RISK_MAX_DAILY_LOSS, RISK_RATE_LIMIT, RISK_MAX_POSITION.
+ALLOWED, RISK_GLOBAL_GATE, RISK_DUPLICATE_INTENT, RISK_NOT_SUBSCRIBED, RISK_STRATEGY_STOPPED, RISK_MAX_DAILY_LOSS, RISK_RATE_LIMIT, RISK_MAX_POSITION.
 
 No module may rename fields silently. Limit/modify, external positions, typed health/audit envelopes and real broker events are coordinated contract extensions, not fabricated 021 behavior.

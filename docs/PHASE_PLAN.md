@@ -11,7 +11,7 @@ This is a vertical slice, **not completion of the official PS**. Runtime is seri
 Member 1: exact sponsor charges, durable configurable policy/session accounting, audit timestamps, charge corrections and stronger ledger projection/property tests.
 Member 2: durable external mock scenario, broker event stream, deadlines, explicit cancel acknowledgments, order modification and 021 contract fixtures once provided.
 Member 3: durable kill/health latch, bounded kill orchestration, feed/broker freshness, external position quarantine, policy persistence and live opposing-close semantics.
-Member 4: callback exception isolation, feed reconnect/backfill, bounded tick dedupe and exchange sessions, EMA implementation if required, account authentication/subscription controls.
+Member 4 completed in mock/replay: callback exception isolation with durable quarantine, bounded symbol-scoped tick dedupe, 3/5 EMA momentum, mean reversion, 5-minute breakout, normalized account/subscription APIs, durable per-strategy controls and backend-evidence dashboard. Remaining external work: authoritative 021 normalization, reconnect/backfill, exchange-session/freshness fixtures and authenticated account boundaries.
 
 Exit: failures preserve invariants after process restarts and event reorderings; no safety state silently resets; all UI health assertions backed by fresh evidence.
 

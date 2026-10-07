@@ -123,7 +123,9 @@ class Platform:
     def snapshot(self):
         with self.store.lock:
             return {
-                "mode": "MOCK / REPLAY" if self.demo_enabled else "PERSISTENT",
+                "mode": (
+                    "MOCK / REPLAY" if self.demo_enabled else "MOCK / PERSISTENT STORE"
+                ),
                 "health": self.reliability.health,
                 "gate": self.risk.state,
                 "subscriptions": [

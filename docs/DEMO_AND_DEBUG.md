@@ -1,6 +1,6 @@
 # Demo and debug
 
-Start using README commands. Open dashboard, run replay, inspect three subscriptions and attributed fills, both candle intervals, opposing virtual positions and backend health. Demo ends STOPPED after reconciliation; these are replay results, not live market updates. Kill produces actual mock closing fills and a verified certificate; failed/late results must remain visible.
+Start using README commands. Open the dashboard, run replay, inspect the three subscriptions, EMA/mean-reversion/5-minute-breakout signal evidence, attributed fills, both candle intervals, independent virtual positions, market-data counters and backend health. Demo ends STOPPED after reconciliation; enabled subscriptions show READY rather than pretending to run. Per-strategy stop/start is durable and risk-enforced. Kill produces actual mock closing fills and a verified certificate; failed/late results must remain visible.
 
 Use tests to demonstrate partial fill, pending exposure, duplicate events, drift and restart. Do not edit broker/local values in UI to simulate success. API `/api/state` exposes actual audit and fill history, `/health` separates process uptime from trading gate. Swagger `/docs` exposes account/subscription endpoints.
 

@@ -1,6 +1,6 @@
 # Testing
 
-Run `python -m pytest -q --basetemp=.pytest_cache/tmp`. The explicit workspace temp directory avoids Windows sandbox temp restrictions. Run `python -m ruff check .` and `python -m ruff format --check .`. GitHub CI runs these checks on Python 3.13.
+Run `python -m pytest -q --basetemp=.pytest-tmp`. The explicit workspace temp directory avoids Windows sandbox temp restrictions and works from a clean checkout. Run `python -m ruff check .` and `python -m ruff format --check .`. Automated GitHub CI is not yet configured.
 
 `tests/test_safety.py` is a deterministic unit/integration foundation with injected clock and mock execution evidence. No timing sleeps.
 
@@ -16,9 +16,11 @@ S7 recreate platform with durable state and retained external mock -> RECOVERING
 
 Additional coverage: concurrent reservations, opposite pending exposure, rate-window boundary, daily loss with charges, long/short reversal accounting, broker rejection release, timeout after acceptance, missed-fill replay, fresh mock restart mismatch, disconnect kill failure, opposing virtual kill, OHLCV/duplicate/late ticks, API/dashboard/replay integration.
 
+Member 4 coverage in `test_member4.py`: 3/5 EMA signal, mean-reversion signal, 5-minute breakout, callback fault quarantine, risk rejection for stopped strategies, durable start/stop state, additive SQLite v1-to-v2 upgrade, normalized account/subscription APIs, symbol-scoped bounded tick dedupe, dashboard structure and production-database replay guard.
+
 ## Required extensions before live integration
 
-Adapter contract tests for real status/event mapping; snapshot completeness/pagination; stale ticks/marks; callback exceptions; cancel/fill race from an asynchronous broker; bounded kill deadlines; durable kill latch; policy/session restart persistence; charge corrections; kill SAFE_LATE; unknown/manual orders; property tests for ledger replay and reservation invariants.
+Adapter contract tests for real status/event mapping; snapshot completeness/pagination; stale ticks/marks; cancel/fill race from an asynchronous broker; bounded kill deadlines; durable kill latch; policy/session restart persistence; charge corrections; kill SAFE_LATE; unknown/manual orders; property tests for ledger replay and reservation invariants. Member 4 still requires authoritative 021 normalization, reconnect/backfill and exchange-session fixtures.
 
 Tests passing in mock mode do not establish sponsor API correctness or live kill latency. Never weaken a test to fabricate a success state.
 
