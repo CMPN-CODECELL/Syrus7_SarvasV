@@ -292,3 +292,91 @@ Using production/Neon data for tests, silently falling back to SQLite, or mainta
 
 ### Reversal
 Replace the local launcher when the team adopts a different isolated development environment, while preserving separate application/test databases and the existing migration history.
+
+## DEC-014 — Durable offline mock and P0 failure evidence
+Date: 2026-10-07
+Status: ACCEPTED
+
+### Context
+In-memory external mock state prevented teammates from restarting the runnable demo. Partial fills and rejections existed in code but were not observable through the frontend.
+
+### Decision
+Persist canonical mock orders/fills independently of the platform DB via atomic JSON replacement; load it only for offline SQLite mode. Add risk-routed deterministic Failure Lab scenarios, real order/candle displays and CI. Refuse all demo seeding against PostgreSQL.
+
+### Reason
+Restart reconciliation now compares independently retained external evidence; P0 is testable from API and dashboard without 021 or Neon authentication.
+
+### Impact
+Minimal cross-owner changes: mock persistence (Member 2), platform/API/frontend wiring (Members 3/4), P0 integration tests and ignores. Shared financial models/formulas are unchanged. `design.md` remains removed per user instruction.
+
+### Alternatives
+Reconstructing broker truth from the platform ledger would hide drift and was rejected.
+
+### Reversal
+Replace the mock fixture with an independently hosted simulator or a documented adapter, retaining recovery and drift tests.
+
+## DEC-015 — Durable validated policies and risk budgets
+Date: 2026-10-07
+Status: ACCEPTED
+
+### Context
+Restart reset configurable risk policies and individual halt state. There was no authoritative API to inspect pending exposure or change limits.
+
+### Decision
+Add risk-owned risk_policies/strategy_controls via additive PostgreSQL and versioned SQLite migrations. Validate finite positive loss limits and strict positive integer quantities/limits. Preserve existing policy mapping access. Derive loss/rate consumption from durable fills/orders; persist loss halts. Extend RiskDecision additively with reason/time/reservation details and introduce enums retaining existing state values. Expose budgets and policy/state APIs. Normalize migration SQL line endings before hashing.
+
+### Reason
+Restarts cannot erase configured limits or loss evidence; pending exposure survives policy changes. Canonical hashes stay stable across Windows/Linux checkouts.
+
+### Impact
+Member 3 risk service/API/tests, shared contracts/store/migration packaging and documentation. No accounting formula changes. PostgreSQL migration execution remains unverified until isolated DB access is available.
+
+### Alternatives
+Mutable process dictionaries and UI-authoritative limits were rejected.
+
+### Reversal
+Migrate policy/control history through a versioned schema change and retain restart, validation and concurrent-reservation tests.
+
+## DEC-016 — Complete evidence, freshness and durable fail-closed recovery
+Date: 2026-10-07
+Status: ACCEPTED
+
+### Context
+Matching net positions alone could hide missing round-trip trades. Restart erased marks and kill latches; stale data had no risk effect.
+
+### Decision
+Snapshot completeness is an explicit fail-closed contract (default False). Validate identities, statuses, complete unique fill history, cumulative totals and positions before importing financial events. Persist safety state, kill latch/certificate, risk marks and timestamped audits via additive migration 003. Recovered marks preserve loss inputs; startup operational state stays RECOVERING. Add fresh broker/feed gating, explicit REDUCE_ONLY and verified operator kill reset.
+
+### Reason
+No green reconciliation from an empty/incomplete snapshot or stale cached price. Kill cannot silently unlatch after restart.
+
+### Impact
+Member 3 reliability/risk tests and APIs; minimal shared snapshot/validation/schema additions and mock completeness attestation. Existing states/fields retain names. Mock/replay is labeled explicitly; no 021 snapshot or volume behavior inferred.
+
+### Alternatives
+Implicitly complete snapshots, process-only latches and cancel-submitted success were rejected.
+
+### Reversal
+Any snapshot scope/freshness/session changes need documented provider evidence plus missing-history, stale-feed, reduce-only and restart tests.
+
+## DEC-017 — Bounded broker work and convergent kill (2026-10-07)
+Date: 2026-10-07
+Status: ACCEPTED
+
+### Context
+Broker calls could block the control plane and kill could report submitted requests instead of verified state.
+
+### Decision
+BrokerSession permits one external call at a time, with bounded caller waits. Its daemon worker never writes local financial state. Timeout does not cancel external work: the session requires settled complete reconciliation before further broker mutations. Local transactions cover admission/reservation and dispatch start; waits occur outside the DB lock. Migration 004 distinguishes never-dispatched reservations from ambiguous submissions. Complete settled history can resolve an absent UNKNOWN as never accepted; other missing history still fails closed.
+
+### Reason
+Kill signals admission closed immediately, durably latches, then observes/cancels/reconciles and progresses attributed risk-authorized exits. Default total deadline is nine seconds, with finite rounds. Requests never prove cancellation or flatness. SUCCESS requires verified broker and virtual flatness with no open orders or unsettled call under ten seconds; verified later is SAFE_LATE. Unknown external close semantics remain an explicit adapter capability, false by default; only the mock currently confirms it.
+
+### Impact
+Bounded broker execution, durable dispatch evidence, kill/recovery state, risk-authorized emergency exits and deterministic reliability tests.
+
+### Alternatives
+Unbounded broker calls, cancellation by thread interruption, or treating submitted cancellation/flatten requests as proof were rejected.
+
+### Reversal
+Any provider-specific timeout or emergency-close semantics require confirmed adapter evidence and new race/deadline tests.

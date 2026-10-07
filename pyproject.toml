@@ -10,6 +10,7 @@ dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.34,<1", "psycopg[binary]>=3.3,<
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<9", "httpx>=0.28,<1", "ruff>=0.15,<1"]
+browser = ["playwright>=1.50,<2"]
 
 [tool.setuptools.packages.find]
 include = ["backend*"]
@@ -27,4 +28,4 @@ select = ["E4", "E7", "E9", "F"]
 
 
 [tool.setuptools.package-data]
-"backend.shared" = ["migrations/*.sql"]
+"backend.shared" = ["migrations/*.sql", "sqlite_migrations/*.sql"]

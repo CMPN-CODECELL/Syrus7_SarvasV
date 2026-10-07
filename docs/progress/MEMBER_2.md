@@ -10,6 +10,7 @@ Broker & Order Execution; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 - Last updated: 2026-10-07 16:05 Asia/Kolkata
 
 ## Completed
+- 2026-10-07: Minimum P0 integration addition by Member 3: independent mock JSON persistence (`mock_persistence.py`, adapter lifecycle calls). Actual recreate/reconcile and corrupt-state tests pass; 27 total passed, 1 PostgreSQL skipped. No 021 behavior inferred.
 - 2026-10-07 Asia/Kolkata: Mock accept/reject/partial fills/cancel, attribution checks, durable order reservations and UNKNOWN timeout recovery. Files: backend/broker/adapters.py; backend/execution/orders.py. Tests: initial safety suite 20 passed, including mandatory S1-S7. Result: offline vertical slice functional; live 021 incomplete.
 
 ## In Progress

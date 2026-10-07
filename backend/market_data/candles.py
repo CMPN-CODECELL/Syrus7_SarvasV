@@ -1,7 +1,8 @@
+from collections import OrderedDict
+from collections.abc import Iterable
 from dataclasses import replace
 from decimal import Decimal
-from collections import deque
-from typing import Iterable, Protocol
+from typing import Protocol
 
 from backend.shared.contracts import Candle, Tick
 
@@ -36,13 +37,14 @@ class ReplayMarketDataProvider:
 class CandleBuilder:
     """UTC half-open buckets; close only upon next bucket, no invented gap candles."""
 
-    def __init__(self, max_seen_ids=100_000):
-        if max_seen_ids <= 0:
-            raise ValueError("max_seen_ids must be positive")
+    def __init__(self, max_seen_ids=100_000, *, max_seen=None):
+        if max_seen is not None:
+            max_seen_ids = max_seen
+        if type(max_seen_ids) is not int or max_seen_ids < 1:
+            raise ValueError("tick dedupe capacity must be a positive integer")
+        self.max_seen = max_seen_ids
         self.active = {}
-        self.seen = set()
-        self.seen_order = deque()
-        self.max_seen_ids = max_seen_ids
+        self.seen = OrderedDict()
         self.last = {}
         self.accepted_ticks = 0
         self.duplicate_ticks = 0
@@ -57,6 +59,8 @@ class CandleBuilder:
         identity = (tick.symbol, tick.event_id)
         if identity in self.seen:
             self.duplicate_ticks += 1
+            if self.seen[identity] != tick:
+                raise ValueError("conflicting duplicate tick")
             return False, []
         if (
             not tick.symbol
@@ -70,10 +74,17 @@ class CandleBuilder:
         if tick.event_timestamp < self.last.get(tick.symbol, -1):
             self.late_ticks += 1
             raise ValueError("late tick: replay must be ordered before ingestion")
-        self.seen.add(identity)
-        self.seen_order.append(identity)
-        if len(self.seen_order) > self.max_seen_ids:
-            self.seen.remove(self.seen_order.popleft())
+        if len(self.seen) >= self.max_seen:
+            oldest_identity, oldest_tick = next(iter(self.seen.items()))
+            watermark = (
+                tick.event_timestamp
+                if oldest_identity[0] == tick.symbol
+                else self.last.get(oldest_identity[0], -1)
+            )
+            if oldest_tick.event_timestamp >= watermark:
+                raise ValueError("tick dedupe capacity reached at current timestamp")
+            self.seen.popitem(last=False)
+        self.seen[identity] = tick
         self.last[tick.symbol] = tick.event_timestamp
         self.accepted_ticks += 1
         closed = []

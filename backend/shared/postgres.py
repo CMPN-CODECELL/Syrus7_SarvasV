@@ -1,6 +1,7 @@
 """PostgreSQL implementation of the existing Store service boundary."""
 
 from threading import RLock
+import time
 
 import psycopg
 from psycopg.rows import dict_row
@@ -26,9 +27,12 @@ class Connection:
 
 
 class PostgresStore(Store):
+    backend_name = "POSTGRESQL"
+
     def __init__(self, database_url):
         self.lock = RLock()
         self.depth = 0
+        self.audit_clock = time.time
         try:
             connection = psycopg.connect(
                 database_url, row_factory=dict_row, connect_timeout=10

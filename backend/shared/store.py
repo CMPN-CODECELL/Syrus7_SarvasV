@@ -2,12 +2,15 @@
 
 import json
 import sqlite3
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from threading import RLock
 
 
 class Store:
+    backend_name = "SQLITE_OFFLINE"
+
     def __init__(self, path=":memory:"):
         if path != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -19,8 +22,7 @@ class Store:
             CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS subscriptions(
                 id TEXT PRIMARY KEY, account TEXT NOT NULL, kind TEXT NOT NULL,
-                symbol TEXT NOT NULL,
-                enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)));
+                symbol TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS orders(
                 id TEXT PRIMARY KEY, strategy TEXT NOT NULL, account TEXT NOT NULL,
                 symbol TEXT NOT NULL, side TEXT NOT NULL, quantity INTEGER NOT NULL,
@@ -35,16 +37,48 @@ class Store:
                 sequence INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL,
                 payload TEXT NOT NULL);
         """)
+        version = self.db.execute("PRAGMA user_version").fetchone()[0]
+        self.audit_clock = time.time
+        if version > 6:
+            raise ValueError("SQLite schema is newer than this application")
+        if version < 1:
+            self.db.execute("PRAGMA user_version=1")
+            version = 1
+        # Member 4's earlier local schema used version 2 for subscription
+        # enablement. If risk policies are absent, replay migration 002 and
+        # continue through the shared hardening sequence before migration 006.
+        if version >= 2 and not self._table_exists("risk_policies"):
+            version = 1
+            self.db.execute("PRAGMA user_version=1")
+        self.db.commit()
+        for number, filename in (
+            (2, "002_risk_policies.sql"),
+            (3, "003_safety_state.sql"),
+            (4, "004_dispatch_evidence.sql"),
+            (5, "005_history_indexes.sql"),
+            (6, "006_subscription_state.sql"),
+        ):
+            if version < number:
+                sql = (
+                    Path(__file__).parent / "sqlite_migrations" / filename
+                ).read_text(encoding="utf-8")
+                self.db.executescript(
+                    f"BEGIN IMMEDIATE;\n{sql}\nPRAGMA user_version={number};\nCOMMIT;"
+                )
+                version = number
         subscription_columns = {
             row["name"] for row in self.db.execute("PRAGMA table_info(subscriptions)")
         }
         if "enabled" not in subscription_columns:
+            raise ValueError("subscription state migration did not add enabled")
+
+    def _table_exists(self, name):
+        return (
             self.db.execute(
-                "ALTER TABLE subscriptions ADD COLUMN enabled INTEGER NOT NULL "
-                "DEFAULT 1 CHECK (enabled IN (0,1))"
-            )
-        self.db.execute("PRAGMA user_version=2")
-        self.db.commit()
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+            ).fetchone()
+            is not None
+        )
 
     @contextmanager
     def transaction(self):
@@ -69,8 +103,8 @@ class Store:
     def audit(self, event_type, payload):
         # Caller holds the transaction; event commits atomically with its transition.
         self.db.execute(
-            "INSERT INTO audit(type,payload) VALUES (?,?)",
-            (event_type, json.dumps(payload, default=str)),
+            "INSERT INTO audit(type,payload,recorded_at) VALUES (?,?,?)",
+            (event_type, json.dumps(payload, default=str), self.audit_clock()),
         )
 
     def close(self):

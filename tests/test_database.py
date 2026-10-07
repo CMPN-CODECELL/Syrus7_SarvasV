@@ -25,20 +25,23 @@ def test_environment_precedence_and_local_file(monkeypatch, tmp_path):
 
 def test_additive_migration_constraints_and_checksum():
     items = list(migrations())
-    assert len(items) == 2
-    name, checksum, sql = items[0]
-    assert name == "001_bootstrap.sql"
-    assert checksum == hashlib.sha256(sql.encode()).hexdigest()
-    assert "DROP " not in sql.upper()
-    assert "DELETE " not in sql.upper()
-    assert "id TEXT PRIMARY KEY, order_id" in sql
-    assert "filled <= quantity" in sql
-    assert "REFERENCES algoshield.orders(id)" in sql
-    name, checksum, sql = items[1]
-    assert name == "002_subscription_state.sql"
-    assert checksum == hashlib.sha256(sql.encode()).hexdigest()
-    assert "ALTER TABLE algoshield.subscriptions" in sql
-    assert "enabled INTEGER NOT NULL DEFAULT 1" in sql
+    assert [i[0] for i in items] == [
+        "001_bootstrap.sql",
+        "002_risk_policies.sql",
+        "002_subscription_state.sql",
+        "003_safety_state.sql",
+        "004_dispatch_evidence.sql",
+        "005_history_indexes.sql",
+    ]
+    for name, checksum, sql in items:
+        assert checksum == hashlib.sha256(sql.encode()).hexdigest()
+        assert "DROP " not in sql.upper()
+        assert "DELETE " not in sql.upper()
+    assert "id TEXT PRIMARY KEY, order_id" in items[0][2]
+    assert "filled <= quantity" in items[0][2]
+    assert "REFERENCES algoshield.orders(id)" in items[0][2]
+    assert "ALTER TABLE algoshield.subscriptions" in items[2][2]
+    assert "enabled INTEGER NOT NULL DEFAULT 1" in items[2][2]
 
 
 def test_postgres_placeholder_binding():
@@ -92,6 +95,6 @@ def test_sqlite_v1_subscription_state_migrates_additively(tmp_path):
     try:
         row = store.rows("SELECT enabled FROM subscriptions WHERE id='s'")[0]
         assert row["enabled"] == 1
-        assert store.rows("PRAGMA user_version")[0][0] == 2
+        assert store.rows("PRAGMA user_version")[0][0] == 6
     finally:
         store.close()

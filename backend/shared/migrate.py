@@ -12,8 +12,8 @@ from backend.shared.config import settings
 
 def migrations():
     for path in sorted((Path(__file__).parent / "migrations").glob("*.sql")):
-        data = path.read_bytes()
-        yield path.name, hashlib.sha256(data).hexdigest(), data.decode()
+        sql = path.read_text(encoding="utf-8").replace("\r\n", "\n")
+        yield path.name, hashlib.sha256(sql.encode("utf-8")).hexdigest(), sql
 
 
 def inspect(connection):

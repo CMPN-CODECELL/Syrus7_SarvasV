@@ -14,6 +14,7 @@ class StrategyRuntime:
     def __init__(self, store):
         self.store = store
         self.enabled = False
+        self.may_run = lambda strategy: True
         self.indicators = {}
         self.signals = deque(maxlen=100)
         self.errors = deque(maxlen=50)
@@ -165,6 +166,8 @@ class StrategyRuntime:
         for sub in self.store.rows(
             "SELECT * FROM subscriptions WHERE symbol=? AND enabled=1", (candle.symbol,)
         ):
+            if not self.may_run(sub["id"]):
+                continue
             try:
                 signal = self.handlers[sub["kind"]](sub, candle)
             except Exception as exc:

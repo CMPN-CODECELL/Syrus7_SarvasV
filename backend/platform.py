@@ -1,4 +1,5 @@
 import time
+from collections import deque
 from dataclasses import asdict
 from decimal import Decimal
 
@@ -7,6 +8,7 @@ from backend.broker.adapters import MockBrokerAdapter
 from backend.execution.orders import OrderManager
 from backend.market_data.candles import CandleBuilder, ReplayMarketDataProvider
 from backend.reliability.control import Reliability
+from backend.reliability.broker_calls import BrokerSession
 from backend.risk.gateway import RiskGateway
 from backend.shared.store import Store
 from backend.strategies.runtime import StrategyRuntime
@@ -32,14 +34,26 @@ class Platform:
         self.clock = clock
         self.demo_enabled = demo_enabled
         self.store = store if store is not None else Store(path)
-        self.broker = broker if broker is not None else MockBrokerAdapter()
+        self.store.audit_clock = clock
+        self.broker = (
+            broker
+            if broker is not None
+            else MockBrokerAdapter(
+                f"{path}.broker.json" if path != ":memory:" and store is None else None
+            )
+        )
         self.ledger = Ledger(self.store)
-        self.orders = OrderManager(self.store, self.broker, self.ledger)
+        self.broker_calls = BrokerSession(self.broker)
+        self.orders = OrderManager(self.store, self.broker_calls, self.ledger)
         self.risk = RiskGateway(self.store, self.ledger, self.orders, clock)
         self.strategies = StrategyRuntime(self.store)
+        self.strategies.may_run = lambda strategy: (
+            not self.risk.kill_requested.is_set()
+            and self.risk.strategy_state(strategy) == "RUNNING"
+        )
         self.reliability = Reliability(
             self.store,
-            self.broker,
+            self.broker_calls,
             self.ledger,
             self.orders,
             self.risk,
@@ -47,7 +61,7 @@ class Platform:
             clock,
         )
         self.candles = CandleBuilder()
-        self.closed_candles = []
+        self.closed_candles = deque(maxlen=128)
         self.demo_count = 0
 
     def account(self, account_id):
@@ -62,17 +76,17 @@ class Platform:
             try:
                 return self.orders.ingest(fill)
             except Exception:
-                self.risk.state = "UNCERTAIN"
-                self.strategies.enabled = False
+                self.reliability.fail_closed("FILL_EVENT_REJECTED")
                 raise
 
-    def tick(self, tick):
+    def tick(self, tick, *, replay=False):
+        if replay:
+            self.require_offline_demo()
         with self.store.lock:
             try:
                 accepted, closed = self.candles.ingest_event(tick)
             except ValueError as exc:
-                self.risk.state = "UNCERTAIN"
-                self.strategies.enabled = False
+                self.reliability.fail_closed("MARKET_EVENT_REJECTED")
                 with self.store.transaction():
                     self.store.audit(
                         "MARKET_DATA_REJECTED",
@@ -82,35 +96,57 @@ class Platform:
                             "reason": (
                                 "LATE_TICK"
                                 if str(exc).startswith("late tick")
+                                else "CONFLICTING_DUPLICATE"
+                                if str(exc).startswith("conflicting duplicate")
                                 else "INVALID_TICK"
                             ),
                         },
                     )
+                # A conflicting replay duplicate is rejected and fail-closed,
+                # but must not make a live ingestion loop crash or overwrite
+                # the last accepted market mark.
+                if str(exc).startswith("conflicting duplicate"):
+                    return
                 raise
             if not accepted:
                 return
             self.ledger.marks[tick.symbol] = tick.price
+            self.reliability.observe_tick(tick, replay=replay)
+            intents = []
             for candle in closed:
                 self.closed_candles.append(candle)
-                for intent in self.strategies.on_candle(candle, self.clock()):
-                    decision = self.risk.submit(intent)
-                    if decision.allowed and self.risk.state == "RUNNING":
-                        order = self.broker.orders[intent.intent_id]
-                        if order.remaining_quantity and order.status != "REJECTED":
-                            self.ingest(
-                                self.broker.execute(
-                                    order.order_id,
-                                    order.remaining_quantity,
-                                    tick.price,
-                                    self.clock(),
-                                    Decimal("0.01"),
-                                )
-                            )
+                try:
+                    intents.extend(self.strategies.on_candle(candle, self.clock()))
+                except Exception:
+                    self.reliability.fail_closed("STRATEGY_CALLBACK_FAILED")
+                    raise ValueError(
+                        "strategy callback failed; execution stopped"
+                    ) from None
+        for intent in intents:
+            decision = self.risk.submit(intent)
+            if (
+                decision.allowed
+                and self.risk.state == "RUNNING"
+                and isinstance(self.broker, MockBrokerAdapter)
+            ):
+                order = self.broker.orders.get(intent.intent_id)
+                if order and order.remaining_quantity and order.status != "REJECTED":
+                    self.ingest(
+                        self.broker_calls.call(
+                            "execute",
+                            order.order_id,
+                            order.remaining_quantity,
+                            tick.price,
+                            self.clock(),
+                            Decimal("0.01"),
+                        )
+                    )
 
     def demo(self):
         with self.store.lock:
             if not self.demo_enabled:
                 raise ValueError("replay demo is disabled for this database")
+            self.require_offline_demo()
             if not self.store.rows("SELECT id FROM accounts WHERE id='demo'"):
                 self.account("demo")
             for kind in ("momentum", "mean_reversion", "breakout"):
@@ -118,26 +154,47 @@ class Platform:
                     "SELECT id FROM subscriptions WHERE id=?", (kind,)
                 ):
                     self.strategies.subscribe("demo", kind, kind, "DEMO")
-            self.reliability.resume()
-            start = 1_700_000_100 + self.demo_count * 900
+            previous = self.store.rows(
+                "SELECT id FROM orders WHERE strategy IN ('momentum','mean_reversion','breakout')"
+            )
+            starts = [
+                int(r["id"].rsplit(":", 1)[1])
+                for r in previous
+                if r["id"].rsplit(":", 1)[1].isdigit()
+            ]
+            start = max(starts, default=1_700_000_100) + 900
             self.demo_count += 1
-            for tick in ReplayMarketDataProvider.demo(start).ticks():
-                self.tick(tick)
-            self.reliability.reconcile()
-            # Demo stops safely after replay; subscriptions remain visible.
-            return self.snapshot()
+            events = iter(ReplayMarketDataProvider.demo(start).ticks())
+        self.tick(next(events), replay=True)
+        self.reliability.resume()
+        for tick in events:
+            self.tick(tick, replay=True)
+        self.reliability.reconcile()
+        return self.snapshot()
+
+    def require_offline_demo(self):
+        from backend.shared.postgres import PostgresStore
+
+        if isinstance(self.store, PostgresStore) or not isinstance(
+            self.broker, MockBrokerAdapter
+        ):
+            raise ValueError(
+                "demo/failure injection requires offline mock storage; production database is protected"
+            )
 
     def kill(self):
         def execute(order):
             price = self.ledger.marks.get(order.intent.symbol, Decimal("100"))
             if order.status != "REJECTED":
                 self.ingest(
-                    self.broker.execute(
+                    self.broker_calls.call(
+                        "execute",
                         order.order_id,
                         order.remaining_quantity,
                         price,
                         self.clock(),
                         Decimal("0.01"),
+                        timeout=self.reliability.kill_deadline.remaining,
                     )
                 )
 
@@ -147,15 +204,25 @@ class Platform:
         with self.store.lock:
             return {
                 "mode": (
-                    "MOCK / REPLAY" if self.demo_enabled else "MOCK / PERSISTENT STORE"
+                    "MOCK / REPLAY"
+                    if self.demo_enabled
+                    else (
+                        "MOCK / PERSISTENT STORE"
+                        if isinstance(self.broker, MockBrokerAdapter)
+                        else "BROKER ADAPTER / LIVE"
+                    )
                 ),
+                "storage": self.store.backend_name,
                 "health": self.reliability.health,
                 "gate": self.risk.state,
+                "safety": self.reliability.evidence(),
                 "subscriptions": [
                     dict(r)
                     | {
-                        "running": self.strategies.state_for(r) == "RUNNING",
+                        "running": self.strategies.state_for(r) == "RUNNING"
+                        and self.risk.strategy_state(r["id"]) == "RUNNING",
                         "state": self.strategies.state_for(r),
+                        "strategy_state": self.risk.strategy_state(r["id"]),
                     }
                     for r in self.store.rows("SELECT * FROM subscriptions")
                 ],
@@ -163,9 +230,17 @@ class Platform:
                     _contract_dict(p) | {"account_id": a}
                     for (a, _, _), p in self.ledger.positions().items()
                 ],
-                "orders": [dict(r) for r in self.store.rows("SELECT * FROM orders")],
-                "fills": [dict(r) for r in self.store.rows("SELECT * FROM fills")],
-                "candles": [_contract_dict(c) for c in self.closed_candles[-20:]],
+                "risk_budgets": [
+                    self.risk.budget(r["account"], r["id"], r["symbol"])
+                    for r in self.store.rows("SELECT * FROM subscriptions")
+                ],
+                "orders": list(reversed(self.history("orders")["items"])),
+                "fills": list(reversed(self.history("fills")["items"])),
+                "counts": {
+                    "orders": self.history_count("orders"),
+                    "fills": self.history_count("fills"),
+                },
+                "candles": [_contract_dict(c) for c in list(self.closed_candles)[-20:]],
                 "signals": list(self.strategies.signals),
                 "strategy_errors": list(self.strategies.errors),
                 "market_data": self.candles.stats(),
@@ -178,4 +253,29 @@ class Platform:
                 "kill": asdict(self.reliability.certificate)
                 if self.reliability.certificate
                 else None,
+            }
+
+    def history_count(self, table):
+        if table not in {"orders", "fills"}:
+            raise ValueError("unsupported history")
+        return self.store.rows(f"SELECT COUNT(*) AS n FROM {table}")[0]["n"]
+
+    def history(self, table, limit=200, offset=0):
+        if table not in {"orders", "fills"} or not 1 <= limit <= 500 or offset < 0:
+            raise ValueError("invalid history query")
+        ordering = "created,id" if table == "orders" else "timestamp,id"
+        # Fixed allowlist; parameters bind pagination, never table/order input.
+        keys = ordering.replace(",", " DESC,") + " DESC"
+        with self.store.lock:
+            return {
+                "items": [
+                    dict(r)
+                    for r in self.store.rows(
+                        f"SELECT * FROM {table} ORDER BY {keys} LIMIT ? OFFSET ?",
+                        (limit, offset),
+                    )
+                ],
+                "total": self.history_count(table),
+                "limit": limit,
+                "offset": offset,
             }

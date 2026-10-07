@@ -1,11 +1,14 @@
 # Integration Progress
 
 ## Current Status
-- Phase: mock/replay vertical slice with completed Member 4 hardening plus Neon preparation
+- Phase: integrated mock/replay hardening with Member 4 strategy/runtime and local PostgreSQL verification
 - Status: BLOCKED
 - Last updated: 2026-10-07 17:14 Asia/Kolkata
 
 ## Completed Integrations
+- 2026-10-07: Snapshot completeness now explicit (default False; mock attests True); missing/out-of-order/duplicate fills handled independently from positions. Migration 003 persists safety/marks/audit time; restart remains RECOVERING. 49 tests passed / 1 PostgreSQL skipped. No real provider guarantees inferred.
+- 2026-10-07: RiskPolicy mapping now persists via risk service; API exposes configured limits, durable strategy halt and directional budgets. Shared decision fields added with defaults. SQLite upgrades to schema 2; PostgreSQL migration 002 packaged, not applied remotely. Suite: 36 passed / 1 PostgreSQL skipped; Ruff passed.
+- 2026-10-07: P0 live server/API/frontend HTTP checks passed. Independent durable mock survives actual restart; Failure Lab shows partial fills, broker rejection and risk rejection. Suite: 27 passed, 1 optional PostgreSQL skipped. Ruff passed. CI added. `main` delivery authorized; `docs/design.md` previously removed as requested.
 - Shared contracts -> candles -> three strategies -> risk reservation -> mock order -> fills -> accounting -> snapshot/dashboard.
 - Reconciliation checks orders/fills/positions; missing attributed fills recovered through ledger.
 - Partial-fill kill closes gate then verifies actual flat state.
@@ -29,7 +32,7 @@
 
 ## Blockers
 - Neon authentication/project access and an authorized isolated remote branch; sponsor 021 contract.
-- Mock external state currently in-memory; fresh broker cannot match durable local history.
+- An explicitly injected fresh broker still cannot match existing local history; default offline mock now persists independent evidence.
 
 ## Next Integration Target
 Validate Neon linking/schema inspection and repeat the locally verified additive migrations on an authorized isolated remote branch. In parallel, obtain the 021 market-data contract before implementing the live provider. Do not seed replay into production.
@@ -37,6 +40,10 @@ Validate Neon linking/schema inspection and repeat the locally verified additive
 - 2026-10-07 16:05 Asia/Kolkata validation: pytest 24 passed / 1 skipped (no isolated PostgreSQL URL); Ruff check + format passed; npm run check passed; npm audit 0 vulnerabilities. No live Neon connectivity/deployment claim.
 
 ## External tooling status
+2026-10-07 Member 3 P4: deterministic failure scenarios and safety evidence/risk controls wired through API/frontend. Verified snapshot status expires; historical certificates labeled explicitly. Tests 67 passed / 1 isolated PG skipped. No browser automation or live sponsor evidence claimed.
+
+2026-10-07 Member 3 P3: bounded broker calls, dispatch evidence migration 004 in both stores, convergent verified kill with risk-authorized exits. No DB lock across network waits. Suite 57 passed / 1 PostgreSQL skipped; lint/format passed. Mock confirms virtual close semantics; real adapters default unconfirmed. P2 pushed as `80e612f`.
+
 Neon CLI 8.0.11 installed. Requested project/branch not yet authenticated/linked. User requested current validated commits be pushed before continuing setup. No remote migration or seed has run.
 
 ## Latest Handoff
