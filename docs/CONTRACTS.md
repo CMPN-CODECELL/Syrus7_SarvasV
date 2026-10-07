@@ -28,7 +28,7 @@ Order: RESERVED -> OPEN / REJECTED / UNKNOWN; OPEN -> PARTIALLY_FILLED -> FILLED
 
 Global: RECOVERING -> STOPPED after successful reconciliation -> RUNNING after explicit resume; uncertainty -> UNCERTAIN; kill -> KILLING -> KILLED or UNCERTAIN. Health: RECOVERING / HEALTHY / DRIFTED. Runtime.enabled is actual callback state, not broker connectivity proof.
 
-Audit schema: durable monotonic sequence, type, JSON payload; relevant state change and audit commit together. UTC audit timestamps/event envelopes are a follow-up contract extension. Strategy signal and sanitized callback-failure events provide durable Member 4 evidence. API state is a read projection with gate, health, subscriptions, positions, orders, fills, candles, signals, callback errors, market-data counters, audit, kill and explicit mode.
+Audit schema: durable monotonic sequence, type, JSON payload; relevant state change and audit commit together. UTC audit timestamps/event envelopes are a follow-up contract extension. Strategy signal, sanitized callback-failure and rejected-market-data events provide durable Member 4 evidence. API state is a read projection with gate, health, subscriptions, positions, orders, fills, candles, signals, callback errors, market-data counters, audit, kill and explicit mode.
 
 ## Risk reasons
 

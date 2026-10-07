@@ -16,7 +16,7 @@ S7 recreate platform with durable state and retained external mock -> RECOVERING
 
 Additional coverage: concurrent reservations, opposite pending exposure, rate-window boundary, daily loss with charges, long/short reversal accounting, broker rejection release, timeout after acceptance, missed-fill replay, fresh mock restart mismatch, disconnect kill failure, opposing virtual kill, OHLCV/duplicate/late ticks, API/dashboard/replay integration.
 
-Member 4 coverage in `test_member4.py`: 3/5 EMA signal, five-candle EMA/mean-reversion warm-up, 5-minute breakout, callback fault quarantine, risk rejection for stopped strategies, durable start/stop state, additive SQLite v1-to-v2 upgrade, exact-decimal API projection, normalized account/subscription APIs, symbol-scoped bounded tick dedupe, dashboard structure and production-database replay guard.
+Member 4 coverage in `test_member4.py`: 3/5 EMA signal, five-candle EMA/mean-reversion warm-up, 5-minute breakout, callback fault quarantine, risk rejection for stopped strategies, durable start/stop state, additive SQLite v1-to-v2 upgrade, exact-decimal API projection, normalized account/subscription APIs, symbol-scoped bounded tick dedupe including mark idempotence, audited late-tick failure, dashboard structure and production-database replay guard.
 
 ## Required extensions before live integration
 

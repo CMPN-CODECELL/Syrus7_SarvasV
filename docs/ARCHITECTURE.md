@@ -41,7 +41,7 @@ Opposing virtual positions can externally net to zero while still carrying strat
 | Duplicate fill | Same payload ignored, conflicting payload blocks |
 | Missed/out-of-order fills | Snapshot replay; deterministic timestamp/ID accounting order |
 | Timeout/disconnect | UNKNOWN reservation, gate uncertain, snapshot reconciliation |
-| Duplicate/late tick | Bounded symbol-scoped dedupe; late unique tick rejects and disables trading |
+| Duplicate/late tick | Bounded symbol-scoped dedupe; duplicates cannot update marks, while late unique ticks reject, disable trading and leave sanitized durable evidence |
 | Concurrent intents | Check/reserve/dispatch serialized |
 | Drift/manual position | Fail closed; external position model pending |
 | Restart | Recover durable local state; no automatic resume |
