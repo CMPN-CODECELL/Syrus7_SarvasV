@@ -66,6 +66,10 @@ class StrategyStateRequest(BaseModel):
     state: StrategyState
 
 
+class MarketSessionRequest(BaseModel):
+    status: str
+
+
 def financial_json(value):
     return JSONResponse(content=jsonable_encoder(value, custom_encoder={Decimal: str}))
 
@@ -158,6 +162,18 @@ def create_app(platform=None):
     @app.get("/api/strategies")
     def list_strategies():
         return engine.strategies.list_registered()
+
+    @app.get("/api/market/session")
+    def get_market_session():
+        return financial_json(engine.market_session.to_dict(engine.clock()))
+
+    @app.post("/api/market/session")
+    def set_market_session(body: MarketSessionRequest):
+        try:
+            engine.market_session.set_status(body.status)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+        return financial_json(engine.market_session.to_dict(engine.clock()))
 
     @app.post("/api/subscriptions", status_code=201)
     def subscribe(body: SubscriptionRequest):

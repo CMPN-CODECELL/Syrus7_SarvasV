@@ -7,6 +7,7 @@ from backend.accounting.ledger import Ledger
 from backend.broker.adapters import MockBrokerAdapter
 from backend.execution.orders import OrderManager
 from backend.market_data.candles import CandleBuilder, ReplayMarketDataProvider
+from backend.market_data.session import MarketSession
 from backend.reliability.control import Reliability
 from backend.reliability.broker_calls import BrokerSession
 from backend.risk.gateway import RiskGateway
@@ -51,6 +52,7 @@ class Platform:
             not self.risk.kill_requested.is_set()
             and self.risk.strategy_state(strategy) == "RUNNING"
         )
+        self.market_session = MarketSession()
         self.reliability = Reliability(
             self.store,
             self.broker_calls,
@@ -59,6 +61,7 @@ class Platform:
             self.risk,
             self.strategies,
             clock,
+            market_session=self.market_session,
         )
         self.candles = CandleBuilder()
         self.closed_candles = deque(maxlen=128)
@@ -293,6 +296,7 @@ class Platform:
                 "signals": list(self.strategies.signals),
                 "strategy_errors": list(self.strategies.errors),
                 "market_data": self.candles.stats(),
+                "market_session": self.market_session.to_dict(self.clock()),
                 "audit": [
                     dict(r)
                     for r in self.store.rows(

@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from backend.api import create_app
 from backend.market_data.candles import CandleBuilder
+from backend.market_data.session import MarketSession
 from backend.platform import Platform
 from backend.shared.contracts import Candle, OrderIntent, Side, Tick
 
@@ -415,4 +416,105 @@ def test_dynamic_strategy_registration_and_api():
             assert scalp_intents[0].reason == "custom price trigger"
     finally:
         platform.store.close()
+
+
+def test_market_session_hours_and_halt_logic():
+    session = MarketSession(
+        open_time_seconds=9 * 3600,
+        close_time_seconds=15 * 3600,
+        enforce_hours=True,
+    )
+    # Outside hours (e.g. 08:00 = 28800s)
+    assert not session.is_open(28800)
+    # Inside hours (e.g. 10:00 = 36000s)
+    assert session.is_open(36000)
+    # At exact open & close
+    assert session.is_open(9 * 3600)
+    assert session.is_open(15 * 3600)
+    # Outside hours (e.g. 16:00 = 57600s)
+    assert not session.is_open(57600)
+
+    # Halt overrides hours
+    session.halt("circuit breaker")
+    assert session.status == "HALTED"
+    assert not session.is_open(36000)
+    session.resume()
+    assert session.status == "OPEN"
+    assert session.is_open(36000)
+
+    # Manual override status
+    session.set_status("CLOSED")
+    assert session.status == "CLOSED"
+    assert not session.is_open(36000)
+    session.set_status("OPEN")
+    assert session.is_open(57600)
+
+    # Invalid status
+    try:
+        session.set_status("INVALID")
+    except ValueError as exc:
+        assert "status must be" in str(exc)
+
+
+def test_market_session_coordinates_with_risk_evidence_gate():
+    platform = configured_platform()
+    try:
+        now_ts = int(platform.clock())
+        # Provide fresh mark and broker state
+        platform.tick(Tick("X", now_ts, D("100"), 1, "t1"))
+        platform.reliability.observe_tick(Tick("X", now_ts, D("100"), 1, "t1"))
+        platform.reliability.last_broker_at = platform.clock()
+        platform.reliability.report["verified"] = True
+        platform.reliability._health("HEALTHY")
+
+        intent = OrderIntent("intent_1", "ema", "a", "X", Side.BUY, 1, platform.clock())
+
+        # When session is OPEN, intent passes evidence gate
+        platform.market_session.set_status("OPEN")
+        assert platform.reliability.check_evidence(intent) == ""
+
+        # When session is HALTED, rejected with RISK_MARKET_HALTED
+        platform.market_session.halt("Exchange circuit breaker")
+        decision = platform.risk.submit(intent)
+        assert not decision.allowed
+        assert decision.reason_code == "RISK_MARKET_HALTED"
+        assert platform.risk.state == "RUNNING"  # Does not trigger unneeded UNCERTAIN fail-closed
+
+        # When session is CLOSED, rejected with RISK_MARKET_CLOSED
+        platform.market_session.resume()
+        platform.market_session.set_status("CLOSED")
+        intent2 = OrderIntent("intent_2", "ema", "a", "X", Side.BUY, 1, platform.clock())
+        decision2 = platform.risk.submit(intent2)
+        assert not decision2.allowed
+        assert decision2.reason_code == "RISK_MARKET_CLOSED"
+        assert platform.risk.state == "RUNNING"
+    finally:
+        platform.store.close()
+
+
+def test_market_session_api_and_snapshot():
+    platform = Platform()
+    try:
+        with TestClient(create_app(platform)) as client:
+            snap = client.get("/api/state").json()
+            assert "market_session" in snap
+            assert snap["market_session"]["status"] == "OPEN"
+
+            # GET session endpoint
+            resp = client.get("/api/market/session")
+            assert resp.status_code == 200
+            assert resp.json()["status"] == "OPEN"
+
+            # POST session endpoint: change to CLOSED
+            post_resp = client.post("/api/market/session", json={"status": "CLOSED"})
+            assert post_resp.status_code == 200
+            assert post_resp.json()["status"] == "CLOSED"
+            assert platform.market_session.status == "CLOSED"
+
+            # Invalid status rejected
+            bad_resp = client.post("/api/market/session", json={"status": "UNKNOWN"})
+            assert bad_resp.status_code == 400
+    finally:
+        platform.store.close()
+
 

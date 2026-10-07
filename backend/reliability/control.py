@@ -19,7 +19,18 @@ from backend.shared.contracts import (
 
 
 class Reliability:
-    def __init__(self, store, broker, ledger, manager, risk, runtime, clock):
+    def __init__(
+        self,
+        store,
+        broker,
+        ledger,
+        manager,
+        risk,
+        runtime,
+        clock,
+        *,
+        market_session=None,
+    ):
         self.store, self.broker, self.ledger, self.manager = (
             store,
             broker,
@@ -27,6 +38,7 @@ class Reliability:
             manager,
         )
         self.risk, self.runtime, self.clock = risk, runtime, clock
+        self.market_session = market_session
         self.operation_lock = RLock()
         self.safety = SafetyRepository(store)
         self.health = Health.RECOVERING
@@ -73,6 +85,11 @@ class Reliability:
         ):
             self.fail_closed("RISK_STALE_BROKER_STATE", Health.DEGRADED)
             return "RISK_STALE_BROKER_STATE"
+        if self.market_session is not None:
+            if self.market_session.status == "HALTED":
+                return "RISK_MARKET_HALTED"
+            if not self.market_session.is_open(now):
+                return "RISK_MARKET_CLOSED"
         marks = self.store.rows(
             "SELECT * FROM risk_marks WHERE symbol=?", (intent.symbol,)
         )
