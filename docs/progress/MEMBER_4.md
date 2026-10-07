@@ -6,7 +6,7 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 ## Current Status
 - Phase: mock/replay bootstrap; Neon persistence preparation
 - Current task: validate persistence/tracking handoff and external Neon setup
-- Status: IN_PROGRESS
+- Status: BLOCKED
 - Last updated: 2026-10-07 16:05 Asia/Kolkata
 
 ## Completed
@@ -28,3 +28,8 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 Demo replay ends STOPPED; UI follows actual runtime state. Neon hello function is an infrastructure smoke endpoint, not the Python trading backend.
 
 - 2026-10-07 16:05 Asia/Kolkata validation: pytest 24 passed / 1 skipped (no isolated PostgreSQL URL); Ruff check + format passed; npm run check passed; npm audit 0 vulnerabilities. No live Neon connectivity/deployment claim.
+
+## Latest Handoff
+- 2026-10-07 16:03 Asia/Kolkata: commits `55beeb2` and `8dc8e34` pushed to `origin/bootstrap/safety-vertical-slice` before further Neon setup, as requested.
+- Neon CLI 8.0.11 login launched browser and is awaiting user authentication. Link to requested production branch, skills/MCP setup, remote schema inspection/migration, connectivity and deploy are paused. No remote schema changes or production seed performed.
+- Action needed: complete browser sign-in, then continue the requested Neon workflow. PostgreSQL implementation is locally tested only; isolated integration remains skipped.
