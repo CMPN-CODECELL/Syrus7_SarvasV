@@ -11,6 +11,7 @@ Accounting & Platform State; canonical responsibilities: ../TEAM_OWNERSHIP.md, M
 
 ## Completed
 - 2026-10-07 Asia/Kolkata: Decimal fill ledger, idempotency, partial exits/reversals, independent positions/P&L and daily loss input. Files: backend/accounting/ledger.py; backend/shared/store.py. Tests: initial safety suite 20 passed, including mandatory S1-S7. Result: offline vertical slice functional; live 021 incomplete.
+- 2026-10-07 Asia/Kolkata (Member 1 scope completion): Added `gross_pnl` field to `StrategyPosition` contract and ledger projection (`gross_pnl = realized_pnl + unrealized_pnl`). Added dedicated Member 1 test suite `tests/test_member1.py` covering isolated ledger operations, partial fills, weighted average entry, partial/full closing trades, reversals, duplicate fill idempotency, conflicting duplicate rejection, economics validation, opposite strategy positions independence, multi-symbol/multi-account isolation, high-precision charges, dynamic mark updates, daily net IST boundary, and order/position separation invariants. Test suite: 152 passed / 1 skipped. Ruff check and format passed.
 
 ## In Progress
 - Local configuration/database code validated. Remote Neon authentication, linking, schema inspection and deployment remain pending.
@@ -20,8 +21,7 @@ Accounting & Platform State; canonical responsibilities: ../TEAM_OWNERSHIP.md, M
 - Neon authentication/linkage and isolated database access required for remote validation.
 
 ## Next
-- Confirm sponsor charge table and correction events.
-- Add exact session/overnight accounting tests.
+- Confirm sponsor charge table and correction events (blocked on 021 sponsor details).
 - Verify PostgreSQL ledger on an isolated test DB.
 
 ## Handoff Notes

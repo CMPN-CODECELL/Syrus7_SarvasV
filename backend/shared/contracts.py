@@ -206,8 +206,34 @@ class StrategyPosition:
     average_price: Decimal
     realized_pnl: Decimal
     unrealized_pnl: Decimal
+    gross_pnl: Decimal
     charges: Decimal
     net_pnl: Decimal
+
+    def __post_init__(self):
+        if type(self.net_quantity) is not int:
+            raise ValueError("net_quantity must be an integer")
+        for name, value in (
+            ("average_price", self.average_price),
+            ("realized_pnl", self.realized_pnl),
+            ("unrealized_pnl", self.unrealized_pnl),
+            ("gross_pnl", self.gross_pnl),
+            ("charges", self.charges),
+            ("net_pnl", self.net_pnl),
+        ):
+            if not isinstance(value, Decimal) or not value.is_finite():
+                raise ValueError(f"{name} must be a finite Decimal")
+        if self.charges < 0:
+            raise ValueError("charges cannot be negative")
+        if self.average_price < 0:
+            raise ValueError("average_price cannot be negative")
+        if (
+            not isinstance(self.strategy_instance_id, str)
+            or not self.strategy_instance_id
+        ):
+            raise ValueError("strategy_instance_id must be non-empty")
+        if not isinstance(self.symbol, str) or not self.symbol:
+            raise ValueError("symbol must be non-empty")
 
 
 @dataclass(frozen=True)

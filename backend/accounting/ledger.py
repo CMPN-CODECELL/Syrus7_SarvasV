@@ -86,15 +86,17 @@ class Ledger:
         result = {}
         for (account, strategy, symbol), (q, avg, realized, charges) in state.items():
             unrealized = q * (self.marks.get(symbol, avg) - avg)
+            gross = realized + unrealized
             result[(account, strategy, symbol)] = StrategyPosition(
-                strategy,
-                symbol,
-                q,
-                avg,
-                realized,
-                unrealized,
-                charges,
-                realized + unrealized - charges,
+                strategy_instance_id=strategy,
+                symbol=symbol,
+                net_quantity=q,
+                average_price=avg,
+                realized_pnl=realized,
+                unrealized_pnl=unrealized,
+                gross_pnl=gross,
+                charges=charges,
+                net_pnl=gross - charges,
             )
         return result, daily
 
