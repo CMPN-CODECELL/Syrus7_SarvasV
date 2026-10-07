@@ -140,6 +140,11 @@ def test_tick_deduplication_is_symbol_scoped_and_bounded():
 def test_subscription_api_normalizes_inputs_and_controls_state():
     platform = Platform()
     with TestClient(create_app(platform)) as client:
+        dashboard = client.get("/")
+        assert dashboard.status_code == 200
+        assert "Independent strategy ledgers" in dashboard.text
+        assert 'id="account-form"' in dashboard.text
+        assert 'id="signals"' in dashboard.text
         assert (
             client.post("/api/accounts", json={"account_id": " a "}).status_code == 201
         )

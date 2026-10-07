@@ -1,18 +1,1153 @@
 <!doctype html>
-<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AlgoShield · Safety control plane</title>
-<style>
-body{background:#0c1422;color:#e4ecfa;font:16px system-ui;margin:0;padding:40px;max-width:1200px}h1{font-size:36px;margin-bottom:6px}p{color:#9cacc4}button{background:#1b3656;color:white;border:1px solid #486580;padding:12px 18px;border-radius:7px;cursor:pointer;margin:5px}button.kill{background:#8b2938}section{background:#142035;padding:20px;margin:20px 0;border-radius:10px}table{width:100%;border-collapse:collapse}td,th{text-align:left;border-bottom:1px solid #2a3b53;padding:10px}pre{overflow:auto;font-size:12px}#error{color:#ffafaf}.badge{color:#74e0c5}
-</style>
-<h1>AlgoShield</h1><p>Safety control plane · <span id="mode"></span></p>
-<button id="demo">Run replay demo</button><button id="reconcile">Reconcile</button><button class="kill" id="kill">Kill all strategies</button>
-<p id="error" role="alert"></p><section><strong id="health" class="badge">Loading backend state…</strong><p id="certificate"></p></section>
-<section><h2>Subscriptions & virtual ledgers</h2><table><thead><tr><th>Strategy</th><th>State</th><th>Position</th><th>Net P&L</th><th>Charges</th></tr></thead><tbody id="rows"></tbody></table></section>
-<section><h2>Execution evidence</h2><p id="counts"></p><pre id="fills"></pre></section>
-<section><h2>Safety timeline</h2><pre id="audit"></pre></section>
-<script>
-const el=id=>document.getElementById(id);
-async function refresh(){try{const r=await fetch('/api/state');if(!r.ok)throw Error(r.status);const s=await r.json();el('mode').textContent=s.mode;el('health').textContent=`${s.health} · Gate ${s.gate}`;el('certificate').textContent=s.kill?`Kill ${s.kill.status} · ${s.kill.elapsed_seconds.toFixed(3)}s · open orders ${s.kill.open_orders} · virtual flat ${s.kill.virtual_positions_flat}`:'No kill certificate issued';el('rows').replaceChildren();for(const sub of s.subscriptions){const positions=s.positions.filter(p=>p.strategy_instance_id===sub.id);const tr=document.createElement('tr');for(const value of [sub.id,sub.running?'RUNNING':'STOPPED',positions.reduce((a,p)=>a+p.net_quantity,0),positions.reduce((a,p)=>a+Number(p.net_pnl),0).toFixed(2),positions.reduce((a,p)=>a+Number(p.charges),0).toFixed(2)]){const td=document.createElement('td');td.textContent=value;tr.append(td)}el('rows').append(tr)}el('counts').textContent=`${s.orders.length} orders · ${s.fills.length} unique fills · ${s.candles.length} recent closed candles`;el('fills').textContent=JSON.stringify(s.fills.slice(-8),null,2);el('audit').textContent=s.audit.map(a=>`${a.sequence} ${a.type} ${a.payload}`).join('\n')}catch(e){el('error').textContent=String(e)}}
-for(const action of ['demo','reconcile','kill'])el(action).onclick=async()=>{el(action).disabled=true;try{const r=await fetch('/api/'+action,{method:'POST'});if(!r.ok)throw Error((await r.json()).detail);el('error').textContent='';await refresh()}catch(e){el('error').textContent=String(e)}finally{el(action).disabled=false}};
-refresh();setInterval(refresh,2000);
-</script></html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="AlgoShield safety control plane for attributed strategy execution."
+    />
+    <meta name="theme-color" content="#ffffff" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23fff'/%3E%3Cpath d='M7 20h5v6H7zm7-14h5v20h-5zm7 7h5v13h-5z' fill='%23a57d2d'/%3E%3C/svg%3E"
+    />
+    <title>AlgoShield · Strategy control</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --canvas: #f8f7f4;
+        --surface: #fff;
+        --soft: #f3f1eb;
+        --ink: #181716;
+        --muted: #5f5c56;
+        --line: #e5e1d8;
+        --gold: #a57d2d;
+        --gold-dark: #76550f;
+        --gold-wash: #f6efdf;
+        --danger: #9b2f3f;
+        --danger-wash: #fbebed;
+        --success: #226c55;
+        --warning: #8a6417;
+        --r-sm: 0.55rem;
+        --r-md: 0.9rem;
+        --r-lg: 1.35rem;
+        --shadow: 0 18px 55px rgba(60, 47, 20, 0.08);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        background:
+          radial-gradient(
+            circle at 90% 0%,
+            rgba(165, 125, 45, 0.09),
+            transparent 24rem
+          ),
+          var(--canvas);
+        color: var(--ink);
+        font:
+          15px/1.55 ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      summary:focus-visible {
+        outline: 3px solid rgba(165, 125, 45, 0.35);
+        outline-offset: 2px;
+      }
+      .skip-link {
+        position: fixed;
+        top: 0.75rem;
+        left: 0.75rem;
+        z-index: 10;
+        transform: translateY(-180%);
+        background: var(--ink);
+        color: #fff;
+        padding: 0.65rem 1rem;
+        border-radius: var(--r-sm);
+      }
+      .skip-link:focus {
+        transform: translateY(0);
+      }
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        border-bottom: 1px solid rgba(229, 225, 216, 0.85);
+        background: rgba(255, 255, 255, 0.88);
+        backdrop-filter: blur(18px);
+      }
+      .topbar {
+        max-width: 1280px;
+        margin: auto;
+        min-height: 4.5rem;
+        padding: 0.75rem 1.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+      .brand-mark {
+        width: 2rem;
+        height: 2rem;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        align-items: end;
+        gap: 3px;
+        padding: 0.35rem;
+        border: 1px solid var(--line);
+        border-radius: 0.7rem;
+        background: var(--surface);
+      }
+      .brand-mark i {
+        display: block;
+        background: var(--gold);
+        border-radius: 1px;
+      }
+      .brand-mark i:nth-child(1) {
+        height: 45%;
+      }
+      .brand-mark i:nth-child(2) {
+        height: 90%;
+      }
+      .brand-mark i:nth-child(3) {
+        height: 65%;
+      }
+      .brand strong {
+        font-size: 1rem;
+        letter-spacing: -0.02em;
+      }
+      .brand span {
+        display: block;
+        color: var(--muted);
+        font-size: 0.72rem;
+      }
+      .connection {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+      .connection-dot {
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        background: var(--warning);
+      }
+      .connection-dot.ok {
+        background: var(--success);
+      }
+      main {
+        max-width: 1280px;
+        margin: auto;
+        padding: 3.5rem 1.5rem 5rem;
+      }
+      .eyebrow {
+        margin: 0 0 0.7rem;
+        color: var(--gold-dark);
+        font-size: 0.72rem;
+        font-weight: 650;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+      h1 {
+        max-width: 760px;
+        margin-bottom: 0.8rem;
+        font-size: clamp(2.35rem, 5vw, 4.75rem);
+        line-height: 0.98;
+        letter-spacing: -0.055em;
+        text-wrap: balance;
+      }
+      h2 {
+        margin-bottom: 0.2rem;
+        font-size: 1.35rem;
+        letter-spacing: -0.025em;
+      }
+      h3 {
+        font-size: 1rem;
+      }
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) minmax(18rem, 0.6fr);
+        gap: 2rem;
+        align-items: end;
+        margin-bottom: 2.8rem;
+      }
+      .hero-copy {
+        max-width: 62ch;
+        color: var(--muted);
+        font-size: 1rem;
+      }
+      .hero-note {
+        padding: 1.2rem 1.3rem;
+        border-left: 3px solid var(--gold);
+        background: rgba(255, 255, 255, 0.65);
+        color: var(--muted);
+      }
+      .hero-note strong {
+        display: block;
+        color: var(--ink);
+        margin-bottom: 0.25rem;
+      }
+      .command-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.65rem;
+        padding: 0.85rem;
+        margin-bottom: 1.2rem;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+        box-shadow: var(--shadow);
+      }
+      .button {
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        background: var(--surface);
+        color: var(--ink);
+        padding: 0.65rem 0.9rem;
+        font-weight: 620;
+        transition:
+          transform 160ms ease,
+          border-color 160ms ease,
+          background 160ms ease;
+      }
+      .button:hover {
+        transform: translateY(-1px);
+        border-color: #c9bea6;
+        background: #fdfcf9;
+      }
+      .button:active {
+        transform: translateY(1px);
+      }
+      .button.primary {
+        border-color: var(--gold-dark);
+        background: var(--gold-dark);
+        color: #fff;
+      }
+      .button.danger {
+        border-color: #d9a7ae;
+        color: var(--danger);
+        background: var(--danger-wash);
+      }
+      .button.small {
+        padding: 0.4rem 0.65rem;
+        font-size: 0.78rem;
+      }
+      .button:disabled {
+        cursor: not-allowed;
+        opacity: 0.48;
+        transform: none;
+      }
+      .command-spacer {
+        flex: 1;
+      }
+      .mode-label {
+        color: var(--muted);
+        font-size: 0.78rem;
+        font-variant-numeric: tabular-nums;
+      }
+      .message {
+        min-height: 1.5rem;
+        margin: 0 0 1rem;
+        color: var(--danger);
+      }
+      .message.success {
+        color: var(--success);
+      }
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.8rem;
+        margin-bottom: 2.5rem;
+      }
+      .metric {
+        min-height: 7.5rem;
+        padding: 1.15rem;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+      }
+      .metric span {
+        display: block;
+        color: var(--muted);
+        font-size: 0.76rem;
+        margin-bottom: 0.8rem;
+      }
+      .metric strong {
+        font-size: 1.45rem;
+        letter-spacing: -0.035em;
+        font-variant-numeric: tabular-nums;
+      }
+      .metric small {
+        display: block;
+        margin-top: 0.45rem;
+        color: var(--muted);
+      }
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+      .status::before {
+        content: "";
+        width: 0.48rem;
+        height: 0.48rem;
+        border-radius: 50%;
+        background: var(--warning);
+      }
+      .status.healthy::before {
+        background: var(--success);
+      }
+      .status.uncertain::before {
+        background: var(--danger);
+      }
+      .section-heading {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 1rem;
+      }
+      .section-heading p {
+        margin-bottom: 0;
+        color: var(--muted);
+      }
+      .workspace {
+        display: grid;
+        grid-template-columns: minmax(0, 1.45fr) minmax(19rem, 0.55fr);
+        gap: 1rem;
+        margin-bottom: 2.8rem;
+      }
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--r-lg);
+        overflow: hidden;
+      }
+      .panel-head {
+        padding: 1.1rem 1.2rem;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+      }
+      .panel-head h3,
+      .panel-head h2 {
+        margin: 0;
+      }
+      .panel-head span {
+        color: var(--muted);
+        font-size: 0.76rem;
+      }
+      .table-wrap {
+        overflow-x: auto;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+      }
+      th,
+      td {
+        padding: 0.85rem 1rem;
+        text-align: left;
+        border-bottom: 1px solid #eeeae2;
+        white-space: nowrap;
+      }
+      th {
+        color: var(--muted);
+        font-size: 0.7rem;
+        font-weight: 650;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+      td.primary-cell {
+        font-weight: 640;
+      }
+      td small {
+        display: block;
+        color: var(--muted);
+      }
+      .positive {
+        color: var(--success);
+      }
+      .negative {
+        color: var(--danger);
+      }
+      .empty {
+        padding: 2.5rem 1.2rem;
+        color: var(--muted);
+        text-align: center;
+      }
+      .setup {
+        padding: 1.15rem;
+      }
+      .setup form + form {
+        margin-top: 1.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--line);
+      }
+      label {
+        display: block;
+        margin-bottom: 0.3rem;
+        color: var(--muted);
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+      input,
+      select {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        background: #fff;
+        color: var(--ink);
+        padding: 0.62rem 0.7rem;
+      }
+      .field {
+        margin-bottom: 0.75rem;
+      }
+      .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.65rem;
+      }
+      .setup .button {
+        width: 100%;
+        margin-top: 0.2rem;
+      }
+      .evidence-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin-bottom: 2.8rem;
+      }
+      .feed {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .feed li {
+        padding: 0.9rem 1.1rem;
+        border-bottom: 1px solid #eeeae2;
+      }
+      .feed li:last-child {
+        border-bottom: 0;
+      }
+      .feed strong {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        font-size: 0.86rem;
+      }
+      .feed p {
+        margin: 0.28rem 0 0;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+      .side-buy {
+        color: var(--success);
+      }
+      .side-sell {
+        color: var(--danger);
+      }
+      details {
+        border-top: 1px solid var(--line);
+      }
+      summary {
+        cursor: pointer;
+        padding: 1rem 1.15rem;
+        font-weight: 620;
+      }
+      pre {
+        margin: 0;
+        padding: 1rem 1.15rem;
+        overflow: auto;
+        background: #23211e;
+        color: #f4efe4;
+        font:
+          0.75rem/1.55 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Consolas,
+          monospace;
+      }
+      .kill-certificate {
+        margin: 0.9rem 1.1rem 1.1rem;
+        padding: 0.85rem;
+        border-radius: var(--r-sm);
+        background: var(--gold-wash);
+        color: var(--gold-dark);
+      }
+      .kill-certificate.failed {
+        background: var(--danger-wash);
+        color: var(--danger);
+      }
+      footer {
+        max-width: 1280px;
+        margin: auto;
+        padding: 0 1.5rem 2.5rem;
+        color: var(--muted);
+        font-size: 0.75rem;
+      }
+      .skeleton {
+        position: relative;
+        overflow: hidden;
+        color: transparent !important;
+        background: #eeece7;
+        border-radius: 0.35rem;
+      }
+      .skeleton::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        transform: translateX(-100%);
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(255, 255, 255, 0.7),
+          transparent
+        );
+        animation: shimmer 1.3s infinite;
+      }
+      @keyframes shimmer {
+        to {
+          transform: translateX(100%);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+      @media (max-width: 900px) {
+        main {
+          padding-top: 2.4rem;
+        }
+        .hero,
+        .workspace,
+        .evidence-grid {
+          grid-template-columns: 1fr;
+        }
+        .metrics {
+          grid-template-columns: 1fr 1fr;
+        }
+        .hero-note {
+          max-width: 40rem;
+        }
+      }
+      @media (max-width: 560px) {
+        .topbar,
+        main,
+        footer {
+          padding-left: 1rem;
+          padding-right: 1rem;
+        }
+        .connection span:last-child {
+          display: none;
+        }
+        .metrics {
+          grid-template-columns: 1fr;
+        }
+        .command-bar .button {
+          flex: 1 1 42%;
+        }
+        .command-spacer {
+          display: none;
+        }
+        .mode-label {
+          flex-basis: 100%;
+        }
+        .form-grid {
+          grid-template-columns: 1fr;
+          gap: 0;
+        }
+        h1 {
+          font-size: 2.65rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to dashboard</a>
+    <header>
+      <div class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"
+            ><i></i><i></i><i></i
+          ></span>
+          <div>
+            <strong>AlgoShield</strong><span>Strategy safety control</span>
+          </div>
+        </div>
+        <div class="connection">
+          <i id="connection-dot" class="connection-dot"></i
+          ><span id="connection">Connecting</span
+          ><span>· backend evidence only</span>
+        </div>
+      </div>
+    </header>
+    <main id="main">
+      <section class="hero" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">Execution control plane</p>
+          <h1 id="page-title">Strategies propose. The platform decides.</h1>
+          <p class="hero-copy">
+            Track independent strategy positions, fill-derived P&amp;L, candle
+            signals, risk state, and verified kill evidence from one operational
+            view.
+          </p>
+        </div>
+        <aside class="hero-note">
+          <strong>Mock and replay bootstrap</strong>This interface reports
+          backend state. It does not claim live 021 connectivity or sandbox
+          certification.
+        </aside>
+      </section>
+      <nav class="command-bar" aria-label="Platform controls">
+        <button class="button primary" id="demo" type="button">
+          Run replay</button
+        ><button class="button" id="reconcile" type="button">Reconcile</button
+        ><button class="button" id="resume" type="button">Resume</button
+        ><button class="button danger" id="kill" type="button">Kill all</button
+        ><span class="command-spacer"></span
+        ><span class="mode-label" id="mode">Loading mode…</span>
+      </nav>
+      <p class="message" id="message" role="status" aria-live="polite"></p>
+      <section class="metrics" aria-label="Platform status">
+        <article class="metric">
+          <span>Reconciliation</span
+          ><strong id="health" class="status skeleton">Loading</strong
+          ><small id="health-note">Waiting for state</small>
+        </article>
+        <article class="metric">
+          <span>Trading gate</span
+          ><strong id="gate" class="status skeleton">Loading</strong
+          ><small id="gate-note">No strategy callbacks yet</small>
+        </article>
+        <article class="metric">
+          <span>Execution evidence</span
+          ><strong id="execution-count" class="skeleton">—</strong
+          ><small id="execution-note">orders · fills</small>
+        </article>
+        <article class="metric">
+          <span>Market data</span
+          ><strong id="tick-count" class="skeleton">—</strong
+          ><small id="tick-note">accepted ticks</small>
+        </article>
+      </section>
+      <section aria-labelledby="strategy-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Subscriptions</p>
+            <h2 id="strategy-title">Independent strategy ledgers</h2>
+          </div>
+          <p>Each row keeps its own position and net P&amp;L.</p>
+        </div>
+        <div class="workspace">
+          <article class="panel">
+            <div class="panel-head">
+              <h3>Subscribed strategies</h3>
+              <span id="strategy-count">0 configured</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Strategy</th>
+                    <th>State</th>
+                    <th>Position</th>
+                    <th>Net P&amp;L</th>
+                    <th>Charges</th>
+                    <th>Control</th>
+                  </tr>
+                </thead>
+                <tbody id="strategy-rows">
+                  <tr>
+                    <td colspan="6" class="empty">Loading subscriptions…</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+          <aside class="panel">
+            <div class="panel-head">
+              <h3>Account setup</h3>
+              <span>Local bootstrap</span>
+            </div>
+            <div class="setup">
+              <form id="account-form">
+                <div class="field">
+                  <label for="account-id">Account ID</label
+                  ><input
+                    id="account-id"
+                    name="account_id"
+                    autocomplete="off"
+                    required
+                    placeholder="team-account"
+                  />
+                </div>
+                <button class="button" type="submit">Create account</button>
+              </form>
+              <form id="subscription-form">
+                <div class="field">
+                  <label for="subscription-account">Account ID</label
+                  ><input
+                    id="subscription-account"
+                    name="account_id"
+                    autocomplete="off"
+                    required
+                    placeholder="team-account"
+                  />
+                </div>
+                <div class="field">
+                  <label for="strategy-id">Strategy instance ID</label
+                  ><input
+                    id="strategy-id"
+                    name="strategy_instance_id"
+                    autocomplete="off"
+                    required
+                    placeholder="reliance-ema-01"
+                  />
+                </div>
+                <div class="form-grid">
+                  <div class="field">
+                    <label for="kind">Strategy</label
+                    ><select id="kind" name="kind">
+                      <option value="momentum">EMA momentum</option>
+                      <option value="mean_reversion">Mean reversion</option>
+                      <option value="breakout">5m breakout</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label for="symbol">Symbol</label
+                    ><input
+                      id="symbol"
+                      name="symbol"
+                      autocomplete="off"
+                      required
+                      placeholder="RELIANCE"
+                    />
+                  </div>
+                </div>
+                <button class="button primary" type="submit">
+                  Subscribe strategy
+                </button>
+              </form>
+            </div>
+          </aside>
+        </div>
+      </section>
+      <section aria-labelledby="evidence-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Evidence</p>
+            <h2 id="evidence-title">Signals and executions</h2>
+          </div>
+          <p>Signals are intent evidence; fills remain financial truth.</p>
+        </div>
+        <div class="evidence-grid">
+          <article class="panel">
+            <div class="panel-head">
+              <h3>Recent strategy signals</h3>
+              <span id="signal-count">0 emitted</span>
+            </div>
+            <ul class="feed" id="signals">
+              <li class="empty">
+                No signals yet. Run replay or resume a configured account.
+              </li>
+            </ul>
+          </article>
+          <article class="panel">
+            <div class="panel-head">
+              <h3>Recent fills</h3>
+              <span id="fill-count">0 unique</span>
+            </div>
+            <ul class="feed" id="fills">
+              <li class="empty">No fill evidence yet.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+      <section class="panel" aria-labelledby="audit-title">
+        <div class="panel-head">
+          <h2 id="audit-title">Reliability evidence</h2>
+          <span id="candle-count">0 closed candles</span>
+        </div>
+        <p id="certificate" class="kill-certificate">
+          No kill certificate issued.
+        </p>
+        <details>
+          <summary>Strategy callback errors</summary>
+          <pre id="strategy-errors">No callback errors recorded.</pre>
+        </details>
+        <details>
+          <summary>Recent closed candles</summary>
+          <pre id="candles">No completed candles recorded.</pre>
+        </details>
+        <details>
+          <summary>Audit timeline</summary>
+          <pre id="audit">No audit events recorded.</pre>
+        </details>
+      </section>
+    </main>
+    <footer>
+      AlgoShield · Local reliability prototype · Monetary values and state are
+      sourced from the backend.
+    </footer>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const endpoints = {
+        demo: "/api/demo",
+        reconcile: "/api/reconcile",
+        resume: "/api/resume",
+        kill: "/api/kill",
+      };
+      let state = null;
+      function money(value) {
+        const number = Number(value || 0);
+        return `${number < 0 ? "−" : ""}₹${Math.abs(number).toFixed(2)}`;
+      }
+      function setMessage(text = "", success = false) {
+        $("message").textContent = text;
+        $("message").className = `message${success ? " success" : ""}`;
+      }
+      function statusClass(value) {
+        return ["HEALTHY", "RUNNING", "SUCCESS", "KILLED"].includes(value)
+          ? "healthy"
+          : ["DRIFTED", "UNCERTAIN", "FAILED"].includes(value)
+            ? "uncertain"
+            : "";
+      }
+      function textNode(tag, text, className = "") {
+        const node = document.createElement(tag);
+        node.textContent = text;
+        if (className) node.className = className;
+        return node;
+      }
+      function renderStrategies(snapshot) {
+        const body = $("strategy-rows");
+        body.replaceChildren();
+        $("strategy-count").textContent =
+          `${snapshot.subscriptions.length} configured`;
+        if (!snapshot.subscriptions.length) {
+          const row = document.createElement("tr");
+          const cell = textNode(
+            "td",
+            "No subscriptions. Create an account and subscribe a strategy.",
+            "empty",
+          );
+          cell.colSpan = 6;
+          row.append(cell);
+          body.append(row);
+          return;
+        }
+        for (const subscription of snapshot.subscriptions) {
+          const positions = snapshot.positions.filter(
+            (position) =>
+              position.strategy_instance_id === subscription.id &&
+              position.account_id === subscription.account,
+          );
+          const quantity = positions.reduce(
+            (total, position) => total + position.net_quantity,
+            0,
+          );
+          const pnl = positions.reduce(
+            (total, position) => total + Number(position.net_pnl),
+            0,
+          );
+          const charges = positions.reduce(
+            (total, position) => total + Number(position.charges),
+            0,
+          );
+          const row = document.createElement("tr");
+          const strategy = document.createElement("td");
+          strategy.className = "primary-cell";
+          strategy.append(
+            textNode("span", subscription.id),
+            textNode(
+              "small",
+              `${subscription.kind.replace("_", " ")} · ${subscription.symbol}`,
+            ),
+          );
+          row.append(
+            strategy,
+            textNode("td", subscription.state),
+            textNode(
+              "td",
+              quantity > 0 ? `+${quantity}` : String(quantity),
+              quantity > 0 ? "positive" : quantity < 0 ? "negative" : "",
+            ),
+            textNode(
+              "td",
+              money(pnl),
+              pnl > 0 ? "positive" : pnl < 0 ? "negative" : "",
+            ),
+            textNode("td", money(charges)),
+          );
+          const control = document.createElement("td");
+          const action = subscription.enabled ? "stop" : "start";
+          const button = textNode(
+            "button",
+            action === "stop" ? "Stop" : "Start",
+            `button small${action === "stop" ? "" : " primary"}`,
+          );
+          button.type = "button";
+          button.onclick = () =>
+            controlSubscription(subscription, action, button);
+          control.append(button);
+          row.append(control);
+          body.append(row);
+        }
+      }
+      function renderFeed(list, items, renderer, emptyText) {
+        list.replaceChildren();
+        if (!items.length) {
+          list.append(textNode("li", emptyText, "empty"));
+          return;
+        }
+        for (const item of items.slice().reverse().slice(0, 8))
+          list.append(renderer(item));
+      }
+      function render(snapshot) {
+        state = snapshot;
+        $("mode").textContent = snapshot.mode;
+        $("demo").disabled = snapshot.mode !== "MOCK / REPLAY";
+        $("health").textContent = snapshot.health;
+        $("health").className = `status ${statusClass(snapshot.health)}`;
+        $("health-note").textContent =
+          snapshot.health === "HEALTHY"
+            ? "Broker and local projections reconciled"
+            : "Trading requires healthy reconciliation";
+        $("gate").textContent = snapshot.gate;
+        $("gate").className = `status ${statusClass(snapshot.gate)}`;
+        $("gate-note").textContent =
+          snapshot.gate === "RUNNING"
+            ? "Strategy callbacks enabled"
+            : "New strategy exposure blocked";
+        $("execution-count").textContent =
+          `${snapshot.orders.length} · ${snapshot.fills.length}`;
+        $("execution-count").className = "";
+        $("execution-note").textContent = "orders · unique fills";
+        $("tick-count").textContent = snapshot.market_data.accepted_ticks;
+        $("tick-count").className = "";
+        $("tick-note").textContent =
+          `${snapshot.market_data.duplicate_ticks} duplicate · ${snapshot.market_data.late_ticks} late`;
+        renderStrategies(snapshot);
+        $("signal-count").textContent = `${snapshot.signals.length} emitted`;
+        renderFeed(
+          $("signals"),
+          snapshot.signals,
+          (signal) => {
+            const item = document.createElement("li");
+            const heading = document.createElement("strong");
+            heading.append(
+              textNode("span", `${signal.strategy} · ${signal.symbol}`),
+              textNode(
+                "span",
+                signal.side,
+                signal.side === "BUY" ? "side-buy" : "side-sell",
+              ),
+            );
+            item.append(
+              heading,
+              textNode(
+                "p",
+                `${signal.reason} · ${signal.interval / 60}m candle`,
+              ),
+            );
+            return item;
+          },
+          "No signals yet. Run replay or resume a configured account.",
+        );
+        $("fill-count").textContent = `${snapshot.fills.length} unique`;
+        renderFeed(
+          $("fills"),
+          snapshot.fills,
+          (fill) => {
+            const item = document.createElement("li");
+            const heading = document.createElement("strong");
+            heading.append(
+              textNode("span", `${fill.strategy} · ${fill.symbol}`),
+              textNode(
+                "span",
+                fill.side,
+                fill.side === "BUY" ? "side-buy" : "side-sell",
+              ),
+            );
+            item.append(
+              heading,
+              textNode(
+                "p",
+                `${fill.quantity} @ ${fill.price} · charges ${money(fill.charges)}`,
+              ),
+            );
+            return item;
+          },
+          "No fill evidence yet.",
+        );
+        $("candle-count").textContent =
+          `${snapshot.candles.length} recent closed candles`;
+        $("candles").textContent = snapshot.candles.length
+          ? JSON.stringify(snapshot.candles, null, 2)
+          : "No completed candles recorded.";
+        $("strategy-errors").textContent = snapshot.strategy_errors.length
+          ? JSON.stringify(snapshot.strategy_errors, null, 2)
+          : "No callback errors recorded.";
+        $("audit").textContent = snapshot.audit.length
+          ? snapshot.audit
+              .map(
+                (event) => `${event.sequence}  ${event.type}  ${event.payload}`,
+              )
+              .join("\n")
+          : "No audit events recorded.";
+        if (snapshot.kill) {
+          $("certificate").textContent =
+            `Kill ${snapshot.kill.status} · ${Number(snapshot.kill.elapsed_seconds).toFixed(3)}s · open orders ${snapshot.kill.open_orders} · virtual flat ${snapshot.kill.virtual_positions_flat}`;
+          $("certificate").className =
+            `kill-certificate${snapshot.kill.status === "FAILED" ? " failed" : ""}`;
+        } else {
+          $("certificate").textContent = "No kill certificate issued.";
+          $("certificate").className = "kill-certificate";
+        }
+      }
+      async function request(url, options = {}) {
+        const response = await fetch(url, options);
+        if (!response.ok) {
+          let detail = `Request failed (${response.status})`;
+          try {
+            detail = (await response.json()).detail || detail;
+          } catch (_) {}
+          throw new Error(detail);
+        }
+        return response.json();
+      }
+      async function refresh() {
+        try {
+          render(await request("/api/state"));
+          $("connection").textContent = "Connected";
+          $("connection-dot").className = "connection-dot ok";
+        } catch (error) {
+          $("connection").textContent = "Disconnected";
+          $("connection-dot").className = "connection-dot";
+          setMessage(error.message);
+        }
+      }
+      async function runAction(action) {
+        const button = $(action);
+        button.disabled = true;
+        setMessage("");
+        try {
+          await request(endpoints[action], { method: "POST" });
+          await refresh();
+          setMessage(`${button.textContent} completed.`, true);
+        } catch (error) {
+          setMessage(error.message);
+        } finally {
+          button.disabled =
+            action === "demo" && state?.mode !== "MOCK / REPLAY";
+        }
+      }
+      async function controlSubscription(subscription, action, button) {
+        button.disabled = true;
+        setMessage("");
+        try {
+          await request(
+            `/api/subscriptions/${encodeURIComponent(subscription.id)}/${action}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ account_id: subscription.account }),
+            },
+          );
+          await refresh();
+          setMessage(
+            `${subscription.id} ${action === "start" ? "started" : "stopped"}.`,
+            true,
+          );
+        } catch (error) {
+          setMessage(error.message);
+          button.disabled = false;
+        }
+      }
+      async function submitForm(event, url) {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const button = form.querySelector("button");
+        button.disabled = true;
+        setMessage("");
+        try {
+          await request(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(Object.fromEntries(new FormData(form))),
+          });
+          const account = form.elements.account_id.value.trim();
+          if (url === "/api/accounts")
+            $("subscription-account").value = account;
+          if (url === "/api/subscriptions") form.reset();
+          await refresh();
+          setMessage(
+            url === "/api/accounts"
+              ? "Account created."
+              : "Strategy subscribed.",
+            true,
+          );
+        } catch (error) {
+          setMessage(error.message);
+        } finally {
+          button.disabled = false;
+        }
+      }
+      for (const action of Object.keys(endpoints))
+        $(action).addEventListener("click", () => runAction(action));
+      $("account-form").addEventListener("submit", (event) =>
+        submitForm(event, "/api/accounts"),
+      );
+      $("subscription-form").addEventListener("submit", (event) =>
+        submitForm(event, "/api/subscriptions"),
+      );
+      refresh();
+      setInterval(refresh, 2000);
+    </script>
+  </body>
+</html>
