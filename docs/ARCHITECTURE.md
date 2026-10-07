@@ -10,7 +10,7 @@ Composition lives in `backend/platform.py`; domain modules import `backend/share
 
 ## Execution and concurrency
 
-A single process-wide reentrant lock serializes risk checks, durable reservations, dispatch, fill processing and kill gate changes. Run **one backend worker**. A reservation is an order row committed before broker submission. UNKNOWN submissions retain exposure and stop the gate; do not blindly retry. Reconcile by client identity/history through the adapter. Real integration must add bounded network deadlines so a broker call cannot indefinitely delay kill.
+A process-wide reentrant lock serializes local risk checks, durable reservations, dispatch start, fill processing and kill gate changes. Network waits occur outside it. Run **one backend worker**. A reservation is committed before submission; dispatch is durably UNKNOWN before external work starts. One bounded broker session allows only one active call. Timeout retains uncertainty and blocks further mutation until a settled complete snapshot is verified. No blind submission retry. Kill signals the admission gate before waiting for the controller and uses a nine-second total deadline.
 
 Check worst-case endpoints independently: `q + pending buys + new buys` and `q - pending sells - new sells`. Both must have absolute value <= max position. Pending buys and sells do not offset. Rejections/cancel confirmations release remaining reservation; partial fills transfer executed exposure into the ledger. Rate limits count admitted submissions over `(now-60, now]`, including broker rejections; emergency exits have separately audited authority.
 

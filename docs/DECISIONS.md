@@ -314,3 +314,9 @@ Implicitly complete snapshots, process-only latches and cancel-submitted success
 
 ### Reversal
 Any snapshot scope/freshness/session changes need documented provider evidence plus missing-history, stale-feed, reduce-only and restart tests.
+
+## DEC-015 — Bounded broker work and convergent kill (2026-10-07)
+
+BrokerSession permits one external call at a time, with bounded caller waits. Its daemon worker never writes local financial state. Timeout does not cancel external work: the session requires settled complete reconciliation before further broker mutations. Local transactions cover admission/reservation and dispatch start; waits occur outside the DB lock. Migration 004 distinguishes never-dispatched reservations from ambiguous submissions. Complete settled history can resolve an absent UNKNOWN as never accepted; other missing history still fails closed.
+
+Kill signals admission closed immediately, durably latches, then observes/cancels/reconciles and progresses attributed risk-authorized exits. Default total deadline is nine seconds, with finite rounds. Requests never prove cancellation or flatness. SUCCESS requires verified broker and virtual flatness with no open orders or unsettled call under ten seconds; verified later is SAFE_LATE. Unknown external close semantics remain an explicit adapter capability, false by default; only the mock currently confirms it.

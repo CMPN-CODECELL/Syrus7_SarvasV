@@ -68,8 +68,16 @@ def verify_snapshot(store, snapshot, now, max_age=5):
                 and order.status == OrderStatus.FILLED
             ):
                 raise SnapshotError("TERMINAL_STATUS_REGRESSION")
-    if set(local) - set(orders):
-        raise SnapshotError("LOCAL_ORDER_MISSING_AT_BROKER")
+    for oid in set(local) - set(orders):
+        row = local[oid]
+        if row["filled"] or not (
+            row["status"] == OrderStatus.UNKNOWN
+            or (
+                not row["dispatch_started"]
+                and row["status"] in {OrderStatus.RESERVED, OrderStatus.REJECTED}
+            )
+        ):
+            raise SnapshotError("LOCAL_ORDER_MISSING_AT_BROKER")
     fills = {}
     duplicates = 0
     totals = {}

@@ -7,6 +7,7 @@ from backend.broker.adapters import MockBrokerAdapter
 from backend.execution.orders import OrderManager
 from backend.market_data.candles import CandleBuilder, ReplayMarketDataProvider
 from backend.reliability.control import Reliability
+from backend.reliability.broker_calls import BrokerSession
 from backend.risk.gateway import RiskGateway
 from backend.shared.store import Store
 from backend.strategies.runtime import StrategyRuntime
@@ -25,12 +26,13 @@ class Platform:
             )
         )
         self.ledger = Ledger(self.store)
-        self.orders = OrderManager(self.store, self.broker, self.ledger)
+        self.broker_calls = BrokerSession(self.broker)
+        self.orders = OrderManager(self.store, self.broker_calls, self.ledger)
         self.risk = RiskGateway(self.store, self.ledger, self.orders, clock)
         self.strategies = StrategyRuntime(self.store)
         self.reliability = Reliability(
             self.store,
-            self.broker,
+            self.broker_calls,
             self.ledger,
             self.orders,
             self.risk,
@@ -66,22 +68,29 @@ class Platform:
                 self.reliability.fail_closed("MARKET_EVENT_REJECTED")
                 raise
             self.reliability.observe_tick(tick, replay=replay)
+            intents = []
             for candle in closed:
                 self.closed_candles.append(candle)
-                for intent in self.strategies.on_candle(candle, self.clock()):
-                    decision = self.risk.submit(intent)
-                    if decision.allowed and self.risk.state == "RUNNING":
-                        order = self.broker.orders[intent.intent_id]
-                        if order.remaining_quantity and order.status != "REJECTED":
-                            self.ingest(
-                                self.broker.execute(
-                                    order.order_id,
-                                    order.remaining_quantity,
-                                    tick.price,
-                                    self.clock(),
-                                    Decimal("0.01"),
-                                )
-                            )
+                intents.extend(self.strategies.on_candle(candle, self.clock()))
+        for intent in intents:
+            decision = self.risk.submit(intent)
+            if (
+                decision.allowed
+                and self.risk.state == "RUNNING"
+                and isinstance(self.broker, MockBrokerAdapter)
+            ):
+                order = self.broker.orders.get(intent.intent_id)
+                if order and order.remaining_quantity and order.status != "REJECTED":
+                    self.ingest(
+                        self.broker_calls.call(
+                            "execute",
+                            order.order_id,
+                            order.remaining_quantity,
+                            tick.price,
+                            self.clock(),
+                            Decimal("0.01"),
+                        )
+                    )
 
     def demo(self):
         with self.store.lock:
@@ -101,13 +110,12 @@ class Platform:
             start = max(starts, default=1_700_000_100) + 900
             self.demo_count += 1
             events = iter(ReplayMarketDataProvider.demo(start).ticks())
-            self.tick(next(events), replay=True)
-            self.reliability.resume()
-            for tick in events:
-                self.tick(tick, replay=True)
-            self.reliability.reconcile()
-            # Demo stops safely after replay; subscriptions remain visible.
-            return self.snapshot()
+        self.tick(next(events), replay=True)
+        self.reliability.resume()
+        for tick in events:
+            self.tick(tick, replay=True)
+        self.reliability.reconcile()
+        return self.snapshot()
 
     def require_offline_demo(self):
         from backend.shared.postgres import PostgresStore
@@ -124,12 +132,14 @@ class Platform:
             price = self.ledger.marks.get(order.intent.symbol, Decimal("100"))
             if order.status != "REJECTED":
                 self.ingest(
-                    self.broker.execute(
+                    self.broker_calls.call(
+                        "execute",
                         order.order_id,
                         order.remaining_quantity,
                         price,
                         self.clock(),
                         Decimal("0.01"),
+                        timeout=self.reliability.kill_deadline.remaining,
                     )
                 )
 

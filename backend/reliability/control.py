@@ -1,6 +1,8 @@
 from dataclasses import asdict
 from decimal import Decimal
 from threading import RLock
+import time
+from backend.reliability.broker_calls import Deadline
 from uuid import uuid4
 
 from backend.reliability.snapshots import SnapshotError, verify_snapshot
@@ -86,19 +88,30 @@ class Reliability:
             return "RISK_STALE_MARKET_DATA"
         return ""
 
-    def reconcile(self):
-        with self.operation_lock, self.store.lock:
+    def reconcile(self, *, timeout=None):
+        with self.operation_lock:
             previous_gate = self.risk.state
             self.runtime.enabled = False
             self.risk.state = (
                 Gate.RECOVERING if previous_gate != Gate.KILLING else Gate.KILLING
             )
             try:
-                snapshot = self.broker.snapshot()
-                orders, fills, observed_at, duplicates = verify_snapshot(
-                    self.store, snapshot, self.clock(), self.max_broker_age
-                )
+                snapshot = self.broker.snapshot(timeout=timeout)
                 with self.store.transaction() as db:
+                    orders, fills, observed_at, duplicates = verify_snapshot(
+                        self.store, snapshot, self.clock(), self.max_broker_age
+                    )
+                    for row in self.store.rows(
+                        "SELECT * FROM orders WHERE status IN ('UNKNOWN','RESERVED')"
+                    ):
+                        if row["id"] not in orders:
+                            db.execute(
+                                "UPDATE orders SET status='REJECTED',dispatch_started=0 WHERE id=?",
+                                (row["id"],),
+                            )
+                            self.store.audit(
+                                "ABSENT_SUBMISSION_RESOLVED", {"order_id": row["id"]}
+                            )
                     for fill in sorted(
                         fills.values(), key=lambda f: (f.timestamp, f.fill_id)
                     ):
@@ -137,10 +150,11 @@ class Reliability:
                     self.safety.set("reconciliation_report", self.report)
                     self.store.audit("RECONCILED", self.report)
                 self.last_broker_at = observed_at
+                self.broker.acknowledge_verified()
                 self._health(Health.HEALTHY)
                 self.risk.state = (
                     Gate.KILLING
-                    if previous_gate == Gate.KILLING
+                    if previous_gate == Gate.KILLING or self.risk.state == Gate.KILLING
                     else Gate.KILLED
                     if self.kill_latched
                     else Gate.STOPPED
@@ -163,18 +177,21 @@ class Reliability:
                 return False
 
     def resume(self, *, reduce_only=False):
-        with self.operation_lock, self.store.lock:
-            if self.kill_latched:
+        with self.operation_lock:
+            if self.kill_latched or self.risk.kill_requested.is_set():
                 raise ValueError(
                     "kill is durably latched; verified operator reset required"
                 )
             if not self.reconcile():
                 raise ValueError("reconciliation required")
-            self.risk.state = Gate.REDUCE_ONLY if reduce_only else Gate.RUNNING
-            self.runtime.enabled = True
+            with self.store.lock:
+                if self.kill_latched or self.risk.kill_requested.is_set():
+                    raise ValueError("kill is latched")
+                self.risk.state = Gate.REDUCE_ONLY if reduce_only else Gate.RUNNING
+                self.runtime.enabled = True
 
     def reset_kill(self):
-        with self.operation_lock, self.store.lock:
+        with self.operation_lock:
             if (
                 not self.reconcile()
                 or self.report["open_orders"]
@@ -186,6 +203,7 @@ class Reliability:
                 )
             with self.store.transaction():
                 self.safety.set("kill_latched", False)
+                self.risk.kill_requested.clear()
                 self.risk.state = Gate.STOPPED
                 self.store.audit("KILL_LATCH_RESET", {})
 
@@ -221,99 +239,118 @@ class Reliability:
             ],
         }
 
-    def kill(self, flatten_executor=None):
-        with self.operation_lock, self.store.lock:
-            start = self.clock()
-            with self.store.transaction():
-                self.safety.set("kill_latched", True)
+    def kill(
+        self,
+        flatten_executor=None,
+        *,
+        deadline_seconds=9,
+        max_rounds=64,
+        deadline_clock=time.monotonic,
+    ):
+        deadline = Deadline(deadline_seconds, deadline_clock)
+        self.risk.kill_requested.set()
+        with self.store.transaction():
+            self.safety.set("kill_latched", True)
+            self.risk.state = Gate.KILLING
+            self.runtime.enabled = False
+            self.store.audit("KILL_GATE_CLOSED", {})
+        acquired = self.operation_lock.acquire(timeout=deadline.remaining)
+        reason, safe, open_count, positions = "", False, -1, {}
+        self.kill_deadline = deadline
+        try:
+            if not acquired:
+                raise SnapshotError("KILL_CONTROLLER_BUSY")
+            for _ in range(max_rounds):
+                if not deadline.remaining:
+                    raise SnapshotError("KILL_DEADLINE_EXPIRED")
                 self.risk.state = Gate.KILLING
-                self.runtime.enabled = False
-                self.store.audit("KILL_GATE_CLOSED", {})
-            reason = ""
-            try:
-                snapshot = self.broker.snapshot()
-                if not snapshot.is_complete:
-                    raise SnapshotError("SNAPSHOT_INCOMPLETE")
+                if not self.reconcile(timeout=deadline.remaining):
+                    raise SnapshotError(self.report["reason"])
+                open_count = self.report["open_orders"]
+                positions = {
+                    f"{r['account_id']}/{r['symbol']}": r["quantity"]
+                    for r in self.report["broker_positions"]
+                }
+                virtual = [
+                    (key, p.net_quantity)
+                    for key, p in self.ledger.positions().items()
+                    if p.net_quantity
+                ]
+                if (
+                    not open_count
+                    and not positions
+                    and not virtual
+                    and not self.broker.unsettled
+                ):
+                    safe = True
+                    break
+                # Only progress/cancel orders already proven by a complete snapshot.
+                snapshot = self.broker.snapshot(timeout=deadline.remaining)
+                with self.store.lock:
+                    verify_snapshot(
+                        self.store, snapshot, self.clock(), self.max_broker_age
+                    )
                 for order in snapshot.orders:
-                    if order.status not in TERMINAL:
-                        self.broker.cancel(order.order_id)
-                if not self.reconcile():
-                    raise SnapshotError("CANNOT_FLATTEN_UNCERTAIN_STATE")
-                self.risk.state = Gate.KILLING
-                for (
-                    account,
-                    strategy,
-                    symbol,
-                ), position in self.ledger.positions().items():
-                    if not position.net_quantity:
+                    if order.status in TERMINAL:
                         continue
+                    row = self.store.rows(
+                        "SELECT emergency FROM orders WHERE id=?", (order.order_id,)
+                    )[0]
+                    if row["emergency"]:
+                        if flatten_executor:
+                            flatten_executor(order)
+                    else:
+                        self.broker.cancel(order.order_id, timeout=deadline.remaining)
+                if open_count:
+                    continue  # Observe cancellation/fill evidence before creating an exit.
+                if virtual and not getattr(
+                    self.broker.adapter, "supports_virtual_closes", False
+                ):
+                    raise SnapshotError("UNCONFIRMED_VIRTUAL_CLOSE_SEMANTICS")
+                for (account, strategy, symbol), quantity in virtual:
+                    if not deadline.remaining:
+                        raise SnapshotError("KILL_DEADLINE_EXPIRED")
                     intent = OrderIntent(
                         "kill:" + str(uuid4()),
                         strategy,
                         account,
                         symbol,
-                        Side.SELL if position.net_quantity > 0 else Side.BUY,
-                        abs(position.net_quantity),
+                        Side.SELL if quantity > 0 else Side.BUY,
+                        abs(quantity),
                         self.clock(),
                         reason="verified kill flatten",
                     )
-                    with self.store.transaction() as db:
-                        self.store.audit(
-                            "EMERGENCY_AUTHORIZED", {"intent_id": intent.intent_id}
-                        )
-                        db.execute(
-                            "INSERT INTO orders VALUES (?,?,?,?,?,?,?,?,0,1)",
-                            (
-                                intent.intent_id,
-                                strategy,
-                                account,
-                                symbol,
-                                intent.side.value,
-                                intent.quantity,
-                                self.clock(),
-                                OrderStatus.RESERVED,
-                            ),
-                        )
-                    order = self.manager.submit_reserved(intent)
+                    self.risk.authorize_emergency(intent)
+                    order = self.manager.submit_reserved(
+                        intent, timeout=deadline.remaining
+                    )
+                    if order.status == OrderStatus.REJECTED:
+                        raise SnapshotError("EMERGENCY_EXIT_REJECTED")
                     if flatten_executor:
                         flatten_executor(order)
-                if not self.reconcile():
-                    raise SnapshotError("POST_FLATTEN_RECONCILIATION_FAILED")
-            except Exception as exc:
-                reason = (
-                    exc.code
-                    if isinstance(exc, SnapshotError)
-                    else "KILL_" + type(exc).__name__.upper()
-                )
-            try:
-                final = self.broker.snapshot()
-                if not final.is_complete:
-                    raise SnapshotError("SNAPSHOT_INCOMPLETE")
-                open_count = sum(o.status not in TERMINAL for o in final.orders)
-                positions = {
-                    f"{a}/{s}": q for (a, s), q in final.positions.items() if q
-                }
-            except Exception:
-                open_count, positions = -1, {}
-                reason = reason or "FINAL_BROKER_EVIDENCE_UNAVAILABLE"
-            virtual_flat = all(
-                p.net_quantity == 0 for p in self.ledger.positions().values()
+            else:
+                reason = "KILL_ROUND_LIMIT"
+        except Exception as exc:
+            reason = (
+                exc.code
+                if isinstance(exc, SnapshotError)
+                else "KILL_" + type(exc).__name__.upper()
             )
-            elapsed = self.clock() - start
-            safe = not reason and not open_count and not positions and virtual_flat
-            status = (
-                "SUCCESS"
-                if safe and elapsed < 10
-                else "SAFE_LATE"
-                if safe
-                else "FAILED"
-            )
-            self.certificate = KillCertificate(
-                status, elapsed, open_count, positions, virtual_flat, reason
-            )
-            with self.store.transaction():
-                self.safety.set("kill_certificate", asdict(self.certificate))
-                self.risk.state = Gate.KILLED if safe else Gate.UNCERTAIN
-                self._health(Health.HEALTHY if safe else Health.DRIFTED)
-                self.store.audit("KILL_VERIFIED", asdict(self.certificate))
-            return self.certificate
+            open_count = -1
+        finally:
+            if acquired:
+                self.operation_lock.release()
+        virtual_flat = all(not p.net_quantity for p in self.ledger.positions().values())
+        elapsed = deadline.elapsed
+        status = (
+            "SUCCESS" if safe and elapsed < 10 else "SAFE_LATE" if safe else "FAILED"
+        )
+        self.certificate = KillCertificate(
+            status, elapsed, open_count, positions, virtual_flat, reason
+        )
+        with self.store.transaction():
+            self.safety.set("kill_certificate", asdict(self.certificate))
+            self.risk.state = Gate.KILLED if safe else Gate.UNCERTAIN
+            self._health(Health.HEALTHY if safe else Health.DRIFTED)
+            self.store.audit("KILL_VERIFIED", asdict(self.certificate))
+        return self.certificate

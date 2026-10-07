@@ -23,6 +23,8 @@ class BrokerAdapter(Protocol):
 class MockBrokerAdapter:
     """External mock state survives Platform recreation if this object is retained."""
 
+    supports_virtual_closes = True
+
     def __init__(self, path=None):
         self.persistence = MockPersistence(path)
         self.orders, self.fills, self.external_positions = self.persistence.load()

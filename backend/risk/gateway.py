@@ -9,6 +9,8 @@ from backend.shared.contracts import (
 )
 from backend.risk.policies import PolicyRepository
 from backend.reliability.state import SafetyRepository
+from threading import Event
+from backend.execution.orders import SubmissionBlocked
 
 
 class RiskGateway:
@@ -20,6 +22,9 @@ class RiskGateway:
             clock,
         )
         self.safety = SafetyRepository(store)
+        self.kill_requested = Event()
+        if self.safety.get("kill_latched", False):
+            self.kill_requested.set()
         self._state = GlobalTradingState.RECOVERING
         self.state = GlobalTradingState.RECOVERING
         self.policies = PolicyRepository(store)
@@ -27,6 +32,61 @@ class RiskGateway:
         self.on_uncertain = lambda code: setattr(
             self, "state", GlobalTradingState.UNCERTAIN
         )
+        self.manager.authorize_dispatch = self.authorize_dispatch
+
+    def authorize_dispatch(self, intent, row):
+        if row["emergency"]:
+            return self.state == GlobalTradingState.KILLING and self.safety.get(
+                "kill_latched", False
+            )
+        return (
+            not self.kill_requested.is_set()
+            and not self.safety.get("kill_latched", False)
+            and self.state
+            in {GlobalTradingState.RUNNING, GlobalTradingState.REDUCE_ONLY}
+        )
+
+    def authorize_emergency(self, intent):
+        with self.store.transaction() as db:
+            q = self.ledger.quantity(
+                intent.account_id, intent.strategy_instance_id, intent.symbol
+            )
+            pending = db.execute(
+                "SELECT id FROM orders WHERE account=? AND strategy=? AND symbol=? AND status NOT IN ('FILLED','CANCELLED','REJECTED')",
+                (intent.account_id, intent.strategy_instance_id, intent.symbol),
+            ).fetchone()
+            if (
+                self.state != GlobalTradingState.KILLING
+                or not self.safety.get("kill_latched", False)
+                or pending
+                or q * intent.side.sign >= 0
+                or intent.quantity > abs(q)
+            ):
+                raise ValueError("emergency intent is not a verified reducing exit")
+            decision = RiskDecision(
+                intent.intent_id,
+                True,
+                "EMERGENCY_REDUCING_EXIT",
+                q + intent.side.sign * intent.quantity,
+                created_at=self.clock(),
+                reservation_id=intent.intent_id,
+            )
+            self.store.audit("RISK_DECISION", decision.__dict__)
+            self.store.audit("EMERGENCY_AUTHORIZED", {"intent_id": intent.intent_id})
+            db.execute(
+                "INSERT INTO orders (id,strategy,account,symbol,side,quantity,created,status,filled,emergency,dispatch_started) VALUES (?,?,?,?,?,?,?,?,0,1,0)",
+                (
+                    intent.intent_id,
+                    intent.strategy_instance_id,
+                    intent.account_id,
+                    intent.symbol,
+                    intent.side.value,
+                    intent.quantity,
+                    self.clock(),
+                    OrderStatus.RESERVED,
+                ),
+            )
+            return decision
 
     @property
     def state(self):
@@ -126,7 +186,7 @@ class RiskGateway:
         }
 
     def submit(self, intent):
-        # One lock spans check, reservation, dispatch and kill gate transitions.
+        # Atomically reserve; network waits never hold the control-plane lock.
         with self.store.lock:
             reason, projected = self._check(intent)
             decision = RiskDecision(
@@ -146,7 +206,7 @@ class RiskGateway:
                 if reason:
                     return decision
                 db.execute(
-                    "INSERT INTO orders VALUES (?,?,?,?,?,?,?,?,0,0)",
+                    "INSERT INTO orders (id,strategy,account,symbol,side,quantity,created,status,filled,emergency,dispatch_started) VALUES (?,?,?,?,?,?,?,?,0,0,0)",
                     (
                         intent.intent_id,
                         intent.strategy_instance_id,
@@ -158,13 +218,17 @@ class RiskGateway:
                         OrderStatus.RESERVED,
                     ),
                 )
-            try:
-                self.manager.submit_reserved(intent)
-            except Exception:
-                self.on_uncertain("SUBMISSION_UNKNOWN")
-            return decision
+        try:
+            self.manager.submit_reserved(intent)
+        except SubmissionBlocked:
+            pass
+        except Exception:
+            self.on_uncertain("SUBMISSION_UNKNOWN")
+        return decision
 
     def _check(self, intent):
+        if self.kill_requested.is_set():
+            return "RISK_GLOBAL_GATE", None
         if self.state not in {
             GlobalTradingState.RUNNING,
             GlobalTradingState.REDUCE_ONLY,
