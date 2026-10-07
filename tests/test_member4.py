@@ -45,6 +45,8 @@ def test_builtin_strategies_use_ema_mean_and_five_minute_breakout():
             closed_candle(start=0, close_price="100"),
             closed_candle(start=60, close_price="102"),
             closed_candle(start=120, close_price="104"),
+            closed_candle(start=180, close_price="106"),
+            closed_candle(start=240, close_price="108"),
             closed_candle(300, 0, "100", "101"),
             closed_candle(300, 300, "102", "105"),
         ]
@@ -63,6 +65,41 @@ def test_builtin_strategies_use_ema_mean_and_five_minute_breakout():
             60,
             300,
         }
+    finally:
+        platform.store.close()
+
+
+def test_one_minute_strategies_require_full_five_candle_warmup():
+    platform = configured_platform()
+    try:
+        warming = [
+            closed_candle(start=minute * 60, close_price=str(100 + minute * 2))
+            for minute in range(4)
+        ]
+        assert [
+            intent
+            for candle in warming
+            for intent in platform.strategies.on_candle(candle, platform.clock())
+        ] == []
+
+        ready = platform.strategies.on_candle(
+            closed_candle(start=240, close_price="108"), platform.clock()
+        )
+        assert {intent.strategy_instance_id for intent in ready} == {"ema", "mean"}
+
+        platform.strategies.set_enabled("a", "ema", False)
+        platform.strategies.set_enabled("a", "ema", True)
+        for minute in range(4):
+            assert all(
+                intent.strategy_instance_id != "ema"
+                for intent in platform.strategies.on_candle(
+                    closed_candle(
+                        start=600 + minute * 60,
+                        close_price=str(110 + minute * 2),
+                    ),
+                    platform.clock(),
+                )
+            )
     finally:
         platform.store.close()
 

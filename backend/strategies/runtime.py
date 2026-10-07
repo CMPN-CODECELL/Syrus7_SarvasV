@@ -84,7 +84,12 @@ class StrategyRuntime:
         fast = state.get("ema_fast")
         slow = state.get("ema_slow")
         if fast is None:
-            state.update(ema_fast=candle.close, ema_slow=candle.close, trend=0)
+            state.update(
+                ema_fast=candle.close,
+                ema_slow=candle.close,
+                trend=0,
+                samples=1,
+            )
             return None
         fast = Decimal("0.5") * candle.close + Decimal("0.5") * fast
         slow = (
@@ -93,8 +98,14 @@ class StrategyRuntime:
         )
         trend = 1 if fast > slow else -1 if fast < slow else 0
         previous_trend = state["trend"]
-        state.update(ema_fast=fast, ema_slow=slow, trend=trend)
-        if not trend or trend == previous_trend:
+        samples = state["samples"] + 1
+        state.update(ema_fast=fast, ema_slow=slow, trend=trend, samples=samples)
+        # The slow EMA is a five-period indicator. Rebuild that minimum history
+        # after every process restart or explicit subscription restart before
+        # allowing the strategy to emit a risk-increasing intent.
+        if samples < 5:
+            return None
+        if not trend or (samples > 5 and trend == previous_trend):
             return None
         return (
             Side.BUY if trend > 0 else Side.SELL,
@@ -107,7 +118,7 @@ class StrategyRuntime:
         state = self.indicators.setdefault(subscription["id"], {})
         closes = state.setdefault("closes", deque(maxlen=5))
         closes.append(candle.close)
-        if len(closes) < 3:
+        if len(closes) < 5:
             return None
         mean = sum(closes, Decimal(0)) / len(closes)
         deviation = (candle.close - mean) / mean
