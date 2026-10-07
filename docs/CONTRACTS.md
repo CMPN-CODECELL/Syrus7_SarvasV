@@ -15,6 +15,7 @@ Canonical executable definitions: `backend/shared/contracts.py`. Documentation d
 - `StrategyPosition`: strategy_instance_id, symbol, net_quantity, average_price, realized_pnl, unrealized_pnl, charges, net_pnl. API adds account_id.
 - `RiskPolicy`: finite positive Decimal max_daily_loss, positive integer max_position/max_orders_per_minute. Gateway mapping persists configurable policies by globally unique strategy ID; durable strategy_controls preserve manual/loss halts. Unconfigured strategies use documented defaults.
 - Subscription rows: globally unique strategy instance ID, account, kind, symbol and durable `enabled` flag. Disabled subscriptions emit no callbacks and are rejected independently by risk. `READY` means enabled while the global runtime is stopped; it is not a claim of broker connectivity.
+- Dashboard subscription commands never accept a client-selected account ID. The API derives `account_id` from the verified HttpOnly session created by login/registration; registration assigns `acc_<normalized username>` in the local bootstrap.
 - `BrokerSnapshot`: orders/fills history and positions keyed by `(account_id,symbol)`, is_complete (defaults False), observed_at (optional provider UTC epoch time). Mock explicitly attests completeness. Query completion time is used if no provider timestamp exists; stale/uncertain/incomplete evidence blocks reconciliation. Real adapters must attest complete paginated history for the configured platform scope and keep provider-specific identity mapping inside the adapter.
 - `KillCertificate`: status, elapsed_seconds, open_orders, broker_positions, virtual_positions_flat, reason. Unknown open count = -1, never verified safe.
 
@@ -60,4 +61,3 @@ Every broker adapter (including `MockBrokerAdapter` and the eventual `Broker021A
    - Fills must possess stable, unique identifiers suitable for idempotent deduplication.
    - Partial fills must accurately report `filled_quantity` and remaining quantity.
    - A real adapter (`Broker021Adapter`) must translate broker-specific payloads (e.g. 021 JSON schemas) into AlgoShield's canonical contracts inside the adapter; raw provider payloads must never leak into execution, risk, or accounting modules.
-

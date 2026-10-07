@@ -222,18 +222,24 @@ def test_rejected_tick_fails_closed_with_durable_sanitized_evidence():
 def test_subscription_api_normalizes_inputs_and_controls_state():
     platform = Platform()
     with TestClient(create_app(platform)) as client:
+        registered = client.post(
+            "/api/auth/register",
+            json={"username": "memberfour", "password": "password4"},
+        )
+        assert registered.status_code == 201
         dashboard = client.get("/")
         assert dashboard.status_code == 200
         assert "Independent strategy ledgers" in dashboard.text
-        assert 'id="account-form"' in dashboard.text
+        assert 'id="account-form"' not in dashboard.text
+        assert 'name="account_id"' not in dashboard.text
+        assert 'id="subscription-form"' in dashboard.text
+        assert "RSI reversal" in dashboard.text
+        assert 'id="safety-state"' not in dashboard.text
+        assert 'class="safety-strip"' in dashboard.text
         assert 'id="signals"' in dashboard.text
-        assert (
-            client.post("/api/accounts", json={"account_id": " a "}).status_code == 201
-        )
         response = client.post(
             "/api/subscriptions",
             json={
-                "account_id": "a",
                 "strategy_instance_id": " ema ",
                 "kind": " MOMENTUM ",
                 "symbol": " x ",
@@ -241,18 +247,20 @@ def test_subscription_api_normalizes_inputs_and_controls_state():
         )
         assert response.status_code == 201
         subscription = response.json()[0]
-        assert (subscription["id"], subscription["kind"], subscription["symbol"]) == (
+        assert (
+            subscription["id"],
+            subscription["kind"],
+            subscription["symbol"],
+            subscription["account"],
+        ) == (
             "ema",
             "momentum",
             "X",
+            "acc_memberfour",
         )
-        stopped = client.post(
-            "/api/subscriptions/ema/stop", json={"account_id": "a"}
-        ).json()[0]
+        stopped = client.post("/api/subscriptions/ema/stop").json()[0]
         assert stopped["state"] == "STOPPED"
-        started = client.post(
-            "/api/subscriptions/ema/start", json={"account_id": "a"}
-        ).json()[0]
+        started = client.post("/api/subscriptions/ema/start").json()[0]
         assert started["state"] == "READY"
     platform.store.close()
 
@@ -335,7 +343,9 @@ def test_rsi_reversal_strategy_warmup_and_signals():
         prices = [D("100") - D(i) for i in range(14)]
         for i, p in enumerate(prices):
             intents = platform.strategies.on_candle(
-                closed_candle(interval=60, start=i * 60, open_price=str(p), close_price=str(p)),
+                closed_candle(
+                    interval=60, start=i * 60, open_price=str(p), close_price=str(p)
+                ),
                 platform.clock(),
             )
             assert all(intent.strategy_instance_id != "rsi_inst" for intent in intents)
@@ -343,7 +353,9 @@ def test_rsi_reversal_strategy_warmup_and_signals():
         # 15th candle with another decline -> RSI will be oversold (< 30)
         p15 = D("80")
         intents = platform.strategies.on_candle(
-            closed_candle(interval=60, start=14 * 60, open_price=str(p15), close_price=str(p15)),
+            closed_candle(
+                interval=60, start=14 * 60, open_price=str(p15), close_price=str(p15)
+            ),
             platform.clock(),
         )
         rsi_intents = [it for it in intents if it.strategy_instance_id == "rsi_inst"]
@@ -355,12 +367,18 @@ def test_rsi_reversal_strategy_warmup_and_signals():
         for i in range(15, 30):
             rally_p = D("80") + D((i - 14) * 10)
             intents = platform.strategies.on_candle(
-                closed_candle(interval=60, start=i * 60, open_price=str(rally_p), close_price=str(rally_p)),
+                closed_candle(
+                    interval=60,
+                    start=i * 60,
+                    open_price=str(rally_p),
+                    close_price=str(rally_p),
+                ),
                 platform.clock(),
             )
         # Should have emitted a SELL signal when crossing into overbought
         overbought_intents = [
-            signal for signal in platform.strategies.signals
+            signal
+            for signal in platform.strategies.signals
             if signal["strategy"] == "rsi_inst" and signal["side"] == "SELL"
         ]
         assert len(overbought_intents) >= 1
@@ -387,18 +405,29 @@ def test_dynamic_strategy_registration_and_api():
         )
 
         with TestClient(create_app(platform)) as client:
+            assert (
+                client.post(
+                    "/api/auth/register",
+                    json={"username": "customuser", "password": "password4"},
+                ).status_code
+                == 201
+            )
             resp = client.get("/api/strategies")
             assert resp.status_code == 200
             registered = resp.json()
             kinds = {item["kind"] for item in registered}
-            assert {"momentum", "mean_reversion", "breakout", "rsi_reversal", "custom_scalp"}.issubset(kinds)
+            assert {
+                "momentum",
+                "mean_reversion",
+                "breakout",
+                "rsi_reversal",
+                "custom_scalp",
+            }.issubset(kinds)
 
             # Subscribe to the custom strategy via API
-            client.post("/api/accounts", json={"account_id": "test_acc"})
             sub_resp = client.post(
                 "/api/subscriptions",
                 json={
-                    "account_id": "test_acc",
                     "strategy_instance_id": "scalp_1",
                     "kind": "custom_scalp",
                     "symbol": "X",
@@ -411,7 +440,9 @@ def test_dynamic_strategy_registration_and_api():
                 closed_candle(start=0, open_price="190", close_price="210"),
                 platform.clock(),
             )
-            scalp_intents = [it for it in intents if it.strategy_instance_id == "scalp_1"]
+            scalp_intents = [
+                it for it in intents if it.strategy_instance_id == "scalp_1"
+            ]
             assert len(scalp_intents) == 1
             assert scalp_intents[0].side == Side.BUY
             assert scalp_intents[0].reason == "custom price trigger"
@@ -479,12 +510,16 @@ def test_market_session_coordinates_with_risk_evidence_gate():
         decision = platform.risk.submit(intent)
         assert not decision.allowed
         assert decision.reason_code == "RISK_MARKET_HALTED"
-        assert platform.risk.state == "RUNNING"  # Does not trigger unneeded UNCERTAIN fail-closed
+        assert (
+            platform.risk.state == "RUNNING"
+        )  # Does not trigger unneeded UNCERTAIN fail-closed
 
         # When session is CLOSED, rejected with RISK_MARKET_CLOSED
         platform.market_session.resume()
         platform.market_session.set_status("CLOSED")
-        intent2 = OrderIntent("intent_2", "ema", "a", "X", Side.BUY, 1, platform.clock())
+        intent2 = OrderIntent(
+            "intent_2", "ema", "a", "X", Side.BUY, 1, platform.clock()
+        )
         decision2 = platform.risk.submit(intent2)
         assert not decision2.allowed
         assert decision2.reason_code == "RISK_MARKET_CLOSED"
@@ -530,9 +565,9 @@ def test_telemetry_stream_endpoint():
                 payload = None
                 for line in response.iter_lines():
                     if line.startswith("event:"):
-                        event_type = line[len("event:"):].strip()
+                        event_type = line[len("event:") :].strip()
                     elif line.startswith("data:"):
-                        payload = json.loads(line[len("data:"):].strip())
+                        payload = json.loads(line[len("data:") :].strip())
                         break
                 assert event_type == "snapshot"
                 assert payload is not None
@@ -541,6 +576,3 @@ def test_telemetry_stream_endpoint():
                 assert "market_session" in payload
     finally:
         platform.store.close()
-
-
-

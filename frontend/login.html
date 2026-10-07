@@ -224,6 +224,20 @@
       .back-nav a:hover {
         color: var(--ink);
       }
+      @media (max-width: 480px) {
+        .topbar {
+          padding: 0.75rem 1rem;
+        }
+        .container {
+          padding: 1.5rem 0.85rem;
+        }
+        .auth-card {
+          padding: 1.6rem 1.25rem;
+        }
+        .auth-card h1 {
+          font-size: 1.35rem;
+        }
+      }
     </style>
   </head>
   <body>
@@ -336,9 +350,7 @@
             return;
           }
 
-          localStorage.setItem("algoshield_token", data.token);
-          localStorage.setItem("algoshield_user", JSON.stringify(data.user));
-          showAlert("Sign in successful! Redirecting...", false);
+          showAlert("Signed in. Opening dashboard…", false);
 
           setTimeout(() => {
             window.location.href = "/";

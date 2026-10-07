@@ -230,6 +230,20 @@
       .back-nav a:hover {
         color: var(--ink);
       }
+      @media (max-width: 480px) {
+        .topbar {
+          padding: 0.75rem 1rem;
+        }
+        .container {
+          padding: 1.5rem 0.85rem;
+        }
+        .auth-card {
+          padding: 1.6rem 1.25rem;
+        }
+        .auth-card h1 {
+          font-size: 1.35rem;
+        }
+      }
     </style>
   </head>
   <body>
@@ -270,16 +284,6 @@
           </div>
 
           <div class="field">
-            <label for="account_id">Trading Account ID <span class="hint">(optional)</span></label>
-            <input
-              type="text"
-              id="account_id"
-              name="account_id"
-              placeholder="e.g. acc-001 (auto-assigned if blank)"
-            />
-          </div>
-
-          <div class="field">
             <label for="password">Password</label>
             <input
               type="password"
@@ -287,7 +291,7 @@
               name="password"
               autocomplete="new-password"
               placeholder="At least 4 characters"
-              minlength="4"
+              minlength="6"
               required
             />
           </div>
@@ -300,7 +304,7 @@
               name="confirm_password"
               autocomplete="new-password"
               placeholder="Re-enter password"
-              minlength="4"
+              minlength="6"
               required
             />
           </div>
@@ -340,7 +344,6 @@
         clearAlert();
 
         const username = document.getElementById("username").value.trim();
-        const account_id = document.getElementById("account_id").value.trim() || undefined;
         const password = document.getElementById("password").value;
         const confirm_password = document.getElementById("confirm_password").value;
 
@@ -349,8 +352,8 @@
           return;
         }
 
-        if (password.length < 4) {
-          showAlert("Password must be at least 4 characters.");
+        if (password.length < 6) {
+          showAlert("Password must be at least 6 characters.");
           return;
         }
 
@@ -366,7 +369,7 @@
           const resp = await fetch("/api/auth/register", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username, password, account_id }),
+            body: JSON.stringify({ username, password }),
           });
 
           const data = await resp.json();
@@ -378,9 +381,7 @@
             return;
           }
 
-          localStorage.setItem("algoshield_token", data.token);
-          localStorage.setItem("algoshield_user", JSON.stringify(data.user));
-          showAlert("Account created! Redirecting to dashboard...", false);
+          showAlert("Account created. Opening dashboard…", false);
 
           setTimeout(() => {
             window.location.href = "/";

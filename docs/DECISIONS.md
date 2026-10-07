@@ -380,3 +380,25 @@ Unbounded broker calls, cancellation by thread interruption, or treating submitt
 
 ### Reversal
 Any provider-specific timeout or emergency-close semantics require confirmed adapter evidence and new race/deadline tests.
+
+## DEC-018 — Session-derived trading account ownership
+Date: 2026-10-07
+Status: ACCEPTED
+
+### Context
+The dashboard and strategy subscription form exposed editable account IDs. A caller could select another account identifier, while the dashboard itself remained available without login despite durable local users and sessions already existing.
+
+### Decision
+Require a valid HttpOnly, SameSite=Strict local session cookie before serving the dashboard. Registration assigns the local trading account as `acc_<normalized username>`. Subscription create/start/stop endpoints derive the account exclusively from the verified session and reject extra caller-supplied account fields. Keep bearer-token verification for API clients. Represent safety evidence as compact backend-derived indicators in the strategy dashboard instead of raw safety JSON.
+
+### Reason
+Account attribution must come from authenticated identity rather than editable UI state. HttpOnly cookies keep the browser session out of JavaScript storage, and the compact safety rail preserves honest fail-closed visibility without overwhelming the strategy workflow.
+
+### Impact
+Authentication API cookies, dashboard routing, subscription request contract, responsive frontend, auth/member tests and documentation. This is a local bootstrap boundary; it does not claim production identity-provider readiness.
+
+### Alternatives
+LocalStorage bearer tokens, hidden account inputs and UI-only redirects were rejected because they still expose session credentials or trust caller-selected ownership.
+
+### Reversal
+Replace the local session implementation with the selected production identity provider while retaining server-derived account ownership and dashboard access tests.

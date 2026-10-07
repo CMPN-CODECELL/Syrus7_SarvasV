@@ -77,16 +77,35 @@ def test_auth_api_endpoints():
     assert "text/html" in resp_register_page.headers["content-type"]
     assert "Create Account" in resp_register_page.text
 
+    # Dashboard access requires a valid session.
+    anonymous_dashboard = client.get("/", follow_redirects=False)
+    assert anonymous_dashboard.status_code == 303
+    assert anonymous_dashboard.headers["location"] == "/login"
+
     # Register via API
     reg_resp = client.post(
         "/api/auth/register",
-        json={"username": "dave", "password": "pass4dave", "account_id": "acc-dave"},
+        json={"username": "dave", "password": "pass4dave"},
     )
     assert reg_resp.status_code == 201
     data = reg_resp.json()
     assert data["user"]["username"] == "dave"
-    assert data["user"]["account_id"] == "acc-dave"
+    assert data["user"]["account_id"] == "acc_dave"
     token = data["token"]
+    assert "algoshield_session=" in reg_resp.headers["set-cookie"]
+    assert "HttpOnly" in reg_resp.headers["set-cookie"]
+    assert client.get("/").status_code == 200
+
+    # A caller cannot select a different trading account during registration.
+    injected_account = client.post(
+        "/api/auth/register",
+        json={
+            "username": "erin",
+            "password": "pass4erin",
+            "account_id": "someone-else",
+        },
+    )
+    assert injected_account.status_code == 422
 
     # Verify /api/auth/me with Bearer token
     me_resp = client.get(
@@ -131,3 +150,4 @@ def test_auth_api_endpoints():
         headers={"Authorization": f"Bearer {new_token}"},
     )
     assert after_logout.status_code == 401
+    assert client.get("/", follow_redirects=False).status_code == 303

@@ -5,10 +5,15 @@ from contextlib import asynccontextmanager
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
-from pydantic import BaseModel, StrictInt, field_validator
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
+from pydantic import BaseModel, ConfigDict, StrictInt, field_validator
 from psycopg.errors import UniqueViolation
 
 from backend.platform import Platform
@@ -31,12 +36,13 @@ class AccountRequest(BaseModel):
 
 
 class SubscriptionRequest(BaseModel):
-    account_id: str
+    model_config = ConfigDict(extra="forbid")
+
     strategy_instance_id: str
     kind: str
     symbol: str
 
-    @field_validator("account_id", "strategy_instance_id")
+    @field_validator("strategy_instance_id")
     @classmethod
     def normalize_ids(cls, value):
         value = value.strip()
@@ -73,9 +79,10 @@ class MarketSessionRequest(BaseModel):
 
 
 class RegisterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     username: str
     password: str
-    account_id: str | None = None
 
     @field_validator("username")
     @classmethod
@@ -88,8 +95,8 @@ class RegisterRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def normalize_password(cls, value):
-        if len(value) < 4:
-            raise ValueError("password must be at least 4 characters")
+        if len(value) < 6:
+            raise ValueError("password must be at least 6 characters")
         return value
 
 
@@ -132,6 +139,30 @@ def create_app(platform=None):
 
     app = FastAPI(title="AlgoShield mock control plane", lifespan=lifespan)
     app.state.platform = engine
+    session_cookie = "algoshield_session"
+
+    def request_token(request: Request) -> str:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            return auth_header.removeprefix("Bearer ").strip()
+        return request.cookies.get(session_cookie, "")
+
+    def require_user(request: Request):
+        user = engine.auth.verify_token(request_token(request))
+        if not user:
+            raise HTTPException(401, "authentication required")
+        return user
+
+    def set_session_cookie(response, token: str):
+        response.set_cookie(
+            key=session_cookie,
+            value=token,
+            httponly=True,
+            samesite="strict",
+            secure=False,
+            max_age=engine.auth.token_ttl_seconds,
+            path="/",
+        )
 
     @app.exception_handler(ValueError)
     async def invalid(request, exc):
@@ -140,7 +171,9 @@ def create_app(platform=None):
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.get("/")
-    def dashboard():
+    def dashboard(request: Request):
+        if not engine.auth.verify_token(request_token(request)):
+            return RedirectResponse("/login", status_code=303)
         return FileResponse(
             Path(__file__).resolve().parent.parent / "frontend/index.html"
         )
@@ -158,9 +191,10 @@ def create_app(platform=None):
         )
 
     @app.post("/api/auth/register", status_code=201)
-    def register(body: RegisterRequest):
+    def register(body: RegisterRequest, response: Response):
         try:
-            res = engine.auth.register(body.username, body.password, body.account_id)
+            res = engine.auth.register(body.username, body.password)
+            set_session_cookie(response, res["token"])
             return {
                 "user": {"username": res["username"], "account_id": res["account_id"]},
                 "token": res["token"],
@@ -174,41 +208,27 @@ def create_app(platform=None):
             raise HTTPException(400, msg) from None
 
     @app.post("/api/auth/login")
-    def login(body: LoginRequest):
+    def login(body: LoginRequest, response: Response):
         res = engine.auth.login(body.username, body.password)
         if not res:
             raise HTTPException(401, "invalid credentials")
+        set_session_cookie(response, res["token"])
         return {
             "user": {"username": res["username"], "account_id": res["account_id"]},
             "token": res["token"],
         }
 
     @app.post("/api/auth/logout")
-    def logout(request: Request):
-        auth_header = request.headers.get("Authorization", "")
-        token = (
-            auth_header.removeprefix("Bearer ").strip()
-            if auth_header.startswith("Bearer ")
-            else ""
-        )
+    def logout(request: Request, response: Response):
+        token = request_token(request)
         if token:
             engine.auth.logout(token)
+        response.delete_cookie(session_cookie, path="/")
         return {"status": "logged_out"}
 
     @app.get("/api/auth/me")
     def current_user(request: Request):
-        auth_header = request.headers.get("Authorization", "")
-        token = (
-            auth_header.removeprefix("Bearer ").strip()
-            if auth_header.startswith("Bearer ")
-            else ""
-        )
-        if not token:
-            raise HTTPException(401, "authentication required")
-        user = engine.auth.verify_token(token)
-        if not user:
-            raise HTTPException(401, "invalid or expired token")
-        return {"user": user}
+        return {"user": require_user(request)}
 
     @app.get("/health")
     def health():
@@ -315,23 +335,26 @@ def create_app(platform=None):
         return financial_json(engine.market_session.to_dict(engine.clock()))
 
     @app.post("/api/subscriptions", status_code=201)
-    def subscribe(body: SubscriptionRequest):
+    def subscribe(body: SubscriptionRequest, request: Request):
+        user = require_user(request)
         try:
             engine.strategies.subscribe(
-                body.account_id, body.strategy_instance_id, body.kind, body.symbol
+                user["account_id"], body.strategy_instance_id, body.kind, body.symbol
             )
         except (sqlite3.IntegrityError, UniqueViolation):
             raise HTTPException(409, "strategy instance exists") from None
         return engine.snapshot()["subscriptions"]
 
     @app.post("/api/subscriptions/{strategy_instance_id}/start")
-    def start_subscription(strategy_instance_id: str, body: AccountRequest):
-        engine.strategies.set_enabled(body.account_id, strategy_instance_id, True)
+    def start_subscription(strategy_instance_id: str, request: Request):
+        user = require_user(request)
+        engine.strategies.set_enabled(user["account_id"], strategy_instance_id, True)
         return engine.snapshot()["subscriptions"]
 
     @app.post("/api/subscriptions/{strategy_instance_id}/stop")
-    def stop_subscription(strategy_instance_id: str, body: AccountRequest):
-        engine.strategies.set_enabled(body.account_id, strategy_instance_id, False)
+    def stop_subscription(strategy_instance_id: str, request: Request):
+        user = require_user(request)
+        engine.strategies.set_enabled(user["account_id"], strategy_instance_id, False)
         return engine.snapshot()["subscriptions"]
 
     @app.post("/api/demo")
