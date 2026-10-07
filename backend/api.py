@@ -4,6 +4,7 @@ import sqlite3
 from contextlib import asynccontextmanager
 from decimal import Decimal
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
@@ -17,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, StrictInt, field_validator
 from psycopg.errors import UniqueViolation
 
 from backend.platform import Platform
+from backend.broker.http_adapter import HTTPMockBrokerAdapter
 from backend.reliability.failure_lab import FailureLab
 from backend.shared.config import settings
 from backend.shared.contracts import RiskPolicy, StrategyState
@@ -123,10 +125,20 @@ def create_app(platform=None):
         if platform is None
         else {"sqlite_path": ":memory:", "database_url": ""}
     )
+    broker = None
+    mock_broker_url = config.get("mock_broker_url", "")
+    if mock_broker_url:
+        broker = HTTPMockBrokerAdapter(mock_broker_url)
+    # PostgreSQL is safe for replay only when the caller explicitly points at
+    # a loopback HTTP mock broker.  Remote/mock-looking URLs must never enable
+    # seeded replay against a durable or production database.
+    broker_host = urlparse(mock_broker_url).hostname if mock_broker_url else None
+    local_mock = broker_host in {"127.0.0.1", "localhost", "::1"}
     engine = platform or Platform(
         config["sqlite_path"],
+        broker=broker,
         store=PostgresStore(config["database_url"]) if config["database_url"] else None,
-        demo_enabled=not bool(config["database_url"]),
+        demo_enabled=not bool(config["database_url"]) or local_mock,
     )
 
     @asynccontextmanager
@@ -135,6 +147,8 @@ def create_app(platform=None):
             yield
         finally:
             if platform is None:
+                if broker is not None:
+                    broker.close()
                 engine.store.close()
 
     app = FastAPI(title="AlgoShield mock control plane", lifespan=lifespan)

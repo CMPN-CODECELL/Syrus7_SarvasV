@@ -39,6 +39,9 @@
 ## Blockers
 - Neon authentication/project access and an authorized isolated remote branch; sponsor 021 contract.
 - An explicitly injected fresh broker still cannot match existing local history; default offline mock now persists independent evidence.
+- Local PostgreSQL replay is supported only with an explicitly configured loopback
+  `MOCK_BROKER_URL`; the standalone HTTP mock remains clearly distinct from the
+  unconfirmed 021 adapter. Remote broker URLs cannot enable seeded replay.
 
 ## Next Integration Target
 Validate Neon linking/schema inspection and repeat the locally verified additive migrations on an authorized isolated remote branch. In parallel, obtain the 021 market-data contract before implementing the live provider. Do not seed replay into production.

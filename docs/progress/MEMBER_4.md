@@ -25,6 +25,10 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
   3. Standalone Mock Market Data Streaming Feed: Implemented `backend/market_data/mock_feed.py` with `create_mock_feed_app()`, `/health`, `/ticks`, `/ticks/batch`, `/replay/demo`, `/candles`, and `/stream/ticks` (SSE) for external feed simulation mirroring Member 2's Mock Broker API.
   4. Real-Time UI Telemetry Push: Added `GET /api/stream/telemetry` SSE stream in `backend/api.py` and `EventSource` in `frontend/index.html` with polling fallback.
   Test suite: 173 passed / 1 PostgreSQL skipped; Ruff check and TypeScript check clean.
+- 2026-10-07: Fixed replay wiring through the HTTP mock broker. The API now selects
+  `HTTPMockBrokerAdapter` from `MOCK_BROKER_URL`, permits replay with PostgreSQL only
+  for loopback mock URLs, and auto-executes simulated fills through the same broker
+  boundary. Added an end-to-end HTTP replay test; full suite: 219 passed / 1 skipped.
 
 ## In Progress
 - No further 021 implementation is safe without an authoritative tick/reconnect/backfill contract. Existing adapter remains intentionally unavailable.

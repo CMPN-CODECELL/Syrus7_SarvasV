@@ -6,6 +6,7 @@ from decimal import Decimal
 from backend.accounting.charges import calculate_indian_charges
 from backend.accounting.ledger import Ledger
 from backend.broker.adapters import MockBrokerAdapter
+from backend.broker.http_adapter import HTTPMockBrokerAdapter
 from backend.execution.orders import OrderManager
 from backend.market_data.candles import CandleBuilder, ReplayMarketDataProvider
 from backend.market_data.session import MarketSession
@@ -137,7 +138,7 @@ class Platform:
 
     def tick(self, tick, *, replay=False):
         if replay:
-            self.require_offline_demo()
+            self.require_replay_demo()
         with self.store.lock:
             try:
                 accepted, closed = self.candles.ingest_event(tick)
@@ -183,7 +184,7 @@ class Platform:
             if (
                 decision.allowed
                 and self.risk.state == "RUNNING"
-                and isinstance(self.broker, MockBrokerAdapter)
+                and isinstance(self.broker, (MockBrokerAdapter, HTTPMockBrokerAdapter))
             ):
                 order = self.broker.orders.get(intent.intent_id)
                 if order and order.remaining_quantity and order.status != "REJECTED":
@@ -208,7 +209,7 @@ class Platform:
         with self.store.lock:
             if not self.demo_enabled:
                 raise ValueError("replay demo is disabled for this database")
-            self.require_offline_demo()
+            self.require_replay_demo()
             if not self.store.rows("SELECT id FROM accounts WHERE id='demo'"):
                 self.account("demo")
             for kind in ("momentum", "mean_reversion", "breakout"):
@@ -242,6 +243,15 @@ class Platform:
         ):
             raise ValueError(
                 "demo/failure injection requires offline mock storage; production database is protected"
+            )
+
+    def require_replay_demo(self):
+        """Allow replay only for an explicitly enabled local mock path."""
+        if not self.demo_enabled or not isinstance(
+            self.broker, (MockBrokerAdapter, HTTPMockBrokerAdapter)
+        ):
+            raise ValueError(
+                "demo replay requires an explicitly enabled local mock broker"
             )
 
     def kill(self):
