@@ -375,6 +375,11 @@ def create_app(platform=None):
     def demo():
         if not engine.demo_enabled:
             raise HTTPException(403, "replay demo is disabled for this database")
+        # A restart begins RECOVERING. A deliberate replay action may perform
+        # the required authoritative broker check first, but it must never
+        # bypass an actual drift/uncertainty result.
+        if engine.risk.state == "RECOVERING" and not engine.reliability.reconcile():
+            raise HTTPException(409, "reconciliation required")
         return financial_json(engine.demo())
 
     @app.put("/api/risk/policies/{strategy}")
