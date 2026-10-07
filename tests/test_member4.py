@@ -192,6 +192,31 @@ def test_duplicate_tick_cannot_overwrite_latest_market_mark():
         platform.store.close()
 
 
+def test_rejected_tick_fails_closed_with_durable_sanitized_evidence():
+    platform = configured_platform()
+    try:
+        platform.tick(Tick("X", 60, D("100"), 1, "newer"))
+
+        try:
+            platform.tick(Tick("X", 59, D("101"), 1, "late"))
+        except ValueError as exc:
+            assert "late tick" in str(exc)
+        else:
+            raise AssertionError("late tick was accepted")
+
+        assert platform.risk.state == "UNCERTAIN"
+        assert not platform.strategies.enabled
+        evidence = platform.store.rows(
+            "SELECT type,payload FROM audit WHERE type='MARKET_DATA_REJECTED'"
+        )
+        assert len(evidence) == 1
+        assert '"symbol": "X"' in evidence[0]["payload"]
+        assert '"event_id": "late"' in evidence[0]["payload"]
+        assert '"reason": "LATE_TICK"' in evidence[0]["payload"]
+    finally:
+        platform.store.close()
+
+
 def test_subscription_api_normalizes_inputs_and_controls_state():
     platform = Platform()
     with TestClient(create_app(platform)) as client:

@@ -70,9 +70,22 @@ class Platform:
         with self.store.lock:
             try:
                 accepted, closed = self.candles.ingest_event(tick)
-            except ValueError:
+            except ValueError as exc:
                 self.risk.state = "UNCERTAIN"
                 self.strategies.enabled = False
+                with self.store.transaction():
+                    self.store.audit(
+                        "MARKET_DATA_REJECTED",
+                        {
+                            "symbol": getattr(tick, "symbol", ""),
+                            "event_id": getattr(tick, "event_id", ""),
+                            "reason": (
+                                "LATE_TICK"
+                                if str(exc).startswith("late tick")
+                                else "INVALID_TICK"
+                            ),
+                        },
+                    )
                 raise
             if not accepted:
                 return
