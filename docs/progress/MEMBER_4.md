@@ -215,9 +215,29 @@ Member 4 tasks 1 through 8 are 100% complete and fully verified. User workflows 
 - Failure Lab now renders an inline error instead of crashing when an older/stale backend lacks the discovery endpoint.
 - Validation: 299 Python tests passed, 1 PostgreSQL integration skipped; 11 React tests, ESLint, Ruff, and Vite production build passed.
 
+## 2026-10-08 — Compact Risk Center budgets
+
+- Replaced expanded nested evidence cards inside Strategy Budgets with dense labeled metrics sourced from the complete backend policy, position, daily-loss, and order-rate objects.
+- Reduced cell padding and vertical rhythm while preserving table-local horizontal scrolling and a two-column metric fallback on narrow mobile screens.
+- Validation: 12 React tests, ESLint, Vite production build, 13 focused backend tests, and Ruff passed.
+
+## 2026-10-08 — Vertical Strategy Budgets
+
+- Removed the horizontally scrolling Strategy Budgets table.
+- Each strategy now has a responsive vertical evidence block whose backend-provided policy, position, daily-loss, and rate groups wrap downward without document or section-level horizontal scrolling.
+- Mobile forces a single group column while metric values remain compact and readable.
+- Validation: 13 React tests, ESLint, Vite production build, 10 focused risk tests, and Ruff passed.
+
+## 2026-10-08 — Vertical Reconciliation Center
+
+- Replaced the wide paired reconciliation panels with a single vertical evidence sequence that remains within the page width.
+- Kept verification, reason, and unknown-order state compact; broker, comparison, recovery, and event values remain sourced from backend responses.
+- Omitted empty nested collections from expanded recovery evidence and summarized a clean position comparison without blank panels.
+- Validation: 14 React tests, ESLint, Vite production build, 22 focused reconciliation/recovery tests, and Ruff passed.
+
 ## 2026-10-08 — Branch integration: codex/usp-evidence-layer into main
-- Successfully merged `codex/usp-evidence-layer` into `main`.
+- Successfully merged `codex/usp-evidence-layer` (including UI layout enhancements: compact vertical strategy budgets and vertical reconciliation sequence) into `main`.
 - Preserved all Member 4 Tasks 1–8 functionality: isolated bounded callbacks/shutdown, generation invalidation, sequential indicator updates, monotonic replay, candle/session correctness, authenticated account scoping, truthful historical evidence, deterministic restart/kill scenarios, rehearsal runner (`scripts/rehearsal_runner.py`), and operational UX.
 - Standalone single-file operational dashboard preserved in `frontend/static_dashboard.html`; canonical Vite entrypoint in `frontend/index.html` with production build in `frontend/dist/`.
-- Full regression verification: 311 Python tests passing, 11 Vitest frontend tests passing, all 7 rehearsal runner scenarios passing with zero errors, Ruff/ESLint/TypeScript passing. Merge integrity tests added in `tests/test_merge_integrity.py`.
+- Full regression verification: Python tests, Vitest frontend tests, rehearsal runner scenarios, and linters all passing cleanly.
 

@@ -20,3 +20,7 @@ export function EvidenceView({value,name='Evidence'}){
   if(value&&typeof value==='object')return <dl className="evidence-grid">{Object.entries(value).map(([key,item])=><div className={item&&typeof item==='object'?'evidence-field nested':'evidence-field'} key={key}><dt>{labelFor(key)}</dt><dd>{item&&typeof item==='object'?<EvidenceView value={item} name={key}/>:<Scalar name={key} value={item}/>}</dd></div>)}</dl>
   return <Scalar name={name} value={value}/>
 }
+export function CompactEvidence({value}){
+  if(!value||typeof value!=='object')return <Scalar name="value" value={value}/>
+  return <dl className="compact-evidence">{Object.entries(value).map(([key,item])=><div key={key}><dt>{labelFor(key)}</dt><dd>{item&&typeof item==='object'?<CompactEvidence value={item}/>:<Scalar name={key} value={item}/>}</dd></div>)}</dl>
+}

@@ -164,3 +164,14 @@ Neon CLI 8.0.11 installed. Requested project/branch not yet authenticated/linked
     - Added merge integrity regression tests in `tests/test_merge_integrity.py`.
     - Browser testing: live desktop/mobile browser validation pending automated driver execution.
 
+- 2026-10-08 Safe merge of `codex/usp-evidence-layer` (1610ec2) into `main` (c413afe):
+  - Merged 3 additional commits: `61157fe` (compact strategy budget evidence), `5b5b71c` (vertical strategy budgets), and `1610ec2` (vertical reconciliation center).
+  - Resolved non-overlapping progress docs in `docs/progress/MEMBER_4.md`.
+  - Rebuilt production SPA assets in `frontend/dist/`.
+  - Full regression validation:
+    - Python tests: 311 passed / 1 skipped (PostgreSQL).
+    - Vitest frontend tests: 14 passed across 4 test suites.
+    - Deterministic rehearsal runner: all 7 scenarios passed with zero errors.
+    - Ruff check, Ruff format, ESLint, and TypeScript (`npm run check`) all clean.
+
+
