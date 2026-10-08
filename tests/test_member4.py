@@ -542,6 +542,10 @@ def test_market_session_api_and_snapshot():
     platform = Platform()
     try:
         with TestClient(create_app(platform)) as client:
+            client.post(
+                "/api/auth/register",
+                json={"username": "session_user", "password": "password4"},
+            )
             snap = client.get("/api/state").json()
             assert "market_session" in snap
             assert snap["market_session"]["status"] == "OPEN"
@@ -568,6 +572,10 @@ def test_telemetry_stream_endpoint():
     platform = Platform()
     try:
         with TestClient(create_app(platform)) as client:
+            client.post(
+                "/api/auth/register",
+                json={"username": "telemetry_user", "password": "password4"},
+            )
             with client.stream("GET", "/api/stream/telemetry?max_events=1") as response:
                 assert response.status_code == 200
                 assert "text/event-stream" in response.headers["content-type"]
@@ -591,7 +599,10 @@ def test_telemetry_stream_endpoint():
 def test_websocket_stream_pushes_backend_snapshot():
     platform = Platform()
     try:
-        with TestClient(create_app(platform)) as client:
+        user = platform.auth.register("ws_user", "password4")
+        with TestClient(
+            create_app(platform), cookies={"algoshield_session": user["token"]}
+        ) as client:
             with client.websocket_connect("/api/stream/ws") as websocket:
                 payload = websocket.receive_json()
                 assert payload["mode"] == "MOCK / REPLAY"

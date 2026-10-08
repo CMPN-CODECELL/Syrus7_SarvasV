@@ -62,12 +62,15 @@ class Reliability:
         self.health = Health(value)
         self.safety.set("health", self.health)
 
-    def fail_closed(self, code, health=Health.DRIFTED):
+    def fail_closed(self, code, health=Health.DRIFTED, account_id=None):
         with self.store.transaction():
             self.risk.state = Gate.UNCERTAIN
             self.runtime.enabled = False
             self._health(health)
-            self.store.audit("SAFETY_RESTRICTED", {"reason": code})
+            payload = {"reason": code}
+            if account_id:
+                payload["account_id"] = account_id
+            self.store.audit("SAFETY_RESTRICTED", payload)
 
     def observe_tick(self, tick, *, replay=False):
         self.safety.mark(tick, self.clock(), "REPLAY" if replay else "LIVE")
@@ -146,6 +149,59 @@ class Reliability:
                         k: q for k, q in snapshot.positions.items() if q
                     }:
                         raise SnapshotError("VIRTUAL_POSITION_DRIFT")
+
+                    acc_breakdown = {}
+                    for o in orders.values():
+                        acc = getattr(getattr(o, "intent", None), "account_id", None)
+                        if acc:
+                            entry = acc_breakdown.setdefault(
+                                acc,
+                                {
+                                    "orders": 0,
+                                    "unique_fills": 0,
+                                    "open_orders": 0,
+                                    "duplicate_snapshot_fills": 0,
+                                    "unattributed_fills": 0,
+                                },
+                            )
+                            entry["orders"] += 1
+                            if o.status not in TERMINAL:
+                                entry["open_orders"] += 1
+                    for f in fills.values():
+                        acc = getattr(f, "account_id", None)
+                        if acc:
+                            entry = acc_breakdown.setdefault(
+                                acc,
+                                {
+                                    "orders": 0,
+                                    "unique_fills": 0,
+                                    "open_orders": 0,
+                                    "duplicate_snapshot_fills": 0,
+                                    "unattributed_fills": 0,
+                                },
+                            )
+                            entry["unique_fills"] += 1
+                    for (a, s), q in snapshot.positions.items():
+                        if a and q:
+                            acc_breakdown.setdefault(
+                                a,
+                                {
+                                    "orders": 0,
+                                    "unique_fills": 0,
+                                    "open_orders": 0,
+                                    "duplicate_snapshot_fills": 0,
+                                    "unattributed_fills": 0,
+                                },
+                            )
+                    seen_fill_ids = set()
+                    for f in snapshot.fills:
+                        if f.fill_id in seen_fill_ids:
+                            acc = getattr(f, "account_id", None)
+                            if acc and acc in acc_breakdown:
+                                acc_breakdown[acc]["duplicate_snapshot_fills"] += 1
+                        else:
+                            seen_fill_ids.add(f.fill_id)
+
                     self.report = {
                         "verified": True,
                         "reason": "MATCHED",
@@ -163,6 +219,7 @@ class Reliability:
                         ],
                         "unexplained_positions": [],
                         "unattributed_fills": 0,
+                        "accounts": acc_breakdown,
                     }
                     self.safety.set("reconciliation_report", self.report)
                     self.store.audit("RECONCILED", self.report)

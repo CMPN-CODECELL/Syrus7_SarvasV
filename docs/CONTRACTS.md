@@ -132,3 +132,55 @@ Every broker adapter (including `MockBrokerAdapter` and the eventual `Broker021A
    - Consistency is preserved across `is_open()`, `status_at()`, `to_dict()` snapshot projection, and `Reliability.check_evidence()` (`RISK_MARKET_HALTED` vs `RISK_MARKET_CLOSED`).
 5. **No Invented Provider Behaviors**:
    - Exchange holidays, special muhurat sessions, and unverified 021 sandbox session rules are not invented. Boundary checks are deterministic and configurable.
+
+## Account-Scoped User Workflow and Telemetry Isolation Contract
+
+1. **Identity & Session Derivation**:
+   - User identity (`account_id`) is strictly derived server-side from verified sessions (`engine.auth.verify_token`). Client-supplied `account_id` query parameters or JSON body fields are never trusted or permitted to override server session identity.
+   - Anonymous requests to `/api/state`, `/api/orders`, `/api/fills`, `/api/subscriptions`, `/api/risk/budgets`, `/api/stream/ws`, and `/api/stream/telemetry` return HTTP 401 Unauthorized (or WS close code 1008). No anonymous compatibility fallback is permitted.
+2. **Server-Side Projection Scoping & Leak Elimination**:
+   - `Platform.snapshot(account_id=...)` returns strictly filtered projections when `account_id` is supplied:
+     - Subscriptions: only subscriptions belonging to the caller's `account_id`.
+     - Positions: only positions where `account_id == user.account_id`.
+     - Risk budgets: only budgets matching the caller's strategy instances (`account == user.account_id`).
+     - Orders and fills: only records attributed to the caller's `account_id`.
+     - Signals and strategy callback errors: only events attributed to the caller's `account_id` / strategies.
+     - Audit events: only events where `account == user.account_id` or `strategy` belongs to the user's subscriptions. Nested payloads with `broker_positions` are sanitized to strip other accounts.
+     - Safety evidence:
+       - Virtual positions and broker positions: only records where `account_id == user.account_id`.
+       - Position comparison: preserves raw `UNKNOWN` or `FAILED` status; filtering never converts uncertainty into a safety pass.
+       - Reconciliation report: `broker_positions` and `unexplained_positions` filtered to `account_id`; `orders`, `unique_fills`, `open_orders`, `duplicate_snapshot_fills`, and `unattributed_fills` describe the verified snapshot at `observed_at` sourced from `accounts[account_id]`. If verified account breakdown is absent or unverified, reconciliation counts report `null` rather than substituting live local counts. Honest global verification flags (`verified`, `reason`, `observed_at`) are preserved.
+       - Kill certificate: historical evidence is strictly preserved. `open_orders`, `virtual_positions_flat`, `status`, and `reason` reflect the verified historical certificate at kill time and are never rewritten with current account state (later trades do not alter historical certificates, and failed kills retain uncertainty). `broker_positions` dictionary is filtered strictly to keys starting with `f"{account_id}/"`.
+       - Fill counters: `unique_applied`, `duplicates_ignored`, and `rejected_events` scoped strictly to the caller's account; `unattributed_in_last_verified_snapshot` is sourced from verified account breakdown at `observed_at` (returns 0 only when verified to be 0; returns `null`/unknown if unattributed fills exist, snapshot is unverified, or account evidence is missing). Never hardcoded to 0.
+       - Unknown orders: filtered strictly by `account == user.account_id`.
+3. **Subscription Mutation Authorization**:
+   - `POST /api/subscriptions` creates subscriptions attributed to the caller's session `account_id` and returns user-scoped subscription list.
+   - `POST /api/subscriptions/{strategy_instance_id}/start` and `/stop` verify ownership:
+     - Unknown strategy instance ID returns HTTP 404 Not Found.
+     - Strategy instance belonging to a different account returns HTTP 403 Forbidden with zero mutation.
+     - Valid request returns user-scoped subscriptions.
+4. **Streaming Telemetry Authentication & Eviction**:
+   - WebSocket (`/api/stream/ws`) and SSE (`/api/stream/telemetry`) require valid authentication prior to transmitting any data.
+   - Streaming loops continuously revalidate the session token before pushing snapshots.
+   - Upon user logout or session expiration, SSE streams terminate immediately and WebSockets close with status code 1008 (`WS_1008_POLICY_VIOLATION`).
+5. **Stale UI Clearance on Invalidation**:
+   - On HTTP 401 responses or WebSocket close code 1008, the client UI invokes `clearStaleData()`, clearing subscriptions, positions, orders, fills, signals, errors, budgets, and safety indicators, and redirects to `/login`.
+6. **Platform-Wide Authorization Boundary & Unprotected Mutation Endpoints**:
+   - Ownership: Member 3 (Ram) owns risk, security, reliability, global trading gates, kill switch, and platform-level reconciliation. Member 1 (Akshat) owns accounting, fill ledgers, and financial positions. Member 4 owns market data, strategy runtimes, and user workflow.
+   - Platform-wide authorization is NOT complete. The following global mutation endpoints currently lack operator role authorization and remain to be protected by Ram (Member 3):
+     - `PUT /api/risk/policies/{strategy}` (risk policy modifications)
+     - `PUT /api/risk/strategies/{strategy}` (manual strategy halt/resume)
+     - `POST /api/reconcile` (platform-wide broker reconciliation trigger)
+     - `POST /api/resume` (global gate resume)
+     - `POST /api/reduce-only` (global gate reduce-only)
+     - `POST /api/kill/reset` (kill latch reset)
+     - `POST /api/kill` (emergency platform kill)
+     - `POST /api/failure-lab/{scenario}` (synthetic failure injection)
+     - `POST /api/broker/disconnect` (manual broker disconnect)
+     - `POST /api/broker/reconnect` (manual broker reconnect)
+     - `POST /api/broker/updates/sync` (broker event sync)
+     - `POST /api/orders/{order_id}/cancel` (order cancellation without caller ownership check)
+     - `POST /api/market/session` (market session override)
+     - `POST /api/demo` (replay stream trigger)
+     - `POST /api/accounts` (unauthenticated account creation)
+

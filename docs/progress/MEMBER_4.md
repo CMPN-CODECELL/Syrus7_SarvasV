@@ -98,18 +98,53 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
   Added regression coverage in `tests/test_strategy_execution_safety.py` verifying: callback remains blocked while close returns in bounded time; late release after store closure triggers zero DB queries or state mutations; same-instance timeout does not block controls or other strategies; test workers released in `finally` blocks. Full test suite: 265 passed / 1 skipped; Ruff check and format clean.
 
 
+- 2026-10-08: Task 6 Authenticated, Account-Scoped Member 4 User Workflow and Follow-Up completed.
+  Completed end-to-end user workflow: register/login -> subscribe -> start -> observe readiness/signals/P&L -> stop.
+  Account identity is derived exclusively from verified server-side sessions (`engine.auth.verify_token`), never from client input.
+  Removed anonymous risk-budget fallback: `GET /api/risk/budgets` strictly requires session authentication and returns only the verified account's budgets (anonymous returns 401).
+  Audited account-scoped snapshot output and eliminated all nested leaks:
+    - Reconciliation reports: `broker_positions` and `unexplained_positions` filtered to `account_id`; `orders`, `unique_fills`, `open_orders`, and `duplicate_snapshot_fills` scoped to caller's counts; `unattributed_fills` reported as 0. Honest global verification flags (`verified`, `reason`, `observed_at`) are preserved.
+    - Kill certificates: `broker_positions` dictionary filtered to only keys starting with `f"{account_id}/"`; `virtual_positions_flat` evaluated for caller's positions; `open_orders` scoped to caller's open count; honest global status (`status`, `elapsed_seconds`, `reason`) preserved.
+    - Fill counters: `unique_applied`, `duplicates_ignored`, and `rejected_events` scoped strictly to the caller's account; `unattributed_in_last_verified_snapshot` sourced from verified snapshot accounts (null if unattributed fills exist or unverified).
+- 2026-10-08: Task 6 Final Follow-Up — Truthful Scoped Safety Evidence completed.
+  Fixed projection issues in account-scoped safety evidence:
+  - Eliminated hardcoding of `unattributed_fills` and `unattributed_in_last_verified_snapshot` to 0. Sourced from verified account breakdown (`accounts[account_id]`) at `observed_at`. If unattributed fills exist, snapshot is unverified, or account breakdown is missing, reports `null`/UNKNOWN.
+  - Preserved historical kill certificate evidence: `open_orders`, `virtual_positions_flat`, `status`, and `reason` are never rewritten using current account state. Sensitive `broker_positions` are filtered strictly to `f"{account_id}/"`. Later trades do not mutate historical certificates, and failed kills retain uncertainty (`open_orders=-1`, `status="FAILED"`).
+  - Reconciliation counts describe the verified snapshot at `observed_at` sourced from `accounts[account_id]`, never substituting current local counts or unrelated audit counters.
+  - Position comparison preserves raw `UNKNOWN` or `FAILED` states; filtering never converts uncertainty into a pass.
+  - Added regression tests in `tests/test_member4_workflow.py` verifying unknown attribution stays unknown, failed kill retains uncertainty, later trades do not alter historical certificates, and scoped historical reports remain accurate and leak-free across accounts.
+  Full test suite: 273 passed / 1 skipped; Ruff check and format clean; TypeScript clean.
+    - Unknown orders: filtered strictly by `account == user.account_id`.
+    - Audit payloads: only events where `account == user.account_id` or `strategy` belongs to the user's subscriptions are returned; nested payloads with `broker_positions` are sanitized to strip other accounts.
+  WebSocket (`/api/stream/ws`) and SSE (`/api/stream/telemetry`) require valid authentication prior to transmitting any data.
+  Streaming loops revalidate session tokens before pushing each snapshot; on logout or session expiration, SSE terminates and WebSocket closes immediately with close code 1008 (`WS_1008_POLICY_VIOLATION`).
+  Cross-account start/stop actions are denied with HTTP 403 Forbidden without mutating state or leaking details.
+  Preserved backend-derived `READY`, `RUNNING`, `STOPPED`, `HALTED`, and warmup indicator readiness states.
+  Frontend handles HTTP 401 and WS 1008 by invoking `clearStaleData()` to reset table records and redirect to `/login` without leaving stale cross-account data visible.
+  Ownership corrected: Ram is Member 3 (risk, security, reliability); Akshat is Member 1 (accounting, ledgers, fills, positions).
+  Platform-wide authorization is NOT complete. Explicitly documented the 15 remaining unprotected global mutation endpoints for Ram (Member 3).
+  Full test suite: 272 passed / 1 skipped; Ruff check and format clean; TypeScript clean.
+
 ## In Progress
-- No further 021 implementation is safe without an authoritative tick/reconnect/backfill contract. Existing adapter remains intentionally unavailable.
+- Awaiting Ram's (Member 3) operator authorization for global mutation endpoints and 021 market-data feed contract.
 
 ## Blockers / Dependencies
 - Official 021 contract/credentials and sponsor session/charges/kill semantics.
 - Production identity provider remains unselected; the current local session boundary is not Neon Auth.
+- Member 3 (Ram) remaining global API/operator authorization for platform-wide mutation endpoints:
+  `PUT /api/risk/policies/{strategy}`, `PUT /api/risk/strategies/{strategy}`, `POST /api/reconcile`,
+  `POST /api/resume`, `POST /api/reduce-only`, `POST /api/kill/reset`, `POST /api/kill`,
+  `POST /api/failure-lab/{scenario}`, `POST /api/broker/disconnect`, `POST /api/broker/reconnect`,
+  `POST /api/broker/updates/sync`, `POST /api/orders/{order_id}/cancel`, `POST /api/market/session`,
+  `POST /api/demo`, `POST /api/accounts`.
 
 ## Next
 - Obtain authoritative 021 tick schema, sequencing and reconnect/backfill behavior.
 - Implement `MarketData021Provider` normalization and adapter contract fixtures.
-- Coordinate feed freshness/session gating with Member 3.
-- Replace the local bootstrap identity boundary with the selected production identity provider without changing session-derived account ownership.
+- Coordinate feed freshness/session gating with Member 3 (Ram).
+- Coordinate operator authorization boundary with Member 3 (Ram).
 
 ## Handoff Notes
-Demo replay ends STOPPED; enabled subscriptions show READY and stopped/faulted subscriptions show STOPPED. Indicator state requires a fresh complete warm-up after restart, while subscription state and signal/error evidence are durable. Neon PostgreSQL schema is initialized and verified.
+User workflows are strictly account-isolated server-side. Subscriptions, orders, fills, positions, signals, risk budgets, and safety evidence never leak across accounts. Telemetry streams continuously revalidate tokens and terminate upon logout or expiration. Platform-wide operator authorization remains incomplete and pending Ram's role-based implementation.
+
+

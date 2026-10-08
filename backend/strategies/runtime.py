@@ -600,6 +600,7 @@ class StrategyRuntime:
                 event = {
                     "intent_id": intent.intent_id,
                     "strategy": strat_id,
+                    "account": sub["account"],
                     "kind": sub["kind"],
                     "symbol": candle.symbol,
                     "interval": candle.interval,

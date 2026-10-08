@@ -102,6 +102,9 @@ def test_policy_api_changes_authoritative_risk():
         assert (
             p.risk.submit(request(p, "halted", 1)).reason_code == "RISK_STRATEGY_HALTED"
         )
+        assert client.get("/api/risk/budgets").status_code == 401
+        tok = p.auth.register("trader_a", "password123", account_id="a")["token"]
+        client.cookies.set("algoshield_session", tok)
         assert client.get("/api/risk/budgets").json()[0]["state"] == "HALTED"
         assert (
             client.put(

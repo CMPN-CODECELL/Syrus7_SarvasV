@@ -83,7 +83,10 @@ def test_history_pagination_preserves_exact_economics_and_total():
         p.ingest(
             p.broker.execute("one", q, Decimal(price), p.clock(), Decimal("0.123456"))
         )
-    with TestClient(create_app(p)) as client:
+    user = p.auth.register("hardener", "password123", account_id="a")
+    with TestClient(
+        create_app(p), cookies={"algoshield_session": user["token"]}
+    ) as client:
         first = client.get("/api/fills?limit=1").json()
         second = client.get("/api/fills?limit=1&offset=1").json()
         assert first["total"] == second["total"] == 2

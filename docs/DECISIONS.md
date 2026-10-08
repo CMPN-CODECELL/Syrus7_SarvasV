@@ -506,5 +506,62 @@ Strategies are untrusted workloads. Workers must never have database or mutation
 ### Alternatives
 Using unbounded `shutdown(wait=True)` was rejected because it violates shutdown SLAs when callbacks hang. Allowing workers to query SQLite or commit state directly was rejected because it causes teardown access violations and state corruptions.
 
+## DEC-023 — Authenticated, account-scoped user workflow and telemetry isolation
+Date: 2026-10-08
+Status: ACCEPTED
+
+### Context
+Task 6 requires a complete authenticated Member 4 user workflow (`register/login -> subscribe -> start -> observe readiness/signals/P&L -> stop`) with strictly server-side account-scoped isolation. Account identity must be derived exclusively from verified server-side sessions, never from client requests or frontend filtering. Subscription responses, state projections, positions, orders, fills, signals, errors, risk budgets, and audit evidence must never leak other accounts. WebSocket and SSE telemetry streams must be authenticated before sending data, revalidate sessions during streaming, and terminate immediately on logout or token expiration. When sessions expire or backend becomes unavailable, frontend UI must clear stale state rather than retaining cached cross-account or out-of-date records.
+
+### Decision
+1. **Server-Side Account Derivation & Scoping**:
+   - Authentication tokens (cookie or Authorization header) are verified via `engine.auth.verify_token`. Anonymous reads to `/api/state`, `/api/orders`, `/api/fills`, `/api/subscriptions`, `/api/risk/budgets`, `/api/stream/ws`, and `/api/stream/telemetry` return HTTP 401 Unauthorized (or WS close code 1008). No anonymous fallback is permitted on risk budgets; global inspection is denied until formal roles are implemented.
+   - In `backend/platform.py`, `Platform.snapshot(account_id=...)` strictly scopes subscriptions, positions, orders, fills, counts, signals, strategy errors, and audit events to the verified account. Safety payloads (`virtual`, `broker`, `unknown_orders`, `fills.unique_applied`) and counts are isolated so no cross-account exposure exists.
+   - Deep nested safety audit:
+     - Position comparison: preserves raw `UNKNOWN` or `FAILED` status; filtering never converts uncertainty into a safety pass.
+     - Reconciliation reports: `broker_positions` and `unexplained_positions` filtered to `account_id`; `orders`, `unique_fills`, `open_orders`, `duplicate_snapshot_fills`, and `unattributed_fills` describe the verified snapshot at `observed_at` sourced from `accounts[account_id]`. If verified account breakdown is absent or unverified, reconciliation counts report `null` rather than substituting live local counts. Honest global verification flags (`verified`, `reason`, `observed_at`) are preserved.
+     - Kill certificates: historical evidence is strictly preserved. `open_orders`, `virtual_positions_flat`, `status`, and `reason` reflect the verified historical certificate at kill time and are never rewritten with current account state (later trades do not alter historical certificates, and failed kills retain uncertainty). `broker_positions` dictionary is filtered strictly to keys starting with `f"{account_id}/"`.
+     - Fill counters: `unique_applied`, `duplicates_ignored`, and `rejected_events` scoped strictly to the caller's account; `unattributed_in_last_verified_snapshot` is sourced from verified account breakdown at `observed_at` (returns 0 only when verified to be 0; returns `null`/unknown if unattributed fills exist, snapshot is unverified, or account evidence is missing). Never hardcoded to 0.
+     - Unknown orders: filtered strictly by `account == user.account_id`.
+     - Audit payloads: only events where `account == user.account_id` or `strategy` belongs to the user's subscriptions are returned; nested payloads with `broker_positions` are sanitized to strip other accounts.
+   - History queries (`history` and `history_count`) accept an optional `account_id` parameter filtering `WHERE account = ?`.
+2. **Subscription Mutation Authorization**:
+   - `POST /api/subscriptions` creates subscriptions for the authenticated session's `account_id` and returns user-scoped subscriptions.
+   - `POST /api/subscriptions/{strategy_instance_id}/start` and `/stop` look up the subscription by ID: if not found, return 404; if owned by another account, return 403 Forbidden without mutating state or leaking details. Responses return user-scoped subscriptions.
+3. **Telemetry Streaming Authentication & Eviction**:
+   - SSE (`GET /api/stream/telemetry`) and WebSocket (`/api/stream/ws`) require verified authentication before sending any data.
+   - Streaming loops revalidate the session token before emitting snapshots (`engine.auth.verify_token(token)`). If the session expires or the user logs out, SSE returns/terminates and WebSocket closes immediately with close code 1008 (`WS_1008_POLICY_VIOLATION`).
+4. **Stale UI Cleared on Session Termination & Disconnection**:
+   - In `frontend/index.html`, upon HTTP 401 or WebSocket 1008 close code, `clearStaleData()` resets subscriptions, positions, orders, fills, signals, errors, budgets, and safety indicators to prevent stale account data from remaining visible.
+5. **Team Ownership & Remaining Unprotected Global Mutation Endpoints**:
+   - Ownership alignment: Ram is Member 3 (risk, security, reliability, trading gates, kill switch). Akshat is Member 1 (accounting, ledgers, fills, positions). Member 4 owns market data, strategy runtimes, and user-scoped workflow.
+   - Platform-wide operator authorization is NOT complete. Ram (Member 3) must implement role-based operator authorization for remaining unprotected global mutation endpoints:
+     - `PUT /api/risk/policies/{strategy}`
+     - `PUT /api/risk/strategies/{strategy}`
+     - `POST /api/reconcile`
+     - `POST /api/resume`
+     - `POST /api/reduce-only`
+     - `POST /api/kill/reset`
+     - `POST /api/kill`
+     - `POST /api/failure-lab/{scenario}`
+     - `POST /api/broker/disconnect`
+     - `POST /api/broker/reconnect`
+     - `POST /api/broker/updates/sync`
+     - `POST /api/orders/{order_id}/cancel`
+     - `POST /api/market/session`
+     - `POST /api/demo`
+     - `POST /api/accounts`
+
+### Reason
+Multi-tenant security requires defense-in-depth where server-side boundaries enforce strict data isolation. Client-side filtering is inherently insecure. Streaming connections must enforce authentication continuously to prevent unauthorized data exposure following logout or token revocation. Global mutations must be explicitly guarded by operator roles rather than left open.
+
+### Impact
+`backend/platform.py`, `backend/api.py`, `backend/strategies/runtime.py`, `backend/execution/orders.py`, `backend/reliability/control.py`, `frontend/index.html`, `tests/test_member4_workflow.py`. Full test suite passes (272 passed, 1 skipped). Ruff check/format and TypeScript pass.
+
+### Alternatives
+Preserving anonymous risk budgets was rejected because it leaks strategy budgets without authentication. Client-side filtering was rejected as it exposes private order and position data in network payloads. Passing client-provided `account_id` was rejected because users could forge accounts. Revalidating auth only upon initial WebSocket handshake was rejected because logged-out users would continue receiving live account updates.
+
+
+
 
 

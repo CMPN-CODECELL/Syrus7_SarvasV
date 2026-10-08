@@ -323,7 +323,14 @@ class OrderManager:
 
             applied = self.ledger.apply(fill)
             if not applied:
-                self.store.audit("DUPLICATE_FILL_IGNORED", {"fill_id": fill.fill_id})
+                self.store.audit(
+                    "DUPLICATE_FILL_IGNORED",
+                    {
+                        "fill_id": fill.fill_id,
+                        "account_id": fill.account_id,
+                        "strategy_instance_id": fill.strategy_instance_id,
+                    },
+                )
             if applied:
                 filled = o["filled"] + fill.quantity
                 if filled == o["quantity"]:

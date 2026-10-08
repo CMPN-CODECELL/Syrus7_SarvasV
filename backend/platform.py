@@ -1,3 +1,4 @@
+import json
 import time
 from collections import deque
 from collections.abc import Iterable
@@ -16,7 +17,7 @@ from backend.reliability.control import Reliability
 from backend.reliability.broker_calls import BrokerSession, Deadline
 from backend.risk.gateway import RiskGateway
 from backend.shared.auth import AuthService
-from backend.shared.contracts import GlobalTradingState as Gate, Side, Tick
+from backend.shared.contracts import GlobalTradingState as Gate, OrderStatus, Side, Tick
 from backend.shared.store import Store
 from backend.strategies.runtime import StrategyRuntime
 
@@ -94,7 +95,10 @@ class Platform:
             try:
                 return self.orders.ingest(fill)
             except Exception:
-                self.reliability.fail_closed("FILL_EVENT_REJECTED")
+                account_id = getattr(fill, "account_id", None)
+                self.reliability.fail_closed(
+                    "FILL_EVENT_REJECTED", account_id=account_id
+                )
                 raise
 
     def cancel(self, order_id, timeout=None):
@@ -470,8 +474,272 @@ class Platform:
     def strategy_readiness(self, strategy_id: str):
         return self.strategies.readiness_for(strategy_id)
 
-    def snapshot(self):
+    def snapshot(self, account_id: str | None = None):
         with self.store.lock:
+            if account_id is not None:
+                sub_rows = self.store.rows(
+                    "SELECT * FROM subscriptions WHERE account=?", (account_id,)
+                )
+                user_strat_ids = {r["id"] for r in sub_rows}
+            else:
+                sub_rows = self.store.rows("SELECT * FROM subscriptions")
+                user_strat_ids = None
+
+            subscriptions = [
+                dict(r)
+                | {
+                    "running": self.strategies.state_for(r) == "RUNNING"
+                    and self.risk.strategy_state(r["id"]) == "RUNNING",
+                    "state": (
+                        "HALTED"
+                        if str(self.risk.strategy_state(r["id"])).endswith("HALTED")
+                        else self.strategies.state_for(r)
+                    ),
+                    "strategy_state": self.risk.strategy_state(r["id"]),
+                    "readiness": self.strategies.readiness_for(r["id"]),
+                }
+                for r in sub_rows
+            ]
+
+            if account_id is not None:
+                positions = [
+                    _contract_dict(p) | {"account_id": a}
+                    for (a, _, _), p in self.ledger.positions().items()
+                    if a == account_id
+                ]
+            else:
+                positions = [
+                    _contract_dict(p) | {"account_id": a}
+                    for (a, _, _), p in self.ledger.positions().items()
+                ]
+
+            risk_budgets = [
+                self.risk.budget(r["account"], r["id"], r["symbol"]) for r in sub_rows
+            ]
+
+            orders = list(
+                reversed(self.history("orders", account_id=account_id)["items"])
+            )
+            fills = list(
+                reversed(self.history("fills", account_id=account_id)["items"])
+            )
+            counts = {
+                "orders": self.history_count("orders", account_id=account_id),
+                "fills": self.history_count("fills", account_id=account_id),
+            }
+
+            if account_id is not None:
+                signals = [
+                    s
+                    for s in self.strategies.signals
+                    if s.get("account") == account_id
+                    or (user_strat_ids and s.get("strategy") in user_strat_ids)
+                ]
+                strategy_errors = [
+                    e
+                    for e in self.strategies.errors
+                    if e.get("account") == account_id
+                    or (user_strat_ids and e.get("strategy") in user_strat_ids)
+                ]
+                audit_rows = []
+                for r in self.store.rows(
+                    "SELECT * FROM audit ORDER BY sequence DESC LIMIT 100"
+                ):
+                    try:
+                        p = (
+                            json.loads(r["payload"])
+                            if isinstance(r["payload"], str)
+                            else r["payload"]
+                        )
+                        if isinstance(p, dict):
+                            if (
+                                p.get("account") == account_id
+                                or p.get("account_id") == account_id
+                                or (
+                                    user_strat_ids
+                                    and p.get("strategy") in user_strat_ids
+                                )
+                            ):
+                                audit_rows.append(dict(r))
+                    except Exception:
+                        pass
+                    if len(audit_rows) >= 30:
+                        break
+            else:
+                signals = list(self.strategies.signals)
+                strategy_errors = list(self.strategies.errors)
+                audit_rows = [
+                    dict(r)
+                    for r in self.store.rows(
+                        "SELECT * FROM audit ORDER BY sequence DESC LIMIT 30"
+                    )
+                ]
+
+            raw_safety = self.reliability.evidence()
+            if account_id is not None:
+                safety = json.loads(json.dumps(raw_safety, default=str))
+                pos_comp = safety.get("position_comparison", {})
+                if "virtual" in pos_comp and isinstance(pos_comp["virtual"], list):
+                    pos_comp["virtual"] = [
+                        v
+                        for v in pos_comp["virtual"]
+                        if v.get("account_id") == account_id
+                    ]
+                if "broker" in pos_comp and isinstance(pos_comp["broker"], list):
+                    pos_comp["broker"] = [
+                        b
+                        for b in pos_comp["broker"]
+                        if b.get("account_id") == account_id
+                    ]
+                user_virt = {
+                    (v.get("account_id"), v.get("symbol")): v.get("quantity")
+                    for v in (pos_comp.get("virtual") or [])
+                }
+                user_brok = {
+                    (b.get("account_id"), b.get("symbol")): b.get("quantity")
+                    for b in (pos_comp.get("broker") or [])
+                }
+                raw_status = raw_safety.get("position_comparison", {}).get(
+                    "status", "UNKNOWN"
+                )
+                if raw_status in {"UNKNOWN", "FAILED"}:
+                    pos_comp["status"] = raw_status
+                elif raw_status == "VERIFIED":
+                    pos_comp["status"] = (
+                        "VERIFIED" if user_virt == user_brok else "FAILED"
+                    )
+                else:
+                    pos_comp["status"] = raw_status
+
+                reconc = safety.get("reconciliation", {})
+                if reconc:
+                    if isinstance(reconc.get("broker_positions"), list):
+                        reconc["broker_positions"] = [
+                            b
+                            for b in reconc["broker_positions"]
+                            if b.get("account_id") == account_id
+                        ]
+                    if isinstance(reconc.get("unexplained_positions"), list):
+                        reconc["unexplained_positions"] = [
+                            b
+                            for b in reconc["unexplained_positions"]
+                            if b.get("account_id") == account_id
+                        ]
+                    accounts = reconc.pop("accounts", None)
+                    if (
+                        accounts
+                        and account_id in accounts
+                        and reconc.get("verified") is True
+                    ):
+                        acc_data = accounts[account_id]
+                        reconc["orders"] = acc_data.get("orders")
+                        reconc["unique_fills"] = acc_data.get("unique_fills")
+                        reconc["open_orders"] = acc_data.get("open_orders")
+                        reconc["duplicate_snapshot_fills"] = acc_data.get(
+                            "duplicate_snapshot_fills"
+                        )
+                        reconc["unattributed_fills"] = acc_data.get(
+                            "unattributed_fills"
+                        )
+                    else:
+                        reconc["orders"] = None
+                        reconc["unique_fills"] = None
+                        reconc["open_orders"] = None
+                        reconc["duplicate_snapshot_fills"] = None
+                        reconc["unattributed_fills"] = None
+
+                if "unknown_orders" in safety:
+                    safety["unknown_orders"] = [
+                        r["id"]
+                        for r in self.store.rows(
+                            "SELECT id FROM orders WHERE status=? AND account=?",
+                            (OrderStatus.UNKNOWN, account_id),
+                        )
+                    ]
+
+                if "fills" in safety and isinstance(safety["fills"], dict):
+                    safety["fills"]["unique_applied"] = counts["fills"]
+                    user_dups = 0
+                    for r in self.store.rows(
+                        "SELECT payload FROM audit WHERE type='DUPLICATE_FILL_IGNORED'"
+                    ):
+                        try:
+                            p = (
+                                json.loads(r["payload"])
+                                if isinstance(r["payload"], str)
+                                else r["payload"]
+                            )
+                            if (
+                                p.get("account_id") == account_id
+                                or p.get("account") == account_id
+                            ):
+                                user_dups += 1
+                        except Exception:
+                            pass
+                    safety["fills"]["duplicates_ignored"] = user_dups
+
+                    user_rejections = 0
+                    for r in self.store.rows(
+                        "SELECT payload FROM audit WHERE type='SAFETY_RESTRICTED' AND payload LIKE '%FILL_EVENT_REJECTED%'"
+                    ):
+                        try:
+                            p = (
+                                json.loads(r["payload"])
+                                if isinstance(r["payload"], str)
+                                else r["payload"]
+                            )
+                            if (
+                                p.get("account_id") == account_id
+                                or p.get("account") == account_id
+                            ):
+                                user_rejections += 1
+                        except Exception:
+                            pass
+                    safety["fills"]["rejected_events"] = user_rejections
+
+                    trusted = (
+                        self.reliability.health == "HEALTHY"
+                        and not self.broker_calls.uncertain
+                        and self.risk.state != Gate.UNCERTAIN
+                        and self.reliability.report.get("verified", False)
+                        and not self.broker_calls.unsettled
+                    )
+                    if (
+                        trusted
+                        and reconc
+                        and reconc.get("verified") is True
+                        and reconc.get("unattributed_fills") == 0
+                    ):
+                        safety["fills"]["unattributed_in_last_verified_snapshot"] = 0
+                    elif (
+                        trusted
+                        and reconc
+                        and reconc.get("unattributed_fills") is not None
+                    ):
+                        safety["fills"]["unattributed_in_last_verified_snapshot"] = (
+                            reconc.get("unattributed_fills")
+                        )
+                    else:
+                        safety["fills"]["unattributed_in_last_verified_snapshot"] = None
+            else:
+                safety = raw_safety
+
+            if account_id is not None and self.reliability.certificate:
+                kill_cert = asdict(self.reliability.certificate)
+                if isinstance(kill_cert.get("broker_positions"), dict):
+                    kill_cert["broker_positions"] = {
+                        k: v
+                        for k, v in kill_cert["broker_positions"].items()
+                        if k.startswith(f"{account_id}/")
+                    }
+                kill_data = kill_cert
+            else:
+                kill_data = (
+                    asdict(self.reliability.certificate)
+                    if self.reliability.certificate
+                    else None
+                )
+
             return {
                 "mode": (
                     "MOCK / REPLAY"
@@ -485,60 +753,51 @@ class Platform:
                 "storage": self.store.backend_name,
                 "health": self.reliability.health,
                 "gate": self.risk.state,
-                "safety": self.reliability.evidence(),
-                "subscriptions": [
-                    dict(r)
-                    | {
-                        "running": self.strategies.state_for(r) == "RUNNING"
-                        and self.risk.strategy_state(r["id"]) == "RUNNING",
-                        "state": self.strategies.state_for(r),
-                        "strategy_state": self.risk.strategy_state(r["id"]),
-                        "readiness": self.strategies.readiness_for(r["id"]),
-                    }
-                    for r in self.store.rows("SELECT * FROM subscriptions")
-                ],
-                "positions": [
-                    _contract_dict(p) | {"account_id": a}
-                    for (a, _, _), p in self.ledger.positions().items()
-                ],
-                "risk_budgets": [
-                    self.risk.budget(r["account"], r["id"], r["symbol"])
-                    for r in self.store.rows("SELECT * FROM subscriptions")
-                ],
-                "orders": list(reversed(self.history("orders")["items"])),
-                "fills": list(reversed(self.history("fills")["items"])),
-                "counts": {
-                    "orders": self.history_count("orders"),
-                    "fills": self.history_count("fills"),
-                },
+                "safety": safety,
+                "subscriptions": subscriptions,
+                "positions": positions,
+                "risk_budgets": risk_budgets,
+                "orders": orders,
+                "fills": fills,
+                "counts": counts,
                 "candles": [_contract_dict(c) for c in list(self.closed_candles)[-20:]],
-                "signals": list(self.strategies.signals),
-                "strategy_errors": list(self.strategies.errors),
+                "signals": signals,
+                "strategy_errors": strategy_errors,
                 "market_data": self.candles.stats(),
                 "market_session": self.market_session.to_dict(self.clock()),
-                "audit": [
-                    dict(r)
-                    for r in self.store.rows(
-                        "SELECT * FROM audit ORDER BY sequence DESC LIMIT 30"
-                    )
-                ],
-                "kill": asdict(self.reliability.certificate)
-                if self.reliability.certificate
-                else None,
+                "audit": audit_rows,
+                "kill": kill_data,
             }
 
-    def history_count(self, table):
+    def history_count(self, table, account_id: str | None = None):
         if table not in {"orders", "fills"}:
             raise ValueError("unsupported history")
+        if account_id is not None:
+            return self.store.rows(
+                f"SELECT COUNT(*) AS n FROM {table} WHERE account=?", (account_id,)
+            )[0]["n"]
         return self.store.rows(f"SELECT COUNT(*) AS n FROM {table}")[0]["n"]
 
-    def history(self, table, limit=200, offset=0):
+    def history(self, table, limit=200, offset=0, account_id: str | None = None):
         if table not in {"orders", "fills"} or not 1 <= limit <= 500 or offset < 0:
             raise ValueError("invalid history query")
         ordering = "created,id" if table == "orders" else "timestamp,id"
         # Fixed allowlist; parameters bind pagination, never table/order input.
         keys = ordering.replace(",", " DESC,") + " DESC"
         with self.store.lock:
+            if account_id is not None:
+                return {
+                    "items": [
+                        dict(r)
+                        for r in self.store.rows(
+                            f"SELECT * FROM {table} WHERE account=? ORDER BY {keys} LIMIT ? OFFSET ?",
+                            (account_id, limit, offset),
+                        )
+                    ],
+                    "total": self.history_count(table, account_id=account_id),
+                    "limit": limit,
+                    "offset": offset,
+                }
             return {
                 "items": [
                     dict(r)

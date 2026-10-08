@@ -254,17 +254,28 @@ def create_app(platform=None):
         }
 
     @app.get("/api/state")
-    def state():
-        return financial_json(engine.snapshot())
+    def state(request: Request):
+        user = require_user(request)
+        return financial_json(engine.snapshot(account_id=user["account_id"]))
 
     @app.get("/api/stream/telemetry")
     async def stream_telemetry(
         request: Request,
         max_events: int | None = Query(None, ge=1),
     ):
+        token = request.query_params.get("token") or request_token(request)
+        user = engine.auth.verify_token(token)
+        if not user:
+            raise HTTPException(401, "authentication required")
+
+        account_id = user["account_id"]
+
         async def event_generator():
             count = 0
-            snapshot = engine.snapshot()
+            current_user = engine.auth.verify_token(token)
+            if not current_user:
+                return
+            snapshot = engine.snapshot(account_id=account_id)
             payload = json.dumps(
                 jsonable_encoder(snapshot, custom_encoder={Decimal: str})
             )
@@ -272,18 +283,22 @@ def create_app(platform=None):
             count += 1
             if max_events is not None and count >= max_events:
                 return
-            while True:
-                if await request.is_disconnected():
-                    break
-                await asyncio.sleep(1.0)
-                snapshot = engine.snapshot()
-                payload = json.dumps(
-                    jsonable_encoder(snapshot, custom_encoder={Decimal: str})
-                )
-                yield f"event: telemetry\ndata: {payload}\n\n"
-                count += 1
-                if max_events is not None and count >= max_events:
-                    break
+            try:
+                while True:
+                    await asyncio.sleep(0.1)
+                    current_user = engine.auth.verify_token(token)
+                    if not current_user:
+                        break
+                    snapshot = engine.snapshot(account_id=account_id)
+                    payload = json.dumps(
+                        jsonable_encoder(snapshot, custom_encoder={Decimal: str})
+                    )
+                    yield f"event: telemetry\ndata: {payload}\n\n"
+                    count += 1
+                    if max_events is not None and count >= max_events:
+                        break
+            except (asyncio.CancelledError, GeneratorExit):
+                return
 
         return StreamingResponse(
             event_generator(),
@@ -298,24 +313,54 @@ def create_app(platform=None):
     @app.websocket("/api/stream/ws")
     async def stream_websocket(websocket: WebSocket):
         """Push backend snapshots over a persistent browser connection."""
+        token = (
+            websocket.cookies.get(session_cookie)
+            or websocket.query_params.get("token")
+            or ""
+        )
+        if not token:
+            auth_header = websocket.headers.get("authorization", "")
+            if auth_header.startswith("Bearer "):
+                token = auth_header.removeprefix("Bearer ").strip()
+
+        user = engine.auth.verify_token(token)
+        if not user:
+            await websocket.close(code=1008, reason="authentication required")
+            return
+
         await websocket.accept()
+        account_id = user["account_id"]
         try:
             while True:
-                snapshot = engine.snapshot()
+                current_user = engine.auth.verify_token(token)
+                if not current_user:
+                    await websocket.close(code=1008, reason="session expired")
+                    break
+                snapshot = engine.snapshot(account_id=account_id)
                 await websocket.send_json(
                     jsonable_encoder(snapshot, custom_encoder={Decimal: str})
                 )
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(0.1)
         except WebSocketDisconnect:
             return
 
     @app.get("/api/fills")
-    def fills(limit: int = Query(200, ge=1, le=500), offset: int = Query(0, ge=0)):
-        return engine.history("fills", limit, offset)
+    def fills(
+        request: Request,
+        limit: int = Query(200, ge=1, le=500),
+        offset: int = Query(0, ge=0),
+    ):
+        user = require_user(request)
+        return engine.history("fills", limit, offset, account_id=user["account_id"])
 
     @app.get("/api/orders")
-    def orders(limit: int = Query(200, ge=1, le=500), offset: int = Query(0, ge=0)):
-        return engine.history("orders", limit, offset)
+    def orders(
+        request: Request,
+        limit: int = Query(200, ge=1, le=500),
+        offset: int = Query(0, ge=0),
+    ):
+        user = require_user(request)
+        return engine.history("orders", limit, offset, account_id=user["account_id"])
 
     @app.post("/api/orders/{order_id}/cancel")
     def cancel_order(order_id: str):
@@ -363,6 +408,11 @@ def create_app(platform=None):
             raise HTTPException(400, str(exc)) from None
         return financial_json(engine.market_session.to_dict(engine.clock()))
 
+    @app.get("/api/subscriptions")
+    def list_subscriptions(request: Request):
+        user = require_user(request)
+        return engine.snapshot(account_id=user["account_id"])["subscriptions"]
+
     @app.post("/api/subscriptions", status_code=201)
     def subscribe(body: SubscriptionRequest, request: Request):
         user = require_user(request)
@@ -372,19 +422,37 @@ def create_app(platform=None):
             )
         except (sqlite3.IntegrityError, UniqueViolation):
             raise HTTPException(409, "strategy instance exists") from None
-        return engine.snapshot()["subscriptions"]
+        return engine.snapshot(account_id=user["account_id"])["subscriptions"]
 
     @app.post("/api/subscriptions/{strategy_instance_id}/start")
     def start_subscription(strategy_instance_id: str, request: Request):
         user = require_user(request)
+        rows = engine.store.rows(
+            "SELECT account FROM subscriptions WHERE id=?", (strategy_instance_id,)
+        )
+        if not rows:
+            raise HTTPException(404, "subscription does not exist")
+        if rows[0]["account"] != user["account_id"]:
+            raise HTTPException(
+                403, "access denied: subscription belongs to another account"
+            )
         engine.strategies.set_enabled(user["account_id"], strategy_instance_id, True)
-        return engine.snapshot()["subscriptions"]
+        return engine.snapshot(account_id=user["account_id"])["subscriptions"]
 
     @app.post("/api/subscriptions/{strategy_instance_id}/stop")
     def stop_subscription(strategy_instance_id: str, request: Request):
         user = require_user(request)
+        rows = engine.store.rows(
+            "SELECT account FROM subscriptions WHERE id=?", (strategy_instance_id,)
+        )
+        if not rows:
+            raise HTTPException(404, "subscription does not exist")
+        if rows[0]["account"] != user["account_id"]:
+            raise HTTPException(
+                403, "access denied: subscription belongs to another account"
+            )
         engine.strategies.set_enabled(user["account_id"], strategy_instance_id, False)
-        return engine.snapshot()["subscriptions"]
+        return engine.snapshot(account_id=user["account_id"])["subscriptions"]
 
     @app.post("/api/demo")
     def demo():
@@ -413,8 +481,11 @@ def create_app(platform=None):
         }
 
     @app.get("/api/risk/budgets")
-    def budgets():
-        return financial_json(engine.snapshot()["risk_budgets"])
+    def budgets(request: Request):
+        user = require_user(request)
+        return financial_json(
+            engine.snapshot(account_id=user["account_id"])["risk_budgets"]
+        )
 
     @app.post("/api/failure-lab/{scenario}")
     def failure_lab(scenario: str):
