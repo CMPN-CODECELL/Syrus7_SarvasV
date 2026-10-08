@@ -183,7 +183,12 @@ class RiskGateway:
                 not reason,
                 reason or "ALLOWED",
                 projected,
-                reason_text or ("platform risk approved" if not reason else reason.replace("_", " ").lower()),
+                reason_text
+                or (
+                    "platform risk approved"
+                    if not reason
+                    else reason.replace("_", " ").lower()
+                ),
                 (reason or "ALL_RULES_PASSED",),
                 self.clock(),
                 intent.intent_id if not reason else None,
@@ -220,17 +225,33 @@ class RiskGateway:
             GlobalTradingState.RUNNING,
             GlobalTradingState.REDUCE_ONLY,
         } or self.safety.get("kill_latched", False):
-            return "RISK_GLOBAL_GATE", None, f"REJECTED — GLOBAL GATE: Trading gate is {self.state.value} (kill_latched={self.safety.get('kill_latched', False)})"
+            return (
+                "RISK_GLOBAL_GATE",
+                None,
+                f"REJECTED — GLOBAL GATE: Trading gate is {self.state.value} (kill_latched={self.safety.get('kill_latched', False)})",
+            )
         if self.store.rows("SELECT id FROM orders WHERE id=?", (intent.intent_id,)):
-            return "RISK_DUPLICATE_INTENT", None, f"REJECTED — DUPLICATE INTENT: Order ID {intent.intent_id} already exists"
+            return (
+                "RISK_DUPLICATE_INTENT",
+                None,
+                f"REJECTED — DUPLICATE INTENT: Order ID {intent.intent_id} already exists",
+            )
         subscriptions = self.store.rows(
             "SELECT enabled FROM subscriptions WHERE id=? AND account=? AND symbol=?",
             (intent.strategy_instance_id, intent.account_id, intent.symbol),
         )
         if not subscriptions:
-            return "RISK_NOT_SUBSCRIBED", None, f"REJECTED — NOT SUBSCRIBED: {intent.strategy_instance_id} not subscribed for {intent.symbol}"
+            return (
+                "RISK_NOT_SUBSCRIBED",
+                None,
+                f"REJECTED — NOT SUBSCRIBED: {intent.strategy_instance_id} not subscribed for {intent.symbol}",
+            )
         if not subscriptions[0]["enabled"]:
-            return "RISK_STRATEGY_STOPPED", None, f"REJECTED — STRATEGY STOPPED: Strategy {intent.strategy_instance_id} is disabled"
+            return (
+                "RISK_STRATEGY_STOPPED",
+                None,
+                f"REJECTED — STRATEGY STOPPED: Strategy {intent.strategy_instance_id} is disabled",
+            )
         policy = self.policies.get(intent.strategy_instance_id, RiskPolicy())
         unsafe = self.evidence_gate(intent)
         if unsafe:
@@ -241,7 +262,11 @@ class RiskGateway:
                 "RISK_MARKET_HALTED": "REJECTED — MARKET HALTED: Market trading is currently halted",
                 "RISK_MARKET_CLOSED": "REJECTED — MARKET CLOSED: Market session is closed",
             }
-            return unsafe, None, unsafe_texts.get(unsafe, f"REJECTED — SAFETY GATE: {unsafe}")
+            return (
+                unsafe,
+                None,
+                unsafe_texts.get(unsafe, f"REJECTED — SAFETY GATE: {unsafe}"),
+            )
         budget = self.budget(
             intent.account_id, intent.strategy_instance_id, intent.symbol
         )
@@ -254,7 +279,11 @@ class RiskGateway:
         )
         reduce_only = self.state == GlobalTradingState.REDUCE_ONLY
         if reduce_only and not reducing:
-            return "RISK_NOT_REDUCING", None, f"REJECTED — NOT REDUCING: Gate is REDUCE_ONLY and intent does not reduce position {q}"
+            return (
+                "RISK_NOT_REDUCING",
+                None,
+                f"REJECTED — NOT REDUCING: Gate is REDUCE_ONLY and intent does not reduce position {q}",
+            )
         if budget["daily_loss"]["consumed"] >= policy.max_daily_loss:
             self.set_strategy_state(
                 intent.strategy_instance_id,
@@ -272,7 +301,11 @@ class RiskGateway:
             strategy_state == StrategyState.LOSS_HALTED
             and not (reduce_only and reducing)
         ):
-            return "RISK_STRATEGY_HALTED", None, f"REJECTED — STRATEGY HALTED: Strategy is in {strategy_state.value} state"
+            return (
+                "RISK_STRATEGY_HALTED",
+                None,
+                f"REJECTED — STRATEGY HALTED: Strategy is in {strategy_state.value} state",
+            )
         if budget["rate"]["consumed"] >= policy.max_orders_per_minute:
             return (
                 "RISK_RATE_LIMIT",

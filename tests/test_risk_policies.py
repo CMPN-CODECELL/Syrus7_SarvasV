@@ -124,7 +124,10 @@ def test_lower_policy_does_not_drop_existing_reservations():
     decision = p.risk.submit(request(p, "two", 1))
     assert decision.reason_code == "RISK_MAX_POSITION"
     assert "REJECTED — POSITION LIMIT" in decision.reason_text
-    assert "Current: 0, Pending: 100, Requested: 1, Projected: 101, Limit: 50" in decision.reason_text
+    assert (
+        "Current: 0, Pending: 100, Requested: 1, Projected: 101, Limit: 50"
+        in decision.reason_text
+    )
     assert p.risk.budget("a", "A", "X")["position"]["reserved_buy"] == 100
     p.store.close()
 
@@ -144,7 +147,10 @@ def test_structured_risk_decision_reason_codes():
     d3 = p.risk.submit(request(p, "r3", 1))
     assert not d3.allowed
     assert d3.reason_code == "RISK_RATE_LIMIT"
-    assert "REJECTED — RATE LIMIT: Consumed: 2, Requested: 1, Limit: 2 orders/min" in d3.reason_text
+    assert (
+        "REJECTED — RATE LIMIT: Consumed: 2, Requested: 1, Limit: 2 orders/min"
+        in d3.reason_text
+    )
 
     # Global gate test
     p.risk.kill_requested.set()
@@ -153,4 +159,3 @@ def test_structured_risk_decision_reason_codes():
     assert d4.reason_code == "RISK_GLOBAL_GATE"
     assert "REJECTED — GLOBAL GATE" in d4.reason_text
     p.store.close()
-
