@@ -1,6 +1,7 @@
 import { render,screen } from '@testing-library/react'
 import { describe,expect,it } from 'vitest'
 import { CompactEvidence, EvidenceView, Status } from '../components/UI'
+import { StrategyBudgets } from '../pages/RiskPage'
 
 describe('truthful safety semantics',()=>{
   it('never turns FAILED into VERIFIED',()=>{render(<Status value="FAILED"/>);expect(screen.getByText('FAILED')).toBeInTheDocument();expect(screen.queryByText('VERIFIED')).not.toBeInTheDocument()})
@@ -8,4 +9,5 @@ describe('truthful safety semantics',()=>{
   it('never turns SAFE_LATE into SUCCESS',()=>{render(<Status value="SAFE_LATE"/>);expect(screen.getByText('SAFE_LATE')).toBeInTheDocument();expect(screen.queryByText('SUCCESS')).not.toBeInTheDocument()})
   it('renders nested backend evidence as labeled visual fields',()=>{const {container}=render(<EvidenceView value={{verified:false,position_diff:[{symbol:'RELIANCE',delta:2}]}}/>);expect(screen.getByText('Verified')).toBeInTheDocument();expect(screen.getByText('Position Diff')).toBeInTheDocument();expect(screen.getByText('RELIANCE')).toBeInTheDocument();expect(container.querySelector('pre')).not.toBeInTheDocument()})
   it('renders dense budget metrics without expanded evidence cards',()=>{const {container}=render(<CompactEvidence value={{limit:100,filled:4,available_buy:96}}/>);expect(screen.getByText('Available Buy')).toBeInTheDocument();expect(screen.getByText('96')).toBeInTheDocument();expect(container.querySelector('.evidence-field')).not.toBeInTheDocument()})
+  it('stacks complete strategy budgets without a horizontal table',()=>{const {container}=render(<StrategyBudgets budgets={[{strategy_instance_id:'alpha',account_id:'acc_alpha',symbol:'RELIANCE',state:'RUNNING',position:{filled:2,available_buy:98},daily_loss:{remaining:'900'},rate:{remaining:8}}]}/>);expect(screen.getByText('Position')).toBeInTheDocument();expect(screen.getByText('Daily Loss')).toBeInTheDocument();expect(screen.getByText('Rate')).toBeInTheDocument();expect(container.querySelector('.table-wrap')).not.toBeInTheDocument()})
 })

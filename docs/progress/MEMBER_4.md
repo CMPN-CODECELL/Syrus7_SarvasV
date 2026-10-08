@@ -188,3 +188,10 @@ User workflows are strictly account-isolated server-side. Subscriptions, orders,
 - Replaced expanded nested evidence cards inside Strategy Budgets with dense labeled metrics sourced from the complete backend policy, position, daily-loss, and order-rate objects.
 - Reduced cell padding and vertical rhythm while preserving table-local horizontal scrolling and a two-column metric fallback on narrow mobile screens.
 - Validation: 12 React tests, ESLint, Vite production build, 13 focused backend tests, and Ruff passed.
+
+## 2026-10-08 — Vertical Strategy Budgets
+
+- Removed the horizontally scrolling Strategy Budgets table.
+- Each strategy now has a responsive vertical evidence block whose backend-provided policy, position, daily-loss, and rate groups wrap downward without document or section-level horizontal scrolling.
+- Mobile forces a single group column while metric values remain compact and readable.
+- Validation: 13 React tests, ESLint, Vite production build, 10 focused risk tests, and Ruff passed.
