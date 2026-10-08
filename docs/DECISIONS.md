@@ -573,3 +573,16 @@ The platform needs judge-visible proof without weakening fill, reconciliation, o
 
 ### Impact
 SQLite schema v11 and PostgreSQL migrations 007-010 add correlation, policy, and benchmark records. Metrics reset on process restart; historical policy reconstruction remains explicitly unknown.
+
+## DEC-025 — React SPA as a presentation-only deployment artifact
+Date: 2026-10-08
+Status: ACCEPTED
+
+### Decision
+Replace the legacy HTML pages with a modular React/Vite SPA. Keep session discovery in one auth provider, telemetry in one authenticated WebSocket provider, and HTTP behavior in one credentialed API client. React displays backend evidence without calculating financial or safety truth. Vite is development-only; production builds assets in a Node stage and FastAPI serves them with API/WebSocket route priority and SPA fallback.
+
+### Reason
+The operational surface now spans independent workflows that need routing, shared state, testable session handling, and responsive navigation without duplicating backend rules.
+
+### Impact
+`frontend/src` becomes the UI source, `frontend/dist` remains generated and ignored, legacy login/register pages are removed, and direct-route refresh requires a completed frontend build. Backend-only environments receive an explicit 503 build instruction when assets are absent.

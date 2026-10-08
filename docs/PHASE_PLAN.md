@@ -28,3 +28,7 @@ Neon persistence extension: centralized psycopg store, checksum migrations and r
 ## USP layer status (2026-10-08)
 
 Phases 0-12 from `usp_implementation_plan.md` are implemented for the offline/mock bootstrap: authenticated controls, explainable decisions, account net/gross controls, LIMIT price guard, Safety Proof, Reconciliation Center, durable traces, Failure Lab V2, Kill Certificate V2, bounded metrics, isolated 19-case SafetyBench, operational dashboard panels, regression coverage and documentation. This does not change the live-provider blocker: no 021 payload, authentication, stream, reconnect or sandbox behavior was invented, and no remote Neon production data was mutated.
+
+## React migration status (2026-10-08)
+
+The static pages were replaced by a modular React/Vite SPA with protected routes, a centralized credentialed API client, one account-scoped WebSocket provider, responsive operational pages, production SPA fallback, and a multi-stage Docker build. Safety outcomes remain backend-owned and frontend truth-label tests prevent success relabeling. The remaining external blockers are unchanged: real 021 contracts/credentials, sponsor fixtures, production identity, and remote Neon verification.

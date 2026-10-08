@@ -152,3 +152,11 @@ User workflows are strictly account-isolated server-side. Subscriptions, orders,
 - Merged the latest `origin/main` account-isolation, callback-shutdown, market-session, and kill-deadline work with the evidence/telemetry layer.
 - Restored authenticated account-scoped WebSocket/SSE snapshots, direct subscription reads, reconciliation recovery evidence, and mock replay fill execution.
 - Real 021 provider details remain blocked behind adapters; this remains mock/replay evidence only.
+
+## 2026-10-08 — React frontend migration
+
+- Replaced static HTML/inline JavaScript with a React/Vite SPA and routes for all strategy, execution, safety, recovery, observability, and audit workflows.
+- Added protected session routing, centralized credentialed API calls, one account-scoped WebSocket provider with bounded reconnect, and stale-state eviction on 401/1008.
+- Added responsive shell/mobile navigation, backend-driven strategy controls, replay/reconcile/resume/kill actions, and isolated Failure Lab/SafetyBench surfaces.
+- FastAPI serves the production build with nested-route fallback; Docker builds assets in a Node stage and runs only Python/FastAPI.
+- Validation: 298 Python tests passed, 1 PostgreSQL integration skipped; 8 Vitest tests, ESLint, Ruff, and Vite build passed.

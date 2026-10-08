@@ -1,6 +1,6 @@
 # Testing
 
-Run `python -m pytest -q --basetemp=.pytest-tmp`. The explicit workspace temp directory avoids Windows sandbox temp restrictions and works from a clean checkout. Run `python -m ruff check .` and `python -m ruff format --check .`. Automated GitHub CI is not yet configured.
+Run `python -m pytest -q --basetemp=.pytest-tmp`. The explicit workspace temp directory avoids Windows sandbox temp restrictions and works from a clean checkout. Run `python -m ruff check .` and `python -m ruff format --check .`. For the SPA run `npm --prefix frontend ci`, `npm --prefix frontend run test`, `npm --prefix frontend run lint`, and `npm --prefix frontend run build`.
 
 `tests/test_safety.py` is a deterministic unit/integration foundation with injected clock and mock execution evidence. No timing sleeps.
 
@@ -31,7 +31,7 @@ Risk policy tests (`test_risk_policies.py`) cover durable policy/loss halt after
 
 Recovery tests (`test_recovery.py`) verify incomplete/stale/conflicting/missing snapshots, zero-net missing history, event reordering, duplicate snapshot fills, fresh receive vs old LIVE event time, persisted marks/latch/certificate, verified reset and strict reduce-only behavior. Kill tests cover bounded calls, cancel/fill races, convergent exits, SAFE_LATE and absent UNKNOWN resolution. Failure Lab tests cover deterministic HTTP scenarios and expiring/restart proof. Browser smoke remains opt-in and must use isolated offline SQLite.
 
-USP suites cover control-plane authentication/ownership, structured risk explanations, account net/gross exposure and races, LIMIT-price reasonability, proof freshness/read-only behavior, reconciliation deltas, durable trace correlation, Failure Lab V2, Kill Certificate V2, bounded metrics and the isolated 19-case SafetyBench. Current validation (2026-10-08): 280 passed, 1 environment-gated PostgreSQL integration skipped; Ruff check/format and frontend inline JavaScript syntax pass. No performance number is hard-coded as a product claim.
+USP suites cover control-plane authentication/ownership, structured risk explanations, account net/gross exposure and races, LIMIT-price reasonability, proof freshness/read-only behavior, reconciliation deltas, durable trace correlation, Failure Lab V2, Kill Certificate V2, bounded metrics and the isolated 19-case SafetyBench. React tests cover cookie API behavior, protected routing, session eviction, and truthful safety labels. Current validation (2026-10-08): 298 Python tests passed, 1 environment-gated PostgreSQL integration skipped; 8 frontend tests passed; Ruff, ESLint, and Vite production build pass. No performance number is hard-coded as a product claim.
 
 ```bash
 python -m pytest -q --basetemp=.pytest-tmp
