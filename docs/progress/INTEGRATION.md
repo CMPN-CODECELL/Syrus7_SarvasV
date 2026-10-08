@@ -128,7 +128,9 @@ Neon CLI 8.0.11 installed. Requested project/branch not yet authenticated/linked
     `POST /api/demo`, `POST /api/accounts`.
   Test suite: 272 passed / 1 skipped; Ruff check and format clean; TypeScript clean.
 
-
-
-
+- Member 4 Task 7 — Deterministic Mock Demo Scenarios & Rehearsal Runner:
+  Integrated clean-start deterministic rehearsal runner (`backend/demo_scenarios.py`, `scripts/rehearsal_runner.py`, `tests/test_demo_scenarios.py`) operating on isolated temporary SQLite and injected clocks (`ControllableClock`).
+  Exercised 1m/5m candle building, warmup readiness, and simultaneous opposing strategy entries (`strat_mom` LONG, `strat_mr` SHORT) on a single account on `TCS`, plus 5m breakout entry (`strat_bo` BUY) after 2 completed 5m candles.
+  Verified partial fills (via `broker.execute`), duplicate fill deduplication (`DUPLICATE_FILL_IGNORED`), broker rejections (`broker.reject_next`), risk position limits (`RISK_MAX_POSITION`), missed fill reconciliation recovery, restart recovery invariants (`Gate.RECOVERING` -> durable history preserved -> reconciled against broker truth -> `Gate.RUNNING`), emergency kill switch via `Platform.kill()` (verified `KillCertificate` with `status="SUCCESS"`, `elapsed_seconds < 10`, 0 open orders, 0 broker positions, all virtual positions flat), and unexplained drift fail-closed blocking without auto-fix.
+  Documented replay dependencies (explicit periodic rehearsal step during accelerated replay to respect Ram's 5s broker freshness limit) and 4–5 minute demo walkthrough in `docs/DEMO_AND_DEBUG.md`. Full test suite: 282 passed / 1 skipped; Ruff check and format clean; TypeScript clean.
 

@@ -123,7 +123,23 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
   Frontend handles HTTP 401 and WS 1008 by invoking `clearStaleData()` to reset table records and redirect to `/login` without leaving stale cross-account data visible.
   Ownership corrected: Ram is Member 3 (risk, security, reliability); Akshat is Member 1 (accounting, ledgers, fills, positions).
   Platform-wide authorization is NOT complete. Explicitly documented the 15 remaining unprotected global mutation endpoints for Ram (Member 3).
-  Full test suite: 272 passed / 1 skipped; Ruff check and format clean; TypeScript clean.
+  Full test suite: 272 passed / 1 skipped; Ruff check and format clean; TypeScript clean.- 2026-10-08: Task 7 — Deterministic Mock Demo Scenarios & Rehearsal Runner completed.
+  Implemented end-to-end deterministic demonstration scenarios and isolated rehearsal runner:
+  - Created `backend/demo_scenarios.py` with `ControllableClock`, `generate_deterministic_ticks()`, and `RehearsalRunner`.
+  - Built rising, falling, and reversal tick sequences across 12 minutes (720s) with 1m and 5m candle generation.
+  - Exercised three real registered strategies on one account (`acc_demo`), producing authentic simultaneous opposing entries on `TCS`:
+    `strat_mom` establishing LONG (+1) and `strat_mr` establishing SHORT (-6), with independent virtual positions, mark-to-market P&L, and net aggregate broker position (-4).
+  - Exercised 5m candle close triggering `strat_bo` breakout BUY (+1) after 2 completed 5m candles.
+  - Exercised partial fill (10/20 filled via `execute`), duplicate fill deduplication (`DUPLICATE_FILL_IGNORED`), and broker order rejection (`reject_next = True`).
+  - Exercised platform risk-limit rejection: intercepted order exceeding `max_position=5` with backend reason `RISK_MAX_POSITION` and audit trail.
+  - Exercised missed attributed fill recovery through reconciliation: matched external broker fill and updated local order from `OPEN` to `FILLED` with synced ledger positions.
+  - Exercised platform restart invariants: verified restart retains durable SQLite fills and positions, initializes safely in `Gate.RECOVERING` / `Health.RECOVERING` with strategies disabled; trading reconciles against external broker truth without ledger fabrication, resuming to `Gate.RUNNING` only upon explicit operator resume.
+  - Exercised emergency kill switch via `Platform.kill()`: verified immutable `KillCertificate` contract (`status="SUCCESS"`, `elapsed_seconds < 10`, 0 open orders, 0 broker positions, all virtual positions flat).
+  - Exercised unexplained drift protection: injected foreign external position; verified reconciliation fails closed (`UNEXPLAINED_EXTERNAL_POSITION`, `Gate.UNCERTAIN`, `Health.DRIFTED`) and strictly refuses auto-fixing.
+  - Added CLI runner script `scripts/rehearsal_runner.py` with non-interactive execution and `--serve` option for live dashboard rehearsal.
+  - Documented concise run commands, replay constraints (explicit rehearsal steps for injected clocks), and 4-5 minute demo script in `docs/DEMO_AND_DEBUG.md`.
+  - Added dedicated regression test suite in `tests/test_demo_scenarios.py`.
+  Full test suite: 282 passed / 1 skipped; Ruff check and format clean; TypeScript clean.
 
 ## In Progress
 - Awaiting Ram's (Member 3) operator authorization for global mutation endpoints and 021 market-data feed contract.

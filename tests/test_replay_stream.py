@@ -131,7 +131,10 @@ def test_stream_repeated_starts_advance_monotonically():
     try:
         # Start stream briefly
         assert platform.start_replay_stream(interval=0.01)
-        time.sleep(0.06)
+        for _ in range(30):
+            if platform.candles.stats()["accepted_ticks"] > 0:
+                break
+            time.sleep(0.01)
         platform.stop_replay_stream()
 
         first_count = platform.candles.stats()["accepted_ticks"]
@@ -140,7 +143,10 @@ def test_stream_repeated_starts_advance_monotonically():
 
         # Restart stream
         assert platform.start_replay_stream(interval=0.01)
-        time.sleep(0.06)
+        for _ in range(30):
+            if platform.candles.stats()["accepted_ticks"] > first_count:
+                break
+            time.sleep(0.01)
         platform.stop_replay_stream()
 
         second_count = platform.candles.stats()["accepted_ticks"]
