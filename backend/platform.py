@@ -58,7 +58,7 @@ class Platform:
             not self.risk.kill_requested.is_set()
             and self.risk.strategy_state(strategy) == "RUNNING"
         )
-        self.market_session = MarketSession()
+        self.market_session = MarketSession(clock=clock)
         self.reliability = Reliability(
             self.store,
             self.broker_calls,
@@ -412,7 +412,13 @@ class Platform:
 
     def kill(self, deadline_seconds=9, deadline_clock=time.monotonic):
         # 1. Close execution admission gate before any thread wait/join (idempotent)
-        deadline = Deadline(deadline_seconds, deadline_clock)
+        if isinstance(deadline_seconds, Deadline):
+            deadline = deadline_seconds
+        elif isinstance(deadline_seconds, (int, float)) and deadline_seconds <= 0:
+            deadline = None
+        else:
+            deadline = Deadline(deadline_seconds, deadline_clock)
+
         self.risk.kill_requested.set()
         self._replay_stop.set()
         with self.store.transaction():
@@ -425,7 +431,8 @@ class Platform:
         # 2. Join replay stream thread now that admission is closed, bounded by remaining deadline
         thread = self._replay_thread
         if thread and thread is not current_thread():
-            thread.join(timeout=min(1.0, deadline.remaining))
+            join_timeout = min(1.0, deadline.remaining) if deadline is not None else 0.0
+            thread.join(timeout=join_timeout)
 
         def execute(order):
             price = self.ledger.marks.get(order.intent.symbol, Decimal("100"))
@@ -444,14 +451,20 @@ class Platform:
                         price,
                         self.clock(),
                         charges_calc.total_charges,
-                        timeout=self.reliability.kill_deadline.remaining,
+                        timeout=(
+                            self.reliability.kill_deadline.remaining
+                            if hasattr(self.reliability, "kill_deadline")
+                            and self.reliability.kill_deadline is not None
+                            else 0.0
+                        ),
                     )
                 )
 
         return self.reliability.kill(
             execute,
-            deadline_seconds=deadline.remaining,
+            deadline_seconds=deadline.remaining if deadline is not None else 0.0,
             deadline_clock=deadline_clock,
+            deadline=deadline,
         )
 
     def strategy_readiness(self, strategy_id: str):

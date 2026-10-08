@@ -106,5 +106,28 @@ Every broker adapter (including `MockBrokerAdapter` and the eventual `Broker021A
    - Subscription snapshots project `readiness` for UI telemetry.
 6. **Kill Deadline & Admission Idempotency**:
    - `Platform.kill(deadline_seconds, deadline_clock)` measures total execution time starting before admission closure and joins `_replay_thread` bounded by `min(1.0, deadline.remaining)`.
-   - Remaining deadline is passed directly into `reliability.kill(deadline_seconds=deadline.remaining)`.
+   - Remaining deadline is passed directly into `reliability.kill(deadline=deadline)`. If the deadline budget is already exhausted (`deadline is None or not deadline.remaining`), `kill` returns a truthful failure certificate (`status="FAILED", reason="KILL_DEADLINE_EXPIRED"`) rather than raising a `ValueError` from `Deadline`.
    - Admission closure (`kill_requested.set()`, `kill_latched=True`, `risk.state=KILLING`, `strategies.enabled=False`, `invalidate_in_flight()`) is strictly idempotent.
+
+## Market Session and Execution Hours Contract
+
+1. **Timezone & Representation**:
+   - Trading session timestamps are evaluated in `Asia/Kolkata` (`UTC+05:30`).
+   - UTC epoch timestamps are converted to `Asia/Kolkata` time using `datetime.fromtimestamp(ts, tz=ZoneInfo("Asia/Kolkata"))` before comparing against session boundary seconds.
+2. **Session Boundaries**:
+   - Continuous market hours use a half-open interval `[open_time_seconds, close_time_seconds)` (`09:15:00 <= t < 15:30:00 IST`).
+   - Exact open (`09:15:00 IST`) is evaluated as `OPEN`.
+   - Exact close (`15:30:00 IST`) and later is evaluated as `CLOSED`.
+   - Before open (`09:14:59 IST`) is evaluated as `CLOSED`.
+3. **Mock Replay & Enforcement**:
+   - `MarketSession(enforce_hours=False)` is the default to support offline mock replay across all hours.
+   - When `enforce_hours=True`, missing timestamps (`timestamp is None` with no injected clock) fail closed (`is_open() -> False`, `status_at() -> "CLOSED"`). A missing timestamp must never silently imply `OPEN`.
+4. **State Machine & Precedence Consistency**:
+   - Status values: `OPEN`, `CLOSED`, `HALTED`, `AUTO`.
+   - `HALTED` takes precedence over manual `OPEN` and scheduled hours.
+   - Manual `OPEN` forces open state when not halted.
+   - Manual `CLOSED` forces closed state even during market hours.
+   - Manual `AUTO` clears manual status and delegates strictly to scheduled hours.
+   - Consistency is preserved across `is_open()`, `status_at()`, `to_dict()` snapshot projection, and `Reliability.check_evidence()` (`RISK_MARKET_HALTED` vs `RISK_MARKET_CLOSED`).
+5. **No Invented Provider Behaviors**:
+   - Exchange holidays, special muhurat sessions, and unverified 021 sandbox session rules are not invented. Boundary checks are deterministic and configurable.

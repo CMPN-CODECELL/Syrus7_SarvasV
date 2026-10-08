@@ -451,35 +451,45 @@ def test_dynamic_strategy_registration_and_api():
 
 
 def test_market_session_hours_and_halt_logic():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    ist = ZoneInfo("Asia/Kolkata")
+    base_ts = int(datetime(2026, 10, 8, 0, 0, 0, tzinfo=ist).timestamp())
+
     session = MarketSession(
         open_time_seconds=9 * 3600,
         close_time_seconds=15 * 3600,
         enforce_hours=True,
+        clock=lambda: base_ts + 36000,
     )
-    # Outside hours (e.g. 08:00 = 28800s)
-    assert not session.is_open(28800)
-    # Inside hours (e.g. 10:00 = 36000s)
-    assert session.is_open(36000)
-    # At exact open & close
-    assert session.is_open(9 * 3600)
-    assert session.is_open(15 * 3600)
-    # Outside hours (e.g. 16:00 = 57600s)
-    assert not session.is_open(57600)
+    # Outside hours (e.g. 08:00 IST)
+    assert not session.is_open(base_ts + 28800)
+    # Inside hours (e.g. 10:00 IST)
+    assert session.is_open(base_ts + 36000)
+    # At exact open (09:00 IST)
+    assert session.is_open(base_ts + 9 * 3600)
+    # At exact close (15:00 IST) - half-open boundary [09:00, 15:00) is closed
+    assert not session.is_open(base_ts + 15 * 3600)
+    # Just before close (14:59:59 IST)
+    assert session.is_open(base_ts + 15 * 3600 - 1)
+    # Outside hours (e.g. 16:00 IST)
+    assert not session.is_open(base_ts + 57600)
 
     # Halt overrides hours
     session.halt("circuit breaker")
     assert session.status == "HALTED"
-    assert not session.is_open(36000)
+    assert not session.is_open(base_ts + 36000)
     session.resume()
     assert session.status == "OPEN"
-    assert session.is_open(36000)
+    assert session.is_open(base_ts + 36000)
 
     # Manual override status
     session.set_status("CLOSED")
     assert session.status == "CLOSED"
-    assert not session.is_open(36000)
+    assert not session.is_open(base_ts + 36000)
     session.set_status("OPEN")
-    assert session.is_open(57600)
+    assert session.is_open(base_ts + 57600)
 
     # Invalid status
     try:

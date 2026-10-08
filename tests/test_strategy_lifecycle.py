@@ -203,10 +203,13 @@ def test_concurrent_same_instance_processing_commits_monotonically():
         slow_gate = threading.Event()
 
         def reordering_handler(_sub, candle, state=None):
-            # Slow down candle at start=60, but let candle at start=120 finish fast
             if candle.start_time == 60:
                 slow_gate.wait(timeout=1.0)
             if state is not None:
+                # Candle 120 must observe candle 60's update, never stale initial state
+                if candle.start_time == 120:
+                    prev = state.get("last_seen_candle")
+                    assert prev == 60, f"Expected prev candle 60 in state, got {prev}"
                 state["last_seen_candle"] = candle.start_time
             return Side.BUY, f"candle {candle.start_time}"
 
@@ -216,34 +219,35 @@ def test_concurrent_same_instance_processing_commits_monotonically():
         platform.strategies.subscribe("acc_test", "sub_ro", "reorder_strat", "TEST")
         platform.reliability.resume()
 
-        # Dispatch candle 60 in thread 1 (will pause on slow_gate)
         candle_60 = make_closed_candle(interval=60, start=60)
         candle_120 = make_closed_candle(interval=60, start=120)
 
         t1_result = []
+        t2_result = []
 
         def run_candle_60():
             t1_result.extend(platform.strategies.on_candle(candle_60, platform.clock()))
 
+        def run_candle_120():
+            t2_result.extend(
+                platform.strategies.on_candle(candle_120, platform.clock())
+            )
+
         t1 = threading.Thread(target=run_candle_60)
+        t2 = threading.Thread(target=run_candle_120)
         t1.start()
-
-        # Wait briefly to ensure thread 1 is paused inside handler
         time.sleep(0.05)
+        t2.start()
 
-        # Thread 2 processes candle 120 and completes first
-        res_120 = platform.strategies.on_candle(candle_120, platform.clock())
-        assert len(res_120) == 1
-        assert platform.strategies.indicators["sub_ro"]["last_seen_candle"] == 120
-
-        # Release thread 1 now; candle 60 finishes after candle 120 was already committed
+        # Release slow_gate
         slow_gate.set()
         t1.join(timeout=2.0)
+        t2.join(timeout=2.0)
 
-        # Thread 1's older result must NOT overwrite the newer state at 120
+        # Both candle 60 and candle 120 succeeded in order; intermediate update was not lost
+        assert len(t1_result) == 1
+        assert len(t2_result) == 1
         assert platform.strategies.indicators["sub_ro"]["last_seen_candle"] == 120
-        # And thread 1 must not emit an out-of-order intent
-        assert len(t1_result) == 0
     finally:
         platform.close()
 

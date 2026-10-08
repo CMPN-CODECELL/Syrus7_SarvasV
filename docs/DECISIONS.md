@@ -452,4 +452,35 @@ Deriving simulation time directly from wall-clock sleep intervals was rejected b
 ### Reversal
 Live market data connections (e.g., 021 WebSocket feeds) will replace synthetic simulation batches entirely with the external broker/exchange feed adapter; the simulation cursor remains strictly within the mock/replay harness.
 
+## DEC-021 — Asia/Kolkata market session boundaries and kill deadline budget exhaustion
+Date: 2026-10-08
+Status: ACCEPTED
+
+### Context
+`MarketSession` previously evaluated raw UTC epoch modulo 86400, ignoring local exchange timezone (`Asia/Kolkata`, UTC+05:30) and failing closed or open incorrectly depending on UTC date alignment. Boundaries were not clearly documented, missing timestamps risked ambiguity, and exhausted kill budgets caused an unhandled `ValueError` when passing non-positive time to `Deadline`. Additionally, same-strategy concurrent callbacks risked computing on uncommitted indicator states if not serialized prior to copying.
+
+### Decision
+1. **Asia/Kolkata Session Handling**:
+   - `MarketSession` converts timestamps to `Asia/Kolkata` (`ZoneInfo("Asia/Kolkata")`) before computing seconds into the day.
+   - Continuous hours defined as half-open interval `[09:15:00, 15:30:00)` IST (`open_time_seconds <= sec < close_time_seconds`). Exactly 09:15:00 is `OPEN`; 15:30:00 and after is `CLOSED`.
+   - Preserve default `enforce_hours=False` for mock replay compatibility.
+   - When hours are enforced, missing timestamp (`None` with no clock) fails closed (`is_open() -> False`, `status_at() -> "CLOSED"`).
+   - Consistent state precedence: `HALTED` overrides all; manual `OPEN`/`CLOSED` override schedule; `AUTO` adheres to schedule. Sourced identically by `is_open()`, `status_at()`, `to_dict()` snapshot, and `Reliability.check_evidence()`.
+2. **Kill Deadline Budget Exhaustion**:
+   - `Platform.kill` and `Reliability.kill` accept pre-configured `deadline` objects and gracefully handle non-positive remaining budget (`<= 0`). If deadline budget is exhausted, a truthful failure certificate (`status="FAILED", reason="KILL_DEADLINE_EXPIRED"`) is returned rather than raising an unhandled `ValueError` from `Deadline`. Total elapsed time includes admission closure and replay join.
+3. **Same-Strategy Callback Serialization**:
+   - In `StrategyRuntime.worker_task`, acquire a per-instance lock (`inst_lock`) *before* copying working state and release only *after* committing updated indicator state, ensuring intermediate candle updates are never lost or computed concurrently from stale indicator states.
+
+### Reason
+Trading exchange operations must respect exact local exchange operating hours and fail closed safely on missing context. Risk and kill mechanisms must provide truthful audit certificates rather than throwing unhandled exceptions on budget exhaustion.
+
+### Impact
+`MarketSession`, `Reliability`, `Platform.kill`, `StrategyRuntime`, `CONTRACTS.md`, `tests/test_market_session.py`, `tests/test_strategy_lifecycle.py`. Full test suite passes (262 passed, 1 skipped).
+
+### Alternatives
+Using raw UTC day offsets rejected due to day boundary errors across UTC midnight (03:45 UTC is 09:15 IST). Silent OPEN on missing timestamps rejected due to fail-closed principles.
+
+### Reversal
+Any future multi-exchange support or exchange holiday calendar will be introduced via clean pluggable session provider adapters without altering risk layer contracts.
+
 

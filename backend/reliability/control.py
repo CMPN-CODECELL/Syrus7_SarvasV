@@ -86,7 +86,7 @@ class Reliability:
             self.fail_closed("RISK_STALE_BROKER_STATE", Health.DEGRADED)
             return "RISK_STALE_BROKER_STATE"
         if self.market_session is not None:
-            if self.market_session.status == "HALTED":
+            if self.market_session.status_at(now) == "HALTED":
                 return "RISK_MARKET_HALTED"
             if not self.market_session.is_open(now):
                 return "RISK_MARKET_CLOSED"
@@ -309,14 +309,48 @@ class Reliability:
         deadline_seconds=9,
         max_rounds=64,
         deadline_clock=time.monotonic,
+        deadline=None,
     ):
-        deadline = Deadline(deadline_seconds, deadline_clock)
+        if deadline is None:
+            if isinstance(deadline_seconds, Deadline):
+                deadline = deadline_seconds
+            elif isinstance(deadline_seconds, (int, float)) and deadline_seconds <= 0:
+                deadline = None
+            else:
+                deadline = Deadline(deadline_seconds, deadline_clock)
+
         self.risk.kill_requested.set()
         with self.store.transaction():
             self.safety.set("kill_latched", True)
             self.risk.state = Gate.KILLING
             self.runtime.enabled = False
             self.store.audit("KILL_GATE_CLOSED", {})
+
+        if deadline is None or not deadline.remaining:
+            elapsed = (
+                deadline.elapsed
+                if deadline is not None
+                else (
+                    max(0.0, float(-deadline_seconds))
+                    if isinstance(deadline_seconds, (int, float))
+                    else 0.0
+                )
+            )
+            self.certificate = KillCertificate(
+                "FAILED",
+                elapsed,
+                -1,
+                {},
+                False,
+                "KILL_DEADLINE_EXPIRED",
+            )
+            with self.store.transaction():
+                self.safety.set("kill_certificate", asdict(self.certificate))
+                self.risk.state = Gate.UNCERTAIN
+                self._health(Health.DRIFTED)
+                self.store.audit("KILL_VERIFIED", asdict(self.certificate))
+            return self.certificate
+
         acquired = self.operation_lock.acquire(timeout=deadline.remaining)
         reason, safe, open_count, positions = "", False, -1, {}
         try:

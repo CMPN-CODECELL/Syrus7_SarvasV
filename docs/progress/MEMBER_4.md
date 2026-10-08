@@ -83,7 +83,14 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
   Exposed backend-derived sample count, required warmup, and readiness via `StrategyRuntime.readiness_for` and `Platform.snapshot()['subscriptions']`.
   Aligned RSI reversal registry warmup to 15 (requiring 15 closes for 14 price differences).
   Addressed Task 3 follow-up: included replay stream join time in the total kill deadline calculation and ensured execution admission closure is idempotent.
-  Added comprehensive tests in `tests/test_strategy_lifecycle.py`. Full test suite: 255 passed / 1 skipped; Ruff check and format clean.
+- 2026-10-08: Task 5 Correct Market-Session Handling and Task 4 Follow-ups completed.
+  Converted session timestamps to Asia/Kolkata (`ZoneInfo("Asia/Kolkata")`) before checking configured continuous hours (`[09:15:00, 15:30:00)` IST).
+  Preserved default unenforced hours (`enforce_hours=False`) for mock replay compatibility.
+  Strictly fail closed when hours are enforced and timestamp is missing/None without a clock.
+  Kept state consistency between `is_open()`, `status_at()`, `to_dict()`, and `Reliability.check_evidence()` (`HALTED`, manual `OPEN`/`CLOSED`, and `AUTO`).
+  Task 4 Follow-up 1: Serialized same-strategy callback execution per instance under `inst_lock` prior to state copying and committing, guaranteeing intermediate candle updates are never lost or computed concurrently from stale indicator states.
+  Task 4 Follow-up 2: Verified kill certificate elapsed time includes admission closure and replay join; exhausted deadline budgets return a truthful failure certificate (`status="FAILED", reason="KILL_DEADLINE_EXPIRED"`) without throwing `ValueError` from `Deadline`.
+  Added comprehensive tests in `tests/test_market_session.py` and updated `tests/test_member4.py`. Full test suite: 262 passed / 1 skipped; Ruff check and format clean.
 
 
 ## In Progress
