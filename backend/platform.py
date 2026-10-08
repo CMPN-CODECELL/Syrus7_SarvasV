@@ -13,8 +13,12 @@ from backend.broker.http_adapter import HTTPMockBrokerAdapter
 from backend.execution.orders import OrderManager
 from backend.market_data.candles import CandleBuilder
 from backend.market_data.session import MarketSession
+from backend.observability import MetricsRegistry
 from backend.reliability.control import Reliability
 from backend.reliability.broker_calls import BrokerSession, Deadline
+from backend.reliability.proof import SafetyProofService
+from backend.reliability.safety_bench import SafetyBench
+from backend.reliability.tracing import TraceService
 from backend.risk.gateway import RiskGateway
 from backend.shared.auth import AuthService
 from backend.shared.contracts import GlobalTradingState as Gate, OrderStatus, Side, Tick
@@ -70,6 +74,14 @@ class Platform:
             clock,
             market_session=self.market_session,
         )
+        self.metrics = MetricsRegistry(clock=clock)
+        self.risk.metrics = self.metrics
+        self.reliability.metrics = self.metrics
+        self.safety_proof = SafetyProofService(
+            self.store, self.ledger, self.risk, self.reliability, clock
+        )
+        self.traces = TraceService(self.store)
+        self.safety_bench = SafetyBench(self.store, clock)
         self.candles = CandleBuilder()
         self.strategies.on_interval_registered = self.candles.add_interval
         for meta in self.strategies.registry.values():
@@ -91,15 +103,44 @@ class Platform:
             self.store.audit("ACCOUNT_CREATED", {"account_id": account_id})
 
     def ingest(self, fill):
+        started = time.perf_counter()
         with self.store.lock:
             try:
-                return self.orders.ingest(fill)
-            except Exception:
+                result = self.orders.ingest(fill)
+                self._metric_counter(
+                    "fills_processed_total"
+                    if result
+                    else "duplicate_fill_ignored_count"
+                )
+                return result
+            except Exception as exc:
                 account_id = getattr(fill, "account_id", None)
                 self.reliability.fail_closed(
                     "FILL_EVENT_REJECTED", account_id=account_id
                 )
+                self._metric_counter(
+                    "unattributed_fill_count"
+                    if "unattributed" in str(exc) or "attribution" in str(exc)
+                    else "conflicting_fill_count"
+                )
                 raise
+            finally:
+                self._metric_observe(
+                    "fill_processing_latency_ms",
+                    (time.perf_counter() - started) * 1000,
+                )
+
+    def _metric_counter(self, name, amount=1):
+        try:
+            self.metrics.counter(name, amount)
+        except Exception:
+            pass
+
+    def _metric_observe(self, name, value):
+        try:
+            self.metrics.observe(name, value)
+        except Exception:
+            pass
 
     def cancel(self, order_id, timeout=None):
         return self.orders.cancel(order_id, timeout=timeout)
@@ -152,6 +193,7 @@ class Platform:
         }
 
     def tick(self, tick, *, replay=False):
+        started = time.perf_counter()
         if replay:
             self.require_replay_demo()
         with self.store.lock:
@@ -182,6 +224,7 @@ class Platform:
                 raise
             if not accepted:
                 return
+            self._metric_counter("ticks_processed_total")
             self._simulation_cursor[tick.symbol] = max(
                 self._simulation_cursor.get(tick.symbol, 0),
                 getattr(tick, "event_timestamp", 0),
@@ -224,6 +267,9 @@ class Platform:
                             charges_calc.total_charges,
                         )
                     )
+        self._metric_observe(
+            "tick_processing_latency_ms", (time.perf_counter() - started) * 1000
+        )
 
     def get_simulation_cursor(self, symbol: str | None = None) -> int:
         """Return the highest simulation timestamp seen for symbol or globally."""
@@ -289,18 +335,28 @@ class Platform:
                         )
             return batch
 
-    def demo(self):
+    def demo(self, account_id=None):
         with self.store.lock:
             if not self.demo_enabled:
                 raise ValueError("replay demo is disabled for this database")
             self.require_replay_demo()
-            if not self.store.rows("SELECT id FROM accounts WHERE id='demo'"):
-                self.account("demo")
-            for kind in ("momentum", "mean_reversion", "breakout"):
+            subscriptions = self.store.rows("SELECT id FROM subscriptions")
+            seed_account = account_id or (None if subscriptions else "demo")
+            if seed_account:
                 if not self.store.rows(
-                    "SELECT id FROM subscriptions WHERE id=?", (kind,)
+                    "SELECT id FROM accounts WHERE id=?", (seed_account,)
                 ):
-                    self.strategies.subscribe("demo", kind, kind, "DEMO")
+                    self.account(seed_account)
+                for kind in ("momentum", "mean_reversion", "breakout"):
+                    strategy_id = (
+                        kind if seed_account == "demo" else f"{seed_account}:{kind}"
+                    )
+                    if not self.store.rows(
+                        "SELECT id FROM subscriptions WHERE id=?", (strategy_id,)
+                    ):
+                        self.strategies.subscribe(
+                            seed_account, strategy_id, kind, "DEMO"
+                        )
             self.demo_count += 1
             symbols = {"DEMO"}
             symbols.update(
@@ -318,7 +374,7 @@ class Platform:
         for tick in events_iter:
             self.tick(tick, replay=True)
         self.reliability.reconcile()
-        return self.snapshot()
+        return self.snapshot(account_id=account_id)
 
     def start_replay_stream(self, interval=0.75):
         """Continue local mock ticks after an explicit replay action.
@@ -724,6 +780,22 @@ class Platform:
             else:
                 safety = raw_safety
 
+            decisions = [
+                json.loads(row["payload"])
+                for row in reversed(
+                    self.store.rows(
+                        "SELECT payload FROM audit WHERE type='RISK_DECISION' "
+                        "ORDER BY sequence DESC LIMIT 100"
+                    )
+                )
+            ]
+            if account_id is not None:
+                decisions = [
+                    decision
+                    for decision in decisions
+                    if decision.get("details", {}).get("account_id") == account_id
+                ]
+
             if account_id is not None and self.reliability.certificate:
                 kill_cert = asdict(self.reliability.certificate)
                 if isinstance(kill_cert.get("broker_positions"), dict):
@@ -754,9 +826,24 @@ class Platform:
                 "health": self.reliability.health,
                 "gate": self.risk.state,
                 "safety": safety,
+                "safety_proof": self.safety_proof.build(),
+                "metrics": self.metrics.snapshot(),
+                "reconciliation_center": self.reliability.reconciliation_center(),
+                "traces": self.traces.recent_traces(10, account_id),
+                "safety_bench": self.safety_bench.latest(),
                 "subscriptions": subscriptions,
                 "positions": positions,
                 "risk_budgets": risk_budgets,
+                "account_risk": [
+                    self.risk.account_budget(row["account"], row["symbol"])
+                    for row in self.store.rows(
+                        "SELECT DISTINCT account,symbol FROM subscriptions WHERE account=?"
+                        if account_id is not None
+                        else "SELECT DISTINCT account,symbol FROM subscriptions",
+                        (account_id,) if account_id is not None else (),
+                    )
+                ],
+                "risk_decisions": decisions[-20:],
                 "orders": orders,
                 "fills": fills,
                 "counts": counts,

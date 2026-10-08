@@ -551,12 +551,15 @@ def test_backend_derived_states_preserved():
 def test_unavailable_backend_and_reconnect_handling():
     from pathlib import Path
 
-    # Verify frontend index.html includes clearStaleData and 401/1008 eviction
-    index_path = Path(__file__).resolve().parent.parent / "frontend/index.html"
-    index_html = index_path.read_text(encoding="utf-8")
-    assert "function clearStaleData()" in index_html
-    assert "clearStaleData();" in index_html
-    assert "event.code === 1008" in index_html
+    # Verify the React providers clear account state on HTTP/WS session invalidation.
+    frontend = Path(__file__).resolve().parent.parent / "frontend/src"
+    client_source = (frontend / "api/client.js").read_text(encoding="utf-8")
+    telemetry_source = (frontend / "telemetry/TelemetryContext.jsx").read_text(
+        encoding="utf-8"
+    )
+    assert "algoshield:unauthorized" in client_source
+    assert "setSnapshot(null)" in telemetry_source
+    assert "event.code===1008" in telemetry_source
 
     # Backend shutdown and restore lifecycle
     platform = Platform()

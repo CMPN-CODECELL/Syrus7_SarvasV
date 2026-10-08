@@ -1,0 +1,3013 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="AlgoShield safety control plane for attributed strategy execution."
+    />
+    <meta name="theme-color" content="#ffffff" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23fff'/%3E%3Cpath d='M7 20h5v6H7zm7-14h5v20h-5zm7 7h5v13h-5z' fill='%23a57d2d'/%3E%3C/svg%3E"
+    />
+    <title>AlgoShield ┬╖ Strategy control</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --canvas: #f8f7f4;
+        --surface: #fff;
+        --soft: #f3f1eb;
+        --ink: #181716;
+        --muted: #5f5c56;
+        --line: #e5e1d8;
+        --gold: #a57d2d;
+        --gold-dark: #76550f;
+        --gold-wash: #f6efdf;
+        --danger: #9b2f3f;
+        --danger-wash: #fbebed;
+        --success: #226c55;
+        --warning: #8a6417;
+        --r-sm: 0.55rem;
+        --r-md: 0.9rem;
+        --r-lg: 1.35rem;
+        --shadow: 0 18px 55px rgba(60, 47, 20, 0.08);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        background:
+          radial-gradient(
+            circle at 90% 0%,
+            rgba(165, 125, 45, 0.09),
+            transparent 24rem
+          ),
+          var(--canvas);
+        color: var(--ink);
+        font:
+          15px/1.55 ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      summary:focus-visible {
+        outline: 3px solid rgba(165, 125, 45, 0.35);
+        outline-offset: 2px;
+      }
+      .skip-link {
+        position: fixed;
+        top: 0.75rem;
+        left: 0.75rem;
+        z-index: 10;
+        transform: translateY(-180%);
+        background: var(--ink);
+        color: #fff;
+        padding: 0.65rem 1rem;
+        border-radius: var(--r-sm);
+      }
+      .skip-link:focus {
+        transform: translateY(0);
+      }
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        border-bottom: 1px solid rgba(229, 225, 216, 0.85);
+        background: rgba(255, 255, 255, 0.88);
+        backdrop-filter: blur(18px);
+      }
+      .topbar {
+        max-width: 1280px;
+        margin: auto;
+        min-height: 4.5rem;
+        padding: 0.75rem 1.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+      .brand-mark {
+        width: 2rem;
+        height: 2rem;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        align-items: end;
+        gap: 3px;
+        padding: 0.35rem;
+        border: 1px solid var(--line);
+        border-radius: 0.7rem;
+        background: var(--surface);
+      }
+      .brand-mark i {
+        display: block;
+        background: var(--gold);
+        border-radius: 1px;
+      }
+      .brand-mark i:nth-child(1) {
+        height: 45%;
+      }
+      .brand-mark i:nth-child(2) {
+        height: 90%;
+      }
+      .brand-mark i:nth-child(3) {
+        height: 65%;
+      }
+      .brand strong {
+        font-size: 1rem;
+        letter-spacing: -0.02em;
+      }
+      .brand > div span {
+        display: block;
+        color: var(--muted);
+        font-size: 0.72rem;
+      }
+      .connection {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+      .connection-dot {
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        background: var(--warning);
+      }
+      .connection-dot.ok {
+        background: var(--success);
+      }
+      .identity {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+      .identity strong {
+        color: var(--ink);
+      }
+      .identity button {
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        background: transparent;
+        color: var(--muted);
+        padding: 0.35rem 0.55rem;
+      }
+      main {
+        max-width: 1280px;
+        margin: auto;
+        padding: 3.5rem 1.5rem 5rem;
+      }
+      .eyebrow {
+        margin: 0 0 0.7rem;
+        color: var(--gold-dark);
+        font-size: 0.72rem;
+        font-weight: 650;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+      h1 {
+        max-width: 760px;
+        margin-bottom: 0.8rem;
+        font-size: clamp(2.35rem, 5vw, 4.75rem);
+        line-height: 0.98;
+        letter-spacing: -0.055em;
+        text-wrap: balance;
+      }
+      h2 {
+        margin-bottom: 0.2rem;
+        font-size: 1.35rem;
+        letter-spacing: -0.025em;
+      }
+      h3 {
+        font-size: 1rem;
+      }
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) minmax(18rem, 0.6fr);
+        gap: 2rem;
+        align-items: end;
+        margin-bottom: 2.8rem;
+      }
+      .hero-copy {
+        max-width: 62ch;
+        color: var(--muted);
+        font-size: 1rem;
+      }
+      .hero-note {
+        padding: 1.2rem 1.3rem;
+        border-left: 3px solid var(--gold);
+        background: rgba(255, 255, 255, 0.65);
+        color: var(--muted);
+      }
+      .hero-note strong {
+        display: block;
+        color: var(--ink);
+        margin-bottom: 0.25rem;
+      }
+      .command-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.65rem;
+        padding: 0.85rem;
+        margin-bottom: 1.2rem;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+        box-shadow: var(--shadow);
+      }
+      .button {
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        background: var(--surface);
+        color: var(--ink);
+        padding: 0.65rem 0.9rem;
+        font-weight: 620;
+        transition:
+          transform 160ms ease,
+          border-color 160ms ease,
+          background 160ms ease;
+      }
+      .button:hover {
+        transform: translateY(-1px);
+        border-color: #c9bea6;
+        background: #fdfcf9;
+      }
+      .button:active {
+        transform: translateY(1px);
+      }
+      .button.primary {
+        border-color: var(--gold-dark);
+        background: var(--gold-dark);
+        color: #fff;
+      }
+      .button.danger {
+        border-color: #d9a7ae;
+        color: var(--danger);
+        background: var(--danger-wash);
+      }
+      .button.small {
+        padding: 0.4rem 0.65rem;
+        font-size: 0.78rem;
+      }
+      .button:disabled {
+        cursor: not-allowed;
+        opacity: 0.48;
+        transform: none;
+      }
+      .command-spacer {
+        flex: 1;
+      }
+      .mode-label {
+        color: var(--muted);
+        font-size: 0.78rem;
+        font-variant-numeric: tabular-nums;
+      }
+      .message {
+        min-height: 1.5rem;
+        margin: 0 0 1rem;
+        color: var(--danger);
+      }
+      .message.success {
+        color: var(--success);
+      }
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.8rem;
+        margin-bottom: 2.5rem;
+      }
+      .safety-strip {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.55rem;
+        margin: -1.7rem 0 2.8rem;
+        padding: 0.75rem;
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+        background: rgba(255, 255, 255, 0.62);
+      }
+      .safety-indicator {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        min-width: 0;
+        color: var(--muted);
+        font-size: 0.74rem;
+      }
+      .safety-indicator strong {
+        display: block;
+        overflow: hidden;
+        color: var(--ink);
+        font-size: 0.76rem;
+        font-weight: 650;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .safety-dot {
+        width: 0.55rem;
+        height: 0.55rem;
+        flex: 0 0 auto;
+        border-radius: 50%;
+        background: var(--warning);
+        box-shadow: 0 0 0 4px rgba(138, 100, 23, 0.1);
+      }
+      .safety-indicator.verified .safety-dot {
+        background: var(--success);
+        box-shadow: 0 0 0 4px rgba(34, 108, 85, 0.1);
+      }
+      .safety-indicator.alert .safety-dot {
+        background: var(--danger);
+        box-shadow: 0 0 0 4px rgba(155, 47, 63, 0.1);
+      }
+      .metric {
+        min-height: 7.5rem;
+        padding: 1.15rem;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+      }
+      .metric span {
+        display: block;
+        color: var(--muted);
+        font-size: 0.76rem;
+        margin-bottom: 0.8rem;
+      }
+      .metric strong {
+        font-size: 1.45rem;
+        letter-spacing: -0.035em;
+        font-variant-numeric: tabular-nums;
+      }
+      .metric small {
+        display: block;
+        margin-top: 0.45rem;
+        color: var(--muted);
+      }
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+      .status::before {
+        content: "";
+        width: 0.48rem;
+        height: 0.48rem;
+        border-radius: 50%;
+        background: var(--warning);
+      }
+      .status.healthy::before {
+        background: var(--success);
+      }
+      .status.uncertain::before {
+        background: var(--danger);
+      }
+      .section-heading {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 1rem;
+      }
+      .section-heading p {
+        margin-bottom: 0;
+        color: var(--muted);
+      }
+      .workspace {
+        display: grid;
+        grid-template-columns: minmax(0, 1.45fr) minmax(19rem, 0.55fr);
+        gap: 1rem;
+        margin-bottom: 2.8rem;
+      }
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--r-lg);
+        overflow: hidden;
+      }
+      .panel-head {
+        padding: 1.1rem 1.2rem;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+      }
+      .panel-head h3,
+      .panel-head h2 {
+        margin: 0;
+      }
+      .panel-head span {
+        color: var(--muted);
+        font-size: 0.76rem;
+      }
+      .table-wrap {
+        overflow-x: auto;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+      }
+      th,
+      td {
+        padding: 0.85rem 1rem;
+        text-align: left;
+        border-bottom: 1px solid #eeeae2;
+        white-space: nowrap;
+      }
+      th {
+        color: var(--muted);
+        font-size: 0.7rem;
+        font-weight: 650;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+      td.primary-cell {
+        font-weight: 640;
+      }
+      td small {
+        display: block;
+        color: var(--muted);
+      }
+      .positive {
+        color: var(--success);
+      }
+      .negative {
+        color: var(--danger);
+      }
+      .empty {
+        padding: 2.5rem 1.2rem;
+        color: var(--muted);
+        text-align: center;
+      }
+      .setup {
+        padding: 1.15rem;
+      }
+      .setup form + form {
+        margin-top: 1.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--line);
+      }
+      label {
+        display: block;
+        margin-bottom: 0.3rem;
+        color: var(--muted);
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+      input,
+      select {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        background: #fff;
+        color: var(--ink);
+        padding: 0.62rem 0.7rem;
+      }
+      .field {
+        margin-bottom: 0.75rem;
+      }
+      .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.65rem;
+      }
+      .setup .button {
+        width: 100%;
+        margin-top: 0.2rem;
+      }
+      .evidence-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin-bottom: 2.8rem;
+      }
+      .feed {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .feed li {
+        padding: 0.9rem 1.1rem;
+        border-bottom: 1px solid #eeeae2;
+      }
+      .feed li:last-child {
+        border-bottom: 0;
+      }
+      .feed strong {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        font-size: 0.86rem;
+      }
+      .feed p {
+        margin: 0.28rem 0 0;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+      .side-buy {
+        color: var(--success);
+      }
+      .side-sell {
+        color: var(--danger);
+      }
+      details {
+        border-top: 1px solid var(--line);
+      }
+      summary {
+        cursor: pointer;
+        padding: 1rem 1.15rem;
+        font-weight: 620;
+      }
+      pre {
+        margin: 0;
+        padding: 1rem 1.15rem;
+        overflow: auto;
+        background: #23211e;
+        color: #f4efe4;
+        font:
+          0.75rem/1.55 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Consolas,
+          monospace;
+      }
+      .kill-certificate {
+        margin: 0.9rem 1.1rem 1.1rem;
+        padding: 0.85rem;
+        border-radius: var(--r-sm);
+        background: var(--gold-wash);
+        color: var(--gold-dark);
+      }
+      .kill-certificate.failed {
+        background: var(--danger-wash);
+        color: var(--danger);
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.2rem 0.55rem;
+        border-radius: 9999px;
+        font-size: 0.72rem;
+        font-weight: 650;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        border: 1px solid transparent;
+        line-height: 1.2;
+      }
+      .badge-dot {
+        width: 0.45rem;
+        height: 0.45rem;
+        border-radius: 50%;
+        display: inline-block;
+        background: currentColor;
+      }
+      .badge-success {
+        background: #eef6f2;
+        color: var(--success);
+        border-color: #cde4d9;
+      }
+      .badge-warning {
+        background: var(--gold-wash);
+        color: var(--warning);
+        border-color: #ebdcb9;
+      }
+      .badge-danger {
+        background: var(--danger-wash);
+        color: var(--danger);
+        border-color: #f2c7ce;
+      }
+      .badge-muted {
+        background: var(--soft);
+        color: var(--muted);
+        border-color: var(--line);
+      }
+      .safety-card {
+        display: flex;
+        flex-direction: column;
+        padding: 1.15rem;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+        min-height: 100%;
+      }
+      .subpanel-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.95rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid var(--line);
+      }
+      .subpanel-head h3 {
+        margin: 0;
+        font-size: 0.95rem;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+      .safety-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+        margin-bottom: 1.1rem;
+        flex: 1;
+      }
+      .safety-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 0.75rem;
+        padding: 0.65rem 0.8rem;
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+      }
+      .safety-item-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+        min-width: 0;
+      }
+      .safety-item-title {
+        font-size: 0.82rem;
+        font-weight: 620;
+        color: var(--ink);
+      }
+      .safety-item-desc {
+        font-size: 0.73rem;
+        color: var(--muted);
+        word-break: break-word;
+      }
+      .safety-stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.5rem;
+        padding-top: 0.85rem;
+        border-top: 1px solid var(--line);
+      }
+      .safety-stat {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding: 0.5rem 0.3rem;
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+      }
+      .safety-stat-num {
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+        line-height: 1.1;
+      }
+      .safety-stat-lbl {
+        font-size: 0.66rem;
+        color: var(--muted);
+        margin-top: 0.25rem;
+        line-height: 1.15;
+      }
+      .safety-stat.highlight-danger {
+        background: var(--danger-wash);
+        border-color: #f2c7ce;
+      }
+      .safety-stat.highlight-danger .safety-stat-num {
+        color: var(--danger);
+      }
+      .risk-budget-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+      .risk-card {
+        padding: 0.85rem 0.95rem;
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+      }
+      .risk-card-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .risk-card-title {
+        display: flex;
+        align-items: baseline;
+        gap: 0.45rem;
+        font-size: 0.84rem;
+        font-weight: 650;
+        color: var(--ink);
+      }
+      .risk-card-title small {
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: normal;
+      }
+      .risk-metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.6rem;
+      }
+      .risk-metric-box {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+      .risk-metric-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.68rem;
+        color: var(--muted);
+        font-weight: 550;
+      }
+      .risk-metric-val {
+        font-size: 0.78rem;
+        font-weight: 650;
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+      }
+      .progress-bar {
+        width: 100%;
+        height: 0.35rem;
+        background: var(--line);
+        border-radius: 9999px;
+        overflow: hidden;
+      }
+      .progress-fill {
+        height: 100%;
+        background: var(--gold-dark);
+        border-radius: 9999px;
+        transition: width 240ms ease;
+      }
+      .progress-fill.fill-safe {
+        background: var(--success);
+      }
+      .progress-fill.fill-warn {
+        background: var(--warning);
+      }
+      .progress-fill.fill-danger {
+        background: var(--danger);
+      }
+      .risk-reserved-note {
+        font-size: 0.68rem;
+        color: var(--muted);
+        padding-top: 0.25rem;
+        border-top: 1px dashed var(--line);
+        display: flex;
+        justify-content: space-between;
+      }
+      .dev-details {
+        border-top: 1px solid var(--line);
+      }
+      .dev-details summary {
+        color: var(--muted);
+        font-size: 0.78rem;
+        font-weight: 600;
+        padding: 0.85rem 1.15rem;
+      }
+      /* Operational UX: Strategy Cards */
+      .strategy-cards-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 0.85rem;
+        margin-bottom: 1.25rem;
+      }
+      .strat-card {
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        padding: 0.85rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+      }
+      .strat-card-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 0.5rem;
+      }
+      .strat-card-title {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+      }
+      .strat-card-title strong {
+        font-size: 0.9rem;
+        color: var(--ink);
+      }
+      .strat-card-title span {
+        font-size: 0.72rem;
+        color: var(--muted);
+      }
+      .strat-warmup-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        background: var(--surface);
+        padding: 0.45rem 0.6rem;
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+      }
+      .strat-warmup-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.68rem;
+        color: var(--muted);
+        font-weight: 550;
+      }
+      .strat-metrics-row {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.45rem;
+        text-align: center;
+      }
+      .strat-metric-item {
+        background: var(--surface);
+        padding: 0.4rem 0.25rem;
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+      }
+      .strat-metric-item span {
+        font-size: 0.64rem;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .strat-metric-item strong {
+        font-size: 0.8rem;
+        font-variant-numeric: tabular-nums;
+      }
+      /* Operational UX: Feed Status Banner */
+      .feed-status-strip {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.75rem 1.15rem;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+        margin-bottom: 1.5rem;
+      }
+      .feed-status-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.82rem;
+      }
+      .feed-status-label {
+        color: var(--muted);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 600;
+      }
+      /* Operational UX: Execution Timeline */
+      .timeline-feed {
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+        padding: 1.15rem;
+      }
+      .timeline-card {
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        padding: 0.85rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+      }
+      .timeline-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        font-size: 0.82rem;
+      }
+      .timeline-pipeline {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 0.5rem;
+      }
+      @media (max-width: 900px) {
+        .timeline-pipeline {
+          grid-template-columns: repeat(3, 1fr);
+        }
+      }
+      @media (max-width: 560px) {
+        .timeline-pipeline {
+          grid-template-columns: 1fr;
+        }
+      }
+      .timeline-stage {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        padding: 0.55rem 0.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        min-width: 0;
+      }
+      .timeline-stage.stage-pass {
+        border-color: #bee3d5;
+      }
+      .timeline-stage.stage-fail {
+        border-color: #f2c7ce;
+        background: var(--danger-wash);
+      }
+      .timeline-stage.stage-dimmed {
+        opacity: 0.6;
+        background: var(--soft);
+      }
+      .timeline-stage-title {
+        font-size: 0.66rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+        font-weight: 650;
+      }
+      .timeline-stage-val {
+        font-size: 0.76rem;
+        font-weight: 600;
+        color: var(--ink);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .timeline-stage-sub {
+        font-size: 0.68rem;
+        color: var(--muted);
+        word-break: break-word;
+      }
+      /* Operational UX: Historical Kill Certificate Card */
+      .kill-card {
+        padding: 1.15rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+      .kill-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      }
+      .kill-card-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.5rem;
+      }
+      @media (max-width: 680px) {
+        .kill-card-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      .kill-card-stat {
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        padding: 0.6rem 0.5rem;
+        text-align: center;
+      }
+      .kill-card-stat-val {
+        font-size: 1rem;
+        font-weight: 700;
+      }
+      .kill-card-stat-lbl {
+        font-size: 0.66rem;
+        color: var(--muted);
+        margin-top: 0.2rem;
+      }
+      .kill-card-notice {
+        font-size: 0.72rem;
+        color: var(--muted);
+        font-style: italic;
+      }
+      footer {
+        max-width: 1280px;
+        margin: auto;
+        padding: 0 1.5rem 2.5rem;
+        color: var(--muted);
+        font-size: 0.75rem;
+      }
+      .skeleton {
+        position: relative;
+        overflow: hidden;
+        color: transparent !important;
+        background: #eeece7;
+        border-radius: 0.35rem;
+      }
+      .skeleton::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        transform: translateX(-100%);
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(255, 255, 255, 0.7),
+          transparent
+        );
+        animation: shimmer 1.3s infinite;
+      }
+      @keyframes shimmer {
+        to {
+          transform: translateX(100%);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+      @media (max-width: 900px) {
+        main {
+          padding-top: 2.4rem;
+        }
+        .hero,
+        .workspace,
+        .evidence-grid {
+          grid-template-columns: 1fr;
+        }
+        .metrics {
+          grid-template-columns: 1fr 1fr;
+        }
+        .safety-strip {
+          grid-template-columns: 1fr 1fr;
+        }
+        .hero-note {
+          max-width: 40rem;
+        }
+      }
+      @media (max-width: 680px) {
+        .topbar {
+          flex-wrap: wrap;
+          gap: 0.6rem;
+          padding: 0.6rem 1rem;
+        }
+        .brand {
+          flex: 1 1 auto;
+        }
+        #user-auth-widget {
+          order: 2;
+        }
+        .connection {
+          order: 3;
+          width: 100%;
+          justify-content: flex-start;
+          padding-top: 0.25rem;
+          border-top: 1px solid var(--line);
+        }
+        .command-bar {
+          gap: 0.5rem;
+          padding: 0.65rem;
+        }
+        .command-bar .button {
+          flex: 1 1 calc(50% - 0.5rem);
+          font-size: 0.82rem;
+          padding: 0.55rem 0.65rem;
+          text-align: center;
+        }
+        .command-spacer {
+          display: none;
+        }
+        .mode-label {
+          flex-basis: 100%;
+          text-align: center;
+          margin-top: 0.25rem;
+        }
+        .table-wrap {
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+        table {
+          font-size: 0.82rem;
+        }
+        th, td {
+          padding: 0.65rem 0.6rem;
+        }
+      }
+      @media (max-width: 560px) {
+        .topbar,
+        main,
+        footer {
+          padding-left: 0.85rem;
+          padding-right: 0.85rem;
+        }
+        .connection span:last-child {
+          display: none;
+        }
+        .metrics {
+          grid-template-columns: 1fr;
+          gap: 0.65rem;
+        }
+        .safety-strip {
+          grid-template-columns: 1fr;
+          margin-top: -1.5rem;
+        }
+        .form-grid {
+          grid-template-columns: 1fr;
+          gap: 0;
+        }
+        h1 {
+          font-size: 2.1rem;
+          line-height: 1.05;
+        }
+        .hero {
+          gap: 1.2rem;
+          margin-bottom: 1.8rem;
+        }
+        .hero-copy {
+          font-size: 0.92rem;
+        }
+        .panel {
+          padding: 0.85rem;
+        }
+        .panel-head {
+          padding: 0.85rem 1rem;
+        }
+        .safety-stats {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .risk-metrics-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to dashboard</a>
+    <header>
+      <div class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"
+            ><i></i><i></i><i></i
+          ></span>
+          <div>
+            <strong>AlgoShield</strong><span>Strategy safety control</span>
+          </div>
+        </div>
+        <div id="user-auth-widget" class="identity">
+          <span>Checking sessionΓÇª</span>
+        </div>
+        <div class="connection">
+          <i id="connection-dot" class="connection-dot"></i
+          ><span id="connection">Connecting</span
+          ><span>┬╖ backend evidence only</span>
+        </div>
+      </div>
+    </header>
+    <main id="main">
+      <section class="hero" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">Execution control plane</p>
+          <h1 id="page-title">Strategies propose. The platform decides.</h1>
+          <p class="hero-copy">
+            Track independent strategy positions, fill-derived P&amp;L, candle
+            signals, risk state, and verified kill evidence from one operational
+            view.
+          </p>
+        </div>
+        <aside class="hero-note">
+          <strong>Mock and replay bootstrap</strong>This interface reports
+          backend state. It does not claim live 021 connectivity or sandbox
+          certification.
+        </aside>
+      </section>
+      <nav class="command-bar" aria-label="Platform controls">
+        <button class="button primary" id="demo" type="button">
+          Run replay</button
+        ><button class="button" id="reconcile" type="button">Reconcile</button
+        ><button class="button" id="resume" type="button">Resume</button
+        ><button class="button danger" id="kill" type="button">Kill all</button
+        ><span class="command-spacer"></span
+        ><span class="mode-label" id="mode">Loading modeΓÇª</span>
+      </nav>
+      <p class="message" id="message" role="status" aria-live="polite"></p>
+      <!-- Market Data & Feed Status Banner -->
+      <section class="feed-status-strip" aria-label="Market Data and Session Status">
+        <div class="feed-status-item">
+          <span class="feed-status-label">Feed Source:</span>
+          <span id="feed-source-badge" class="badge badge-warning"><i class="badge-dot" aria-hidden="true"></i> MOCK / REPLAY</span>
+          <span id="feed-source-desc" style="font-size: 0.76rem; color: var(--muted);">Synthetic Replay Feed</span>
+        </div>
+        <div class="feed-status-item">
+          <span class="feed-status-label">Data Freshness:</span>
+          <span id="feed-freshness-val" style="font-weight: 600; font-size: 0.8rem;">Waiting for ticks</span>
+        </div>
+        <div class="feed-status-item">
+          <span class="feed-status-label">Trading Session:</span>
+          <span id="feed-session-badge" class="badge badge-success"><i class="badge-dot" aria-hidden="true"></i> OPEN</span>
+          <span id="feed-session-desc" style="font-size: 0.76rem; color: var(--muted);">09:15 ΓÇô 15:30 IST</span>
+        </div>
+      </section>
+      <section class="metrics" aria-label="Platform status">
+        <article class="metric">
+          <span>Reconciliation</span
+          ><strong id="health" class="status skeleton">Loading</strong
+          ><small id="health-note">Waiting for state</small>
+        </article>
+        <article class="metric">
+          <span>Trading gate</span
+          ><strong id="gate" class="status skeleton">Loading</strong
+          ><small id="gate-note">No strategy callbacks yet</small>
+        </article>
+        <article class="metric">
+          <span>Execution evidence</span
+          ><strong id="execution-count" class="skeleton">ΓÇö</strong
+          ><small id="execution-note">orders ┬╖ fills</small>
+        </article>
+        <article class="metric">
+          <span>Market data</span
+          ><strong id="tick-count" class="skeleton">ΓÇö</strong
+          ><small id="tick-note">accepted ticks</small>
+        </article>
+      </section>
+      <section class="safety-strip" aria-label="Safety status">
+        <div class="safety-indicator" id="safety-reconciliation">
+          <i class="safety-dot" aria-hidden="true"></i>
+          <span>Reconciliation<strong>Checking</strong></span>
+        </div>
+        <div class="safety-indicator" id="safety-position">
+          <i class="safety-dot" aria-hidden="true"></i>
+          <span>Broker position<strong>Checking</strong></span>
+        </div>
+        <div class="safety-indicator" id="safety-fills">
+          <i class="safety-dot" aria-hidden="true"></i>
+          <span>Fill integrity<strong>Checking</strong></span>
+        </div>
+        <div class="safety-indicator" id="safety-kill">
+          <i class="safety-dot" aria-hidden="true"></i>
+          <span>Kill verification<strong>Not requested</strong></span>
+        </div>
+      </section>
+      <section aria-labelledby="strategy-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Subscriptions</p>
+            <h2 id="strategy-title">Independent strategy ledgers</h2>
+          </div>
+          <p>Each row keeps its own position and net P&amp;L.</p>
+        </div>
+        <div class="workspace">
+          <article class="panel">
+            <div class="panel-head">
+              <h3>Subscribed strategies</h3>
+              <span id="strategy-count">0 configured</span>
+            </div>
+            <div id="strategy-cards-grid" class="strategy-cards-grid" style="padding: 1rem 1rem 0;"></div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Strategy</th>
+                    <th>State</th>
+                    <th>Position</th>
+                    <th>Net P&amp;L</th>
+                    <th>Charges</th>
+                    <th>Control</th>
+                  </tr>
+                </thead>
+                <tbody id="strategy-rows">
+                  <tr>
+                    <td colspan="6" class="empty">Loading subscriptionsΓÇª</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+          <aside class="panel">
+            <div class="panel-head">
+              <h3>Add strategy</h3>
+              <span>Uses your signed-in trading account</span>
+            </div>
+            <div class="setup">
+              <form id="subscription-form">
+                <div class="field">
+                  <label for="strategy-id">Strategy instance ID</label
+                  ><input
+                    id="strategy-id"
+                    name="strategy_instance_id"
+                    autocomplete="off"
+                    required
+                    placeholder="reliance-ema-01"
+                  />
+                </div>
+                <div class="form-grid">
+                  <div class="field">
+                    <label for="kind">Strategy</label
+                    ><select id="kind" name="kind">
+                      <option value="momentum">EMA momentum</option>
+                      <option value="mean_reversion">Mean reversion</option>
+                      <option value="breakout">5m breakout</option>
+                      <option value="rsi_reversal" selected>RSI reversal</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label for="symbol">Symbol</label
+                    ><input
+                      id="symbol"
+                      name="symbol"
+                      autocomplete="off"
+                      required
+                      placeholder="RELIANCE"
+                    />
+                  </div>
+                </div>
+                <button class="button primary" type="submit">
+                  Subscribe strategy
+                </button>
+              </form>
+            </div>
+          </aside>
+        </div>
+      </section>
+      <section class="panel" aria-labelledby="safety-title">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Platform controls</p>
+            <h2 id="safety-title">Fail-closed safety evidence</h2>
+          </div>
+          <span id="safety-source">Backend state</span>
+        </div>
+        <div class="evidence-grid" style="padding: 1.15rem 1.15rem 0; margin-bottom: 0;">
+          <div class="safety-card">
+            <div class="subpanel-head">
+              <h3>Safety state</h3>
+              <span id="safety-overall-badge" class="badge badge-warning"><i class="badge-dot" aria-hidden="true"></i> RECOVERING</span>
+            </div>
+            <div id="safety-items" class="safety-list">
+              <div class="safety-item">
+                <div class="safety-item-info">
+                  <span class="safety-item-title">Reconciliation</span>
+                  <small class="safety-item-desc">Waiting for stateΓÇª</small>
+                </div>
+                <span class="badge badge-warning"><i class="badge-dot" aria-hidden="true"></i> REQUIRED</span>
+              </div>
+            </div>
+            <div class="safety-stats">
+              <div class="safety-stat">
+                <span class="safety-stat-num" id="stat-fills-applied">0</span>
+                <span class="safety-stat-lbl">Applied fills</span>
+              </div>
+              <div class="safety-stat">
+                <span class="safety-stat-num" id="stat-fills-dupes">0</span>
+                <span class="safety-stat-lbl">Duplicates ignored</span>
+              </div>
+              <div class="safety-stat">
+                <span class="safety-stat-num" id="stat-fills-rejected">0</span>
+                <span class="safety-stat-lbl">Rejected events</span>
+              </div>
+              <div class="safety-stat" id="stat-orders-review-box">
+                <span class="safety-stat-num" id="stat-orders-review">0</span>
+                <span class="safety-stat-lbl">Orders for review</span>
+              </div>
+            </div>
+          </div>
+          <div class="safety-card">
+            <div class="subpanel-head">
+              <h3>Risk budgets</h3>
+              <span id="risk-budgets-count" class="badge badge-muted">0 active</span>
+            </div>
+            <div id="risk-budgets-container">
+              <div class="empty" style="padding: 2.2rem 1rem;">
+                <p style="margin: 0 0 0.35rem; font-weight: 600; color: var(--ink);">No active risk budgets</p>
+                <p style="margin: 0; font-size: 0.8rem; color: var(--muted);">Risk limits will appear here once strategies have active reservations.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <details class="dev-details" style="margin-top: 1.15rem;">
+          <summary>Developer details (raw telemetry)</summary>
+          <div class="evidence-grid" style="margin-bottom: 0; padding: 0 1.15rem 1.15rem;">
+            <div>
+              <p class="eyebrow" style="margin: 0.5rem 0 0.35rem;">Raw Safety State</p>
+              <pre id="safety-state-raw">Loading safety stateΓÇª</pre>
+            </div>
+            <div>
+              <p class="eyebrow" style="margin: 0.5rem 0 0.35rem;">Raw Risk Budgets</p>
+              <pre id="risk-budgets-raw">Loading risk budgetsΓÇª</pre>
+            </div>
+          </div>
+        </details>
+      </section>
+      <!-- Correlated Bounded Execution Timeline -->
+      <section class="panel" aria-labelledby="timeline-title" style="margin-bottom: 2.8rem;">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Execution lifecycle</p>
+            <h2 id="timeline-title">Correlated execution timeline</h2>
+          </div>
+          <span id="timeline-count">0 cycles tracked</span>
+        </div>
+        <p style="padding: 0 1.15rem; margin: 0.5rem 0 0; font-size: 0.8rem; color: var(--muted);">
+          Correlated lifecycle: <strong>Candle ΓåÆ Strategy Intent ΓåÆ Risk Gateway ΓåÆ Broker Order ΓåÆ Fill Execution ΓåÆ Financial Result</strong>. Missing evidence is honestly reported; no stages or timestamps are synthesized.
+        </p>
+        <div id="execution-timeline" class="timeline-feed">
+          <div class="empty">No execution cycles recorded yet. Start strategies and run replay.</div>
+        </div>
+      </section>
+      <section aria-labelledby="evidence-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Evidence</p>
+            <h2 id="evidence-title">Signals, risk decisions & executions</h2>
+          </div>
+          <p>Signals are intent evidence; risk decides admission; fills create financial truth.</p>
+        </div>
+        <div class="evidence-grid">
+          <article class="panel">
+            <div class="panel-head">
+              <h3>Recent strategy signals</h3>
+              <span id="signal-count">0 emitted</span>
+            </div>
+            <ul class="feed" id="signals">
+              <li class="empty">
+                No signals yet. Run replay or resume a configured account.
+              </li>
+            </ul>
+          </article>
+          <article class="panel">
+            <div class="panel-head">
+              <h3>Platform risk decisions</h3>
+              <span id="risk-decision-count">0 decisions</span>
+            </div>
+            <ul class="feed" id="risk-decisions-feed">
+              <li class="empty">No risk decisions recorded yet.</li>
+            </ul>
+          </article>
+          <article class="panel">
+            <div class="panel-head">
+              <h3>Recent fills</h3>
+              <span id="fill-count">0 unique</span>
+            </div>
+            <ul class="feed" id="fills">
+              <li class="empty">No fill evidence yet.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+      <section class="panel" aria-labelledby="audit-title">
+        <div class="panel-head">
+          <h2 id="audit-title">Reliability evidence</h2>
+          <span id="candle-count">0 closed candles</span>
+        </div>
+        <!-- Historical Kill Certificate Structured Card -->
+        <div class="kill-card" id="kill-cert-card" style="border-bottom: 1px solid var(--line);">
+          <div class="kill-card-header">
+            <div>
+              <strong style="font-size: 0.88rem;">Historical Kill Switch Certificate</strong>
+              <span style="display: block; font-size: 0.72rem; color: var(--muted); margin-top: 0.15rem;">
+                Historical evidence recorded upon emergency flattening ┬╖ Immutable record (does not mutate with post-kill state)
+              </span>
+            </div>
+            <span id="kill-cert-badge" class="badge badge-muted"><i class="badge-dot" aria-hidden="true"></i> NOT ISSUED</span>
+          </div>
+          <div id="kill-cert-body">
+            <p class="kill-card-notice" id="certificate">No kill certificate issued in this session.</p>
+          </div>
+        </div>
+        <!-- Human-Readable Completed Candles -->
+        <details open style="border-top: 1px solid var(--line);">
+          <summary>Recent completed candles (Readable)</summary>
+          <div class="table-wrap" style="padding: 0 1.15rem 1.15rem;">
+            <table style="font-size: 0.8rem;">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Symbol</th>
+                  <th>Interval</th>
+                  <th>Open</th>
+                  <th>High</th>
+                  <th>Low</th>
+                  <th>Close</th>
+                  <th>Volume</th>
+                </tr>
+              </thead>
+              <tbody id="candles-table-body">
+                <tr><td colspan="8" class="empty">No completed candles recorded yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+        <details>
+          <summary>Strategy callback errors</summary>
+          <pre id="strategy-errors">No callback errors recorded.</pre>
+        </details>
+        <details>
+          <summary>Recent closed candles</summary>
+          <pre id="candles">No completed candles recorded.</pre>
+        </details>
+        <details>
+          <summary>Audit timeline</summary>
+          <pre id="audit">No audit events recorded.</pre>
+        </details>
+      </section>
+    </main>
+    <footer>
+      AlgoShield ┬╖ Local reliability prototype ┬╖ Monetary values and state are
+      sourced from the backend.
+    </footer>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const endpoints = {
+        demo: "/api/demo",
+        reconcile: "/api/reconcile",
+        resume: "/api/resume",
+        kill: "/api/kill",
+      };
+      let state = null;
+      function money(value) {
+        const number = Number(value || 0);
+        return `${number < 0 ? "ΓêÆ" : ""}Γé╣${Math.abs(number).toFixed(2)}`;
+      }
+      function setMessage(text = "", success = false) {
+        $("message").textContent = text;
+        $("message").className = `message${success ? " success" : ""}`;
+      }
+      function statusClass(value) {
+        return ["HEALTHY", "RUNNING", "SUCCESS", "KILLED"].includes(value)
+          ? "healthy"
+          : ["DRIFTED", "UNCERTAIN", "FAILED"].includes(value)
+            ? "uncertain"
+            : "";
+      }
+      function textNode(tag, text, className = "") {
+        const node = document.createElement(tag);
+        node.textContent = text;
+        if (className) node.className = className;
+        return node;
+      }
+      function badgeClass(status) {
+        const s = String(status || "").toUpperCase();
+        if (
+          [
+            "VERIFIED",
+            "HEALTHY",
+            "SAFE",
+            "READY",
+            "MATCHED",
+            "ACTIVE",
+            "SUCCESS",
+          ].includes(s)
+        ) {
+          return "badge-success";
+        }
+        if (
+          [
+            "FAILED",
+            "DRIFTED",
+            "UNCERTAIN",
+            "LATCHED",
+            "KILLED",
+            "HALTED",
+          ].includes(s)
+        ) {
+          return "badge-danger";
+        }
+        if (
+          [
+            "REQUIRED",
+            "RECOVERING",
+            "UNKNOWN",
+            "STALE",
+            "UNSETTLED",
+            "REDUCE_ONLY",
+            "NOT VERIFIED",
+          ].includes(s)
+        ) {
+          return "badge-warning";
+        }
+        return "badge-muted";
+      }
+      function createBadge(status) {
+        const badge = document.createElement("span");
+        badge.className = `badge ${badgeClass(status)}`;
+        const dot = document.createElement("i");
+        dot.className = "badge-dot";
+        dot.setAttribute("aria-hidden", "true");
+        badge.append(dot, document.createTextNode(` ${status}`));
+        return badge;
+      }
+      function setSafetyIndicator(id, label, tone = "") {
+        const indicator = $(id);
+        if (!indicator) return;
+        indicator.className = `safety-indicator${tone ? ` ${tone}` : ""}`;
+        const s = indicator.querySelector("strong");
+        if (s) s.textContent = label;
+      }
+      function renderSafety(snapshot) {
+        const safety = snapshot.safety || {};
+        const recon = safety.reconciliation || {};
+        const broker = safety.broker || {};
+        const posComp = safety.position_comparison || {};
+        const fills = safety.fills || {};
+        const unknownOrders = Array.isArray(safety.unknown_orders)
+          ? safety.unknown_orders
+          : [];
+
+        if ($("safety-reconciliation")) {
+          setSafetyIndicator(
+            "safety-reconciliation",
+            recon.verified ? "Verified" : "Fail closed",
+            recon.verified ? "verified" : "alert",
+          );
+        }
+        if ($("safety-position")) {
+          setSafetyIndicator(
+            "safety-position",
+            posComp.status || "Unknown",
+            posComp.status === "VERIFIED"
+              ? "verified"
+              : posComp.status === "UNKNOWN"
+                ? ""
+                : "alert",
+          );
+        }
+        if ($("safety-fills")) {
+          const fillSafe = Number(fills.rejected_events || 0) === 0;
+          setSafetyIndicator(
+            "safety-fills",
+            fillSafe ? "No conflicts" : "Review required",
+            fillSafe ? "verified" : "alert",
+          );
+        }
+        if ($("safety-kill")) {
+          const killStatus = snapshot.kill?.status;
+          setSafetyIndicator(
+            "safety-kill",
+            killStatus || "Not requested",
+            ["SUCCESS", "SAFE_LATE"].includes(killStatus)
+              ? "verified"
+              : killStatus === "FAILED"
+                ? "alert"
+                : "",
+          );
+        }
+
+        // 1. Reconciliation
+        let reconStatus = "REQUIRED";
+        let reconDesc = "Startup verification pending";
+        if (recon.verified) {
+          reconStatus = "VERIFIED";
+          reconDesc = "Broker and local state agree";
+        } else if (recon.reason) {
+          if (recon.reason === "STARTUP_RECONCILIATION_REQUIRED") {
+            reconDesc = "Startup verification pending";
+          } else if (recon.reason === "SNAPSHOT_VERIFICATION_FAILED") {
+            reconDesc = "Snapshot verification failed";
+          } else {
+            reconDesc = String(recon.reason).replace(/_/g, " ").toLowerCase();
+          }
+        }
+
+        // 2. Broker evidence
+        let brokerStatus = "NOT VERIFIED";
+        let brokerDesc = "Waiting for first verified snapshot";
+        if (broker.call_unsettled) {
+          brokerStatus = "UNSETTLED";
+          brokerDesc = "Unsettled broker submission pending";
+        } else if (broker.requires_reconciliation) {
+          brokerStatus = "REQUIRED";
+          brokerDesc = "Broker uncertainty requires reconciliation";
+        } else if (broker.fresh && broker.last_verified_at) {
+          brokerStatus = "VERIFIED";
+          brokerDesc = "Broker snapshot is fresh";
+        } else if (broker.last_verified_at) {
+          brokerStatus = "STALE";
+          brokerDesc = "Broker snapshot is stale";
+        }
+
+        // 3. Position comparison
+        const posStatus = posComp.status || "UNKNOWN";
+        let posDesc = "No verified broker comparison yet";
+        if (posStatus === "VERIFIED") {
+          posDesc = "Broker and virtual positions match";
+        } else if (posStatus === "FAILED") {
+          posDesc = "Virtual and broker drift detected";
+        }
+
+        // 4. Kill switch
+        const killLatched = Boolean(safety.kill_latched);
+        const killStatus = killLatched ? "LATCHED" : "READY";
+        const killDesc = killLatched
+          ? "Kill latched ┬╖ operator reset required"
+          : "Emergency flattening armed ┬╖ ready";
+
+        // Overall badge
+        const overallBadge = $("safety-overall-badge");
+        if (overallBadge) {
+          let overall = "RECOVERING";
+          if (killLatched) {
+            overall = "LATCHED";
+          } else if (posStatus === "FAILED" || broker.requires_reconciliation) {
+            overall = "UNCERTAIN";
+          } else if (
+            recon.verified &&
+            broker.fresh &&
+            posStatus === "VERIFIED"
+          ) {
+            overall = "VERIFIED";
+          }
+          overallBadge.className = `badge ${badgeClass(overall)}`;
+          overallBadge.replaceChildren();
+          const dot = document.createElement("i");
+          dot.className = "badge-dot";
+          dot.setAttribute("aria-hidden", "true");
+          overallBadge.append(dot, document.createTextNode(` ${overall}`));
+        }
+
+        // Render safety items list
+        const container = $("safety-items");
+        if (container) {
+          container.replaceChildren();
+          const items = [
+            { title: "Reconciliation", status: reconStatus, desc: reconDesc },
+            {
+              title: "Broker evidence",
+              status: brokerStatus,
+              desc: brokerDesc,
+            },
+            { title: "Position match", status: posStatus, desc: posDesc },
+            { title: "Kill switch", status: killStatus, desc: killDesc },
+          ];
+          for (const item of items) {
+            const row = document.createElement("div");
+            row.className = "safety-item";
+
+            const info = document.createElement("div");
+            info.className = "safety-item-info";
+            info.append(
+              textNode("span", item.title, "safety-item-title"),
+              textNode("small", item.desc, "safety-item-desc"),
+            );
+
+            row.append(info, createBadge(item.status));
+            container.append(row);
+          }
+        }
+
+        // Stat counters
+        $("stat-fills-applied").textContent = String(
+          fills.unique_applied ?? 0,
+        );
+        $("stat-fills-dupes").textContent = String(
+          fills.duplicates_ignored ?? 0,
+        );
+        $("stat-fills-rejected").textContent = String(
+          fills.rejected_events ?? 0,
+        );
+
+        const reviewCount = unknownOrders.length;
+        $("stat-orders-review").textContent = String(reviewCount);
+        const reviewBox = $("stat-orders-review-box");
+        if (reviewBox) {
+          reviewBox.className = `safety-stat${reviewCount > 0 ? " highlight-danger" : ""}`;
+        }
+      }
+      function renderRiskBudgets(snapshot) {
+        const container = $("risk-budgets-container");
+        const countBadge = $("risk-budgets-count");
+        if (!container) return;
+
+        const budgets = Array.isArray(snapshot.risk_budgets)
+          ? snapshot.risk_budgets
+          : [];
+        if (countBadge) {
+          countBadge.textContent = `${budgets.length} active`;
+          countBadge.className = `badge ${budgets.length ? "badge-success" : "badge-muted"}`;
+        }
+
+        container.replaceChildren();
+
+        if (!budgets.length) {
+          const emptyBox = document.createElement("div");
+          emptyBox.className = "empty";
+          emptyBox.style.padding = "2.2rem 1rem";
+
+          const strong = document.createElement("p");
+          strong.style.margin = "0 0 0.35rem";
+          strong.style.fontWeight = "600";
+          strong.style.color = "var(--ink)";
+          strong.textContent = "No active risk budgets";
+
+          const note = document.createElement("p");
+          note.style.margin = "0";
+          note.style.fontSize = "0.8rem";
+          note.style.color = "var(--muted)";
+          note.textContent =
+            "Risk limits will appear here once strategies have active reservations.";
+
+          emptyBox.append(strong, note);
+          container.append(emptyBox);
+          return;
+        }
+
+        const list = document.createElement("div");
+        list.className = "risk-budget-list";
+
+        for (const b of budgets) {
+          const card = document.createElement("article");
+          card.className = "risk-card";
+
+          // Card header
+          const head = document.createElement("div");
+          head.className = "risk-card-head";
+
+          const title = document.createElement("div");
+          title.className = "risk-card-title";
+          const stratId = b.strategy_instance_id || "strategy";
+          const sym = b.symbol || "ΓÇö";
+          title.append(
+            textNode("span", stratId),
+            textNode("small", `┬╖ ${sym}`),
+          );
+
+          const stratState = b.state || "ACTIVE";
+          head.append(title, createBadge(stratState));
+
+          // Metrics grid
+          const grid = document.createElement("div");
+          grid.className = "risk-metrics-grid";
+
+          // 1. Position metric
+          const posBox = document.createElement("div");
+          posBox.className = "risk-metric-box";
+          const posUsed = b.position?.used ?? b.position?.filled ?? 0;
+          const posLimit = b.position?.limit ?? 0;
+          const posPct =
+            posLimit > 0
+              ? Math.min(
+                  100,
+                  Math.max(
+                    0,
+                    Math.round((Math.abs(posUsed) / posLimit) * 100),
+                  ),
+                )
+              : 0;
+
+          const posLbl = document.createElement("div");
+          posLbl.className = "risk-metric-label";
+          posLbl.append(
+            textNode("span", "Position"),
+            textNode("span", posLimit > 0 ? `${posPct}%` : ""),
+          );
+          const posVal = textNode(
+            "div",
+            posLimit > 0 ? `${posUsed} / ${posLimit}` : String(posUsed),
+            "risk-metric-val",
+          );
+          posBox.append(posLbl, posVal);
+          if (posLimit > 0) {
+            const bar = document.createElement("div");
+            bar.className = "progress-bar";
+            const fill = document.createElement("div");
+            fill.className = `progress-fill ${posPct >= 90 ? "fill-danger" : posPct >= 60 ? "fill-warn" : "fill-safe"}`;
+            fill.style.width = `${posPct}%`;
+            bar.append(fill);
+            posBox.append(bar);
+          }
+          grid.append(posBox);
+
+          // 2. Orders / min metric
+          const rateBox = document.createElement("div");
+          rateBox.className = "risk-metric-box";
+          const rateUsed = b.rate?.consumed ?? 0;
+          const rateLimit = b.rate?.limit ?? 0;
+          const ratePct =
+            rateLimit > 0
+              ? Math.min(
+                  100,
+                  Math.max(0, Math.round((rateUsed / rateLimit) * 100)),
+                )
+              : 0;
+
+          const rateLbl = document.createElement("div");
+          rateLbl.className = "risk-metric-label";
+          rateLbl.append(
+            textNode("span", "Orders / min"),
+            textNode("span", rateLimit > 0 ? `${ratePct}%` : ""),
+          );
+          const rateVal = textNode(
+            "div",
+            rateLimit > 0 ? `${rateUsed} / ${rateLimit}` : String(rateUsed),
+            "risk-metric-val",
+          );
+          rateBox.append(rateLbl, rateVal);
+          if (rateLimit > 0) {
+            const bar = document.createElement("div");
+            bar.className = "progress-bar";
+            const fill = document.createElement("div");
+            fill.className = `progress-fill ${ratePct >= 90 ? "fill-danger" : ratePct >= 60 ? "fill-warn" : "fill-safe"}`;
+            fill.style.width = `${ratePct}%`;
+            bar.append(fill);
+            rateBox.append(bar);
+          }
+          grid.append(rateBox);
+
+          // 3. Daily loss metric
+          const lossBox = document.createElement("div");
+          lossBox.className = "risk-metric-box";
+          const lossUsed = Number(b.daily_loss?.consumed ?? 0);
+          const lossLimit = Number(b.daily_loss?.limit ?? 0);
+          const lossPct =
+            lossLimit > 0
+              ? Math.min(
+                  100,
+                  Math.max(0, Math.round((lossUsed / lossLimit) * 100)),
+                )
+              : 0;
+
+          const lossLbl = document.createElement("div");
+          lossLbl.className = "risk-metric-label";
+          lossLbl.append(
+            textNode("span", "Daily loss"),
+            textNode("span", lossLimit > 0 ? `${lossPct}%` : ""),
+          );
+          const lossVal = textNode(
+            "div",
+            lossLimit > 0
+              ? `${money(lossUsed)} / ${money(lossLimit)}`
+              : money(lossUsed),
+            "risk-metric-val",
+          );
+          lossBox.append(lossLbl, lossVal);
+          if (lossLimit > 0) {
+            const bar = document.createElement("div");
+            bar.className = "progress-bar";
+            const fill = document.createElement("div");
+            fill.className = `progress-fill ${lossPct >= 90 ? "fill-danger" : lossPct >= 60 ? "fill-warn" : "fill-safe"}`;
+            fill.style.width = `${lossPct}%`;
+            bar.append(fill);
+            lossBox.append(bar);
+          }
+          grid.append(lossBox);
+
+          card.append(head, grid);
+
+          // Reserved exposure note if pending
+          const reservedBuy = b.position?.reserved_buy ?? 0;
+          const reservedSell = b.position?.reserved_sell ?? 0;
+          if (reservedBuy > 0 || reservedSell > 0) {
+            const resNote = document.createElement("div");
+            resNote.className = "risk-reserved-note";
+            resNote.append(
+              textNode("span", "Pending reservations:"),
+              textNode(
+                "span",
+                `+${reservedBuy} buy / ΓêÆ${reservedSell} sell`,
+              ),
+            );
+            card.append(resNote);
+          }
+
+          list.append(card);
+        }
+
+        container.append(list);
+      }
+      function renderFeedStatus(snapshot) {
+        const md = snapshot.market_data || {};
+        const ms = snapshot.market_session || {};
+        const mode = snapshot.mode || "MOCK / REPLAY";
+
+        const badge = $("feed-source-badge");
+        if (badge) {
+          badge.textContent = ` ${mode}`;
+          badge.className = `badge ${mode.includes("MOCK") || mode.includes("REPLAY") ? "badge-warning" : "badge-success"}`;
+          const dot = document.createElement("i");
+          dot.className = "badge-dot";
+          dot.setAttribute("aria-hidden", "true");
+          badge.prepend(dot);
+        }
+
+        const sourceDesc = $("feed-source-desc");
+        if (sourceDesc) {
+          sourceDesc.textContent = mode.includes("MOCK")
+            ? "Synthetic Replay Feed (Mock Broker Adapter)"
+            : "021 Sandbox Market Data (External Provider)";
+        }
+
+        const freshness = $("feed-freshness-val");
+        if (freshness) {
+          const accepted = Number(md.accepted_ticks || 0);
+          if (accepted === 0) {
+            freshness.textContent = "Waiting for ticks";
+            freshness.style.color = "var(--muted)";
+          } else {
+            const timestamps = md.last_event_timestamp || {};
+            const symbols = Object.keys(timestamps);
+            if (symbols.length > 0) {
+              const latest = timestamps[symbols[0]];
+              freshness.textContent = `Streaming (${accepted} ticks ┬╖ ${symbols.length} symbols)`;
+            } else {
+              freshness.textContent = `Streaming (${accepted} ticks accepted)`;
+            }
+            freshness.style.color = "var(--success)";
+          }
+        }
+
+        const sessionBadge = $("feed-session-badge");
+        const sessionDesc = $("feed-session-desc");
+        if (sessionBadge) {
+          const isOpen = ms.is_open ?? (ms.status === "OPEN");
+          const sessText = isOpen ? "OPEN" : (ms.status || "CLOSED");
+          sessionBadge.textContent = ` ${sessText}`;
+          sessionBadge.className = `badge ${isOpen ? "badge-success" : "badge-muted"}`;
+          const dot = document.createElement("i");
+          dot.className = "badge-dot";
+          dot.setAttribute("aria-hidden", "true");
+          sessionBadge.prepend(dot);
+        }
+        if (sessionDesc) {
+          const ot = ms.open_time || "09:15";
+          const ct = ms.close_time || "15:30";
+          const tz = ms.timezone || "Asia/Kolkata";
+          sessionDesc.textContent = `${ot} ΓÇô ${ct} IST (${tz})`;
+        }
+      }
+      function renderStrategyCards(snapshot) {
+        const grid = $("strategy-cards-grid");
+        if (!grid) return;
+        grid.replaceChildren();
+
+        const subs = snapshot.subscriptions || [];
+        if (!subs.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty";
+          empty.style.gridColumn = "1 / -1";
+          empty.textContent = "No strategies subscribed. Add a strategy below to start tracking.";
+          grid.append(empty);
+          return;
+        }
+
+        for (const sub of subs) {
+          const positions = (snapshot.positions || []).filter(
+            (p) =>
+              p.strategy_instance_id === sub.id &&
+              p.account_id === sub.account,
+          );
+          const quantity = positions.reduce((total, p) => total + (p.net_quantity || 0), 0);
+          const pnl = positions.reduce((total, p) => total + Number(p.net_pnl || 0), 0);
+          const charges = positions.reduce((total, p) => total + Number(p.charges || 0), 0);
+
+          const card = document.createElement("article");
+          card.className = "strat-card";
+
+          // Header
+          const header = document.createElement("div");
+          header.className = "strat-card-header";
+          const title = document.createElement("div");
+          title.className = "strat-card-title";
+          title.append(
+            textNode("span", sub.id),
+            textNode("small", `┬╖ ${sub.kind.replace(/_/g, " ")} (${sub.symbol})`),
+          );
+          header.append(title, createBadge(sub.state || "UNKNOWN"));
+
+          // Metric Grid
+          const metrics = document.createElement("div");
+          metrics.className = "strat-metric-grid";
+
+          // 1. Warmup / Readiness
+          const warmupBox = document.createElement("div");
+          warmupBox.className = "strat-metric";
+          warmupBox.append(textNode("span", "Warmup", "strat-metric-label"));
+          let warmupVal = "ΓÇö";
+          if (sub.readiness) {
+            const r = sub.readiness;
+            warmupVal = `${r.samples} / ${r.warmup} ${r.ready ? "(Ready)" : "(Warmup)"}`;
+          }
+          warmupBox.append(textNode("strong", warmupVal, "strat-metric-val"));
+          metrics.append(warmupBox);
+
+          // 2. Net Position
+          const posBox = document.createElement("div");
+          posBox.className = "strat-metric";
+          posBox.append(textNode("span", "Position", "strat-metric-label"));
+          const posStr = quantity > 0 ? `+${quantity}` : String(quantity);
+          const posClass = `strat-metric-val ${quantity > 0 ? "positive" : quantity < 0 ? "negative" : ""}`;
+          posBox.append(textNode("strong", `${posStr} ${sub.symbol}`, posClass));
+          metrics.append(posBox);
+
+          // 3. Net P&L
+          const pnlBox = document.createElement("div");
+          pnlBox.className = "strat-metric";
+          pnlBox.append(textNode("span", "Net P&L", "strat-metric-label"));
+          const pnlClass = `strat-metric-val ${pnl > 0 ? "positive" : pnl < 0 ? "negative" : ""}`;
+          pnlBox.append(textNode("strong", money(pnl), pnlClass));
+          metrics.append(pnlBox);
+
+          // 4. Charges
+          const feeBox = document.createElement("div");
+          feeBox.className = "strat-metric";
+          feeBox.append(textNode("span", "Charges", "strat-metric-label"));
+          feeBox.append(textNode("strong", money(charges), "strat-metric-val"));
+          metrics.append(feeBox);
+
+          // Footer with Control Button
+          const footer = document.createElement("div");
+          footer.className = "strat-card-footer";
+          const action = sub.enabled ? "stop" : "start";
+          const btn = textNode(
+            "button",
+            action === "stop" ? "Stop strategy" : "Start strategy",
+            `button small${action === "stop" ? "" : " primary"}`,
+          );
+          btn.type = "button";
+          btn.onclick = () => controlSubscription(sub, action, btn);
+          footer.append(btn);
+
+          card.append(header, metrics, footer);
+          grid.append(card);
+        }
+      }
+      function renderStrategies(snapshot) {
+        const body = $("strategy-rows");
+        body.replaceChildren();
+        $("strategy-count").textContent =
+          `${snapshot.subscriptions.length} configured`;
+        if (!snapshot.subscriptions.length) {
+          const row = document.createElement("tr");
+          const cell = textNode(
+            "td",
+            "No strategies yet. Add your first strategy.",
+            "empty",
+          );
+          cell.colSpan = 6;
+          row.append(cell);
+          body.append(row);
+          return;
+        }
+        for (const subscription of snapshot.subscriptions) {
+          const positions = snapshot.positions.filter(
+            (position) =>
+              position.strategy_instance_id === subscription.id &&
+              position.account_id === subscription.account,
+          );
+          const quantity = positions.reduce(
+            (total, position) => total + position.net_quantity,
+            0,
+          );
+          const pnl = positions.reduce(
+            (total, position) => total + Number(position.net_pnl),
+            0,
+          );
+          const charges = positions.reduce(
+            (total, position) => total + Number(position.charges),
+            0,
+          );
+          const row = document.createElement("tr");
+          const strategy = document.createElement("td");
+          strategy.className = "primary-cell";
+          strategy.append(
+            textNode("span", subscription.id),
+            textNode(
+              "small",
+              `${subscription.kind.replace("_", " ")} ┬╖ ${subscription.symbol}`,
+            ),
+          );
+          row.append(
+            strategy,
+            textNode("td", subscription.state),
+            textNode(
+              "td",
+              quantity > 0 ? `+${quantity}` : String(quantity),
+              quantity > 0 ? "positive" : quantity < 0 ? "negative" : "",
+            ),
+            textNode(
+              "td",
+              money(pnl),
+              pnl > 0 ? "positive" : pnl < 0 ? "negative" : "",
+            ),
+            textNode("td", money(charges)),
+          );
+          const control = document.createElement("td");
+          const action = subscription.enabled ? "stop" : "start";
+          const button = textNode(
+            "button",
+            action === "stop" ? "Stop" : "Start",
+            `button small${action === "stop" ? "" : " primary"}`,
+          );
+          button.type = "button";
+          button.onclick = () =>
+            controlSubscription(subscription, action, button);
+          control.append(button);
+          row.append(control);
+          body.append(row);
+        }
+      }
+      function renderRiskDecisions(snapshot) {
+        const feed = $("risk-decisions-feed");
+        const countSpan = $("risk-decision-count");
+        if (!feed) return;
+        feed.replaceChildren();
+
+        const auditList = snapshot.audit || [];
+        const riskDecisions = [];
+        for (const item of auditList) {
+          if (item.type === "RISK_DECISION") {
+            let p = item.payload;
+            if (typeof p === "string") {
+              try { p = JSON.parse(p); } catch (_) {}
+            }
+            if (p && typeof p === "object") {
+              riskDecisions.push({
+                sequence: item.sequence,
+                created: item.created,
+                ...p,
+              });
+            }
+          }
+        }
+
+        if (countSpan) {
+          countSpan.textContent = `${riskDecisions.length} decisions`;
+        }
+
+        if (!riskDecisions.length) {
+          feed.append(textNode("li", "No risk decisions recorded yet. Replay strategies to generate events.", "empty"));
+          return;
+        }
+
+        for (const d of riskDecisions.slice(0, 8)) {
+          const item = document.createElement("li");
+          const heading = document.createElement("strong");
+          const strat = d.strategy || d.strategy_instance_id || "risk";
+          const sym = d.symbol ? ` ┬╖ ${d.symbol}` : "";
+          const allowed = Boolean(d.allowed);
+
+          heading.append(
+            textNode("span", `${strat}${sym}`),
+            textNode(
+              "span",
+              allowed ? "Γ£ô APPROVED" : "Γ£ù REJECTED",
+              allowed ? "side-buy" : "side-sell",
+            ),
+          );
+
+          const reasonText = d.reason || (allowed ? "ALLOWED" : "REJECTED_UNKNOWN");
+          const seqText = d.sequence ? `#${d.sequence} ┬╖ ` : "";
+          const intentText = d.intent_id ? ` ┬╖ intent ${d.intent_id.slice(0, 8)}ΓÇª` : "";
+          const p = textNode("p", `${seqText}Reason: ${reasonText}${intentText}`);
+          item.append(heading, p);
+          feed.append(item);
+        }
+      }
+      function renderCandlesTable(snapshot) {
+        const body = $("candles-table-body");
+        if (!body) return;
+        body.replaceChildren();
+
+        const candles = snapshot.candles || [];
+        if (!candles.length) {
+          const row = document.createElement("tr");
+          const cell = textNode("td", "No completed candles recorded yet.", "empty");
+          cell.colSpan = 8;
+          row.append(cell);
+          body.append(row);
+          return;
+        }
+
+        for (const c of candles.slice().reverse().slice(0, 10)) {
+          const row = document.createElement("tr");
+          const intervalM = c.interval ? `${c.interval / 60}m` : "1m";
+          const timeStr = c.start_time ? String(c.start_time).split("T")[1]?.slice(0, 8) || String(c.start_time) : "ΓÇö";
+
+          row.append(
+            textNode("td", timeStr),
+            textNode("td", c.symbol || "ΓÇö", "primary-cell"),
+            textNode("td", intervalM),
+            textNode("td", Number(c.open).toFixed(2)),
+            textNode("td", Number(c.high).toFixed(2)),
+            textNode("td", Number(c.low).toFixed(2)),
+            textNode("td", Number(c.close).toFixed(2)),
+            textNode("td", String(c.volume || 0)),
+          );
+          body.append(row);
+        }
+      }
+      function renderHistoricalKill(snapshot) {
+        const cardBody = $("kill-cert-body");
+        const badge = $("kill-cert-badge");
+        if (!cardBody) return;
+
+        const kill = snapshot.kill;
+        if (!kill) {
+          if (badge) {
+            badge.textContent = " NOT ISSUED";
+            badge.className = "badge badge-muted";
+            const dot = document.createElement("i");
+            dot.className = "badge-dot";
+            dot.setAttribute("aria-hidden", "true");
+            badge.prepend(dot);
+          }
+          cardBody.replaceChildren();
+          const p = document.createElement("p");
+          p.className = "kill-card-notice";
+          p.id = "certificate";
+          p.textContent = "No kill switch certificate issued for this account session.";
+          cardBody.append(p);
+          return;
+        }
+
+        const isSuccess = kill.status === "SUCCESS";
+        if (badge) {
+          badge.textContent = ` ${kill.status}`;
+          badge.className = `badge ${isSuccess ? "badge-success" : "badge-danger"}`;
+          const dot = document.createElement("i");
+          dot.className = "badge-dot";
+          dot.setAttribute("aria-hidden", "true");
+          badge.prepend(dot);
+        }
+
+        cardBody.replaceChildren();
+
+        const grid = document.createElement("div");
+        grid.className = "kill-card-grid";
+
+        const s1 = document.createElement("div");
+        s1.className = "kill-card-stat";
+        s1.append(
+          textNode("div", `${Number(kill.elapsed_seconds || 0).toFixed(3)}s`, "kill-card-stat-val"),
+          textNode("div", "Execution Time (< 10s SLA)", "kill-card-stat-lbl"),
+        );
+
+        const s2 = document.createElement("div");
+        s2.className = "kill-card-stat";
+        s2.append(
+          textNode("div", String(kill.open_orders ?? 0), "kill-card-stat-val"),
+          textNode("div", "Open Orders at Kill", "kill-card-stat-lbl"),
+        );
+
+        const s3 = document.createElement("div");
+        s3.className = "kill-card-stat";
+        s3.append(
+          textNode("div", kill.virtual_positions_flat ? "FLAT" : "NOT FLAT", `kill-card-stat-val ${kill.virtual_positions_flat ? "positive" : "negative"}`),
+          textNode("div", "Virtual Position State", "kill-card-stat-lbl"),
+        );
+
+        const brokerFlat = kill.broker_positions ? Object.values(kill.broker_positions).every((v) => v === 0) : true;
+        const s4 = document.createElement("div");
+        s4.className = "kill-card-stat";
+        s4.append(
+          textNode("div", brokerFlat ? "FLAT" : "REMAINING", `kill-card-stat-val ${brokerFlat ? "positive" : "negative"}`),
+          textNode("div", "Broker Verification", "kill-card-stat-lbl"),
+        );
+
+        grid.append(s1, s2, s3, s4);
+
+        const notice = document.createElement("p");
+        notice.className = "kill-card-notice";
+        notice.style.marginTop = "0.5rem";
+        notice.id = "certificate";
+        notice.textContent = `Historical record captured at ${kill.observed_at || "execution time"}. Local and broker states are frozen and require operator reset to resume.`;
+
+        cardBody.append(grid, notice);
+      }
+      function renderExecutionTimeline(snapshot) {
+        const container = $("execution-timeline");
+        const countSpan = $("timeline-count");
+        if (!container) return;
+        container.replaceChildren();
+
+        const signals = snapshot.signals || [];
+        const orders = snapshot.orders || [];
+        const fills = snapshot.fills || [];
+        const auditList = snapshot.audit || [];
+        const candles = snapshot.candles || [];
+        const positions = snapshot.positions || [];
+
+        const riskDecisionsByIntent = new Map();
+        for (const ev of auditList) {
+          if (ev.type === "RISK_DECISION") {
+            let p = ev.payload;
+            if (typeof p === "string") {
+              try { p = JSON.parse(p); } catch (_) {}
+            }
+            if (p && typeof p === "object" && p.intent_id) {
+              if (!riskDecisionsByIntent.has(p.intent_id)) {
+                riskDecisionsByIntent.set(p.intent_id, p);
+              }
+            }
+          }
+        }
+
+        const flows = [];
+        const seenIntents = new Set();
+        const seenOrderIds = new Set();
+
+        for (const sig of signals.slice().reverse()) {
+          const intentId = sig.intent_id;
+          if (!intentId || seenIntents.has(intentId)) continue;
+          seenIntents.add(intentId);
+
+          const matchingOrder = orders.find((o) => o.intent_id === intentId);
+          if (matchingOrder) seenOrderIds.add(matchingOrder.id);
+
+          flows.push({
+            intent_id: intentId,
+            strategy: sig.strategy,
+            symbol: sig.symbol,
+            signal: sig,
+            order: matchingOrder || null,
+          });
+        }
+
+        for (const ord of orders.slice().reverse()) {
+          if (seenOrderIds.has(ord.id)) continue;
+          seenOrderIds.add(ord.id);
+          flows.push({
+            intent_id: ord.intent_id || ord.id,
+            strategy: ord.strategy || ord.strategy_instance_id || "strategy",
+            symbol: ord.symbol,
+            signal: null,
+            order: ord,
+          });
+        }
+
+        if (countSpan) {
+          countSpan.textContent = `${flows.length} tracked`;
+        }
+
+        if (!flows.length) {
+          container.append(
+            textNode(
+              "div",
+              "No execution cycles recorded yet. Start strategies and run replay.",
+              "empty",
+            ),
+          );
+          return;
+        }
+
+        for (const flow of flows.slice(0, 8)) {
+          const item = document.createElement("article");
+          item.className = "timeline-item";
+
+          const header = document.createElement("div");
+          header.className = "timeline-item-header";
+          const title = document.createElement("span");
+          title.className = "timeline-item-title";
+          title.textContent = `${flow.strategy} ┬╖ ${flow.symbol}`;
+          const flowId = document.createElement("span");
+          flowId.style.fontSize = "0.74rem";
+          flowId.style.color = "var(--muted)";
+          flowId.textContent = `Intent: ${flow.intent_id.slice(0, 8)}ΓÇª`;
+          header.append(title, flowId);
+
+          const pipeline = document.createElement("div");
+          pipeline.className = "timeline-pipeline";
+
+          // Stage 1: Candle
+          let candleMatch = null;
+          if (flow.signal && flow.signal.candle_start) {
+            candleMatch = candles.find(
+              (c) =>
+                c.symbol === flow.symbol &&
+                c.interval === flow.signal.interval &&
+                c.start_time === flow.signal.candle_start,
+            );
+          }
+          const s1 = document.createElement("div");
+          s1.className = `timeline-stage ${candleMatch ? "stage-pass" : "stage-dimmed"}`;
+          s1.append(
+            textNode("span", "1. Candle", "timeline-stage-title"),
+            textNode(
+              "div",
+              candleMatch
+                ? `[${candleMatch.interval / 60}m] C: Γé╣${candleMatch.close}`
+                : "ΓÇö",
+              "timeline-stage-val",
+            ),
+            textNode(
+              "div",
+              candleMatch
+                ? `O:${candleMatch.open} H:${candleMatch.high} L:${candleMatch.low}`
+                : flow.signal?.candle_start
+                  ? `Start ${flow.signal.candle_start.split("T")[1]?.slice(0, 5) || ""}`
+                  : "Direct intent (unlinked candle)",
+              "timeline-stage-sub",
+            ),
+          );
+
+          // Stage 2: Intent
+          const s2 = document.createElement("div");
+          s2.className = "timeline-stage stage-pass";
+          const side = flow.signal ? flow.signal.side : (flow.order ? flow.order.side : "INTENT");
+          const reason = flow.signal?.reason || "Strategy entry signal";
+          s2.append(
+            textNode("span", "2. Intent", "timeline-stage-title"),
+            textNode("div", `[${side}] ${reason}`, "timeline-stage-val"),
+            textNode(
+              "div",
+              flow.signal?.timestamp
+                ? String(flow.signal.timestamp).split("T")[1]?.slice(0, 8) || String(flow.signal.timestamp)
+                : "Timestamp recorded",
+              "timeline-stage-sub",
+            ),
+          );
+
+          // Stage 3: Risk
+          const riskDecision = riskDecisionsByIntent.get(flow.intent_id);
+          const s3 = document.createElement("div");
+          let riskPassed = false;
+          let riskText = "ΓÇö";
+          let riskSub = "No risk decision logged";
+          if (riskDecision) {
+            riskPassed = Boolean(riskDecision.allowed);
+            s3.className = `timeline-stage ${riskPassed ? "stage-pass" : "stage-fail"}`;
+            riskText = riskPassed ? "Γ£ô APPROVED" : "Γ£ù REJECTED";
+            riskSub = riskDecision.reason || (riskPassed ? "Allowed" : "Risk limit violated");
+          } else if (flow.order) {
+            s3.className = "timeline-stage stage-pass";
+            riskText = "Γ£ô PASSED";
+            riskSub = "Dispatched to order manager";
+          } else {
+            s3.className = "timeline-stage stage-dimmed";
+          }
+          s3.append(
+            textNode("span", "3. Risk Gateway", "timeline-stage-title"),
+            textNode("div", riskText, "timeline-stage-val"),
+            textNode("div", riskSub, "timeline-stage-sub"),
+          );
+
+          // Stage 4: Broker Order
+          const s4 = document.createElement("div");
+          const ord = flow.order;
+          if (riskDecision && !riskDecision.allowed) {
+            s4.className = "timeline-stage stage-dimmed";
+            s4.append(
+              textNode("span", "4. Broker Order", "timeline-stage-title"),
+              textNode("div", "ΓÇö (Blocked)", "timeline-stage-val"),
+              textNode("div", "Not dispatched to broker", "timeline-stage-sub"),
+            );
+          } else if (ord) {
+            const isOrdRejected = ord.status === "REJECTED";
+            s4.className = `timeline-stage ${isOrdRejected ? "stage-fail" : "stage-pass"}`;
+            s4.append(
+              textNode("span", "4. Broker Order", "timeline-stage-title"),
+              textNode("div", `#${ord.id.slice(0, 8)} ${ord.status}`, "timeline-stage-val"),
+              textNode("div", `Qty: ${ord.filled_quantity ?? 0} / ${ord.quantity}`, "timeline-stage-sub"),
+            );
+          } else {
+            s4.className = "timeline-stage stage-dimmed";
+            s4.append(
+              textNode("span", "4. Broker Order", "timeline-stage-title"),
+              textNode("div", "ΓÇö", "timeline-stage-val"),
+              textNode("div", "No broker order created", "timeline-stage-sub"),
+            );
+          }
+
+          // Stage 5: Fill Execution
+          const ordFills = ord ? fills.filter((f) => f.order_id === ord.id) : [];
+          const s5 = document.createElement("div");
+          if (ordFills.length > 0) {
+            const totQty = ordFills.reduce((sum, f) => sum + (f.quantity || 0), 0);
+            const avgPx = (
+              ordFills.reduce((sum, f) => sum + ((f.quantity || 0) * (f.price || 0)), 0) / totQty
+            ).toFixed(2);
+            const totCharges = ordFills.reduce((sum, f) => sum + Number(f.charges || 0), 0);
+            s5.className = "timeline-stage stage-pass";
+            s5.append(
+              textNode("span", "5. Fill Execution", "timeline-stage-title"),
+              textNode("div", `${totQty} filled @ Γé╣${avgPx}`, "timeline-stage-val"),
+              textNode("div", `Fees: ${money(totCharges)} (${ordFills.length} fill${ordFills.length > 1 ? "s" : ""})`, "timeline-stage-sub"),
+            );
+          } else if (ord && ord.status === "REJECTED") {
+            s5.className = "timeline-stage stage-fail";
+            s5.append(
+              textNode("span", "5. Fill Execution", "timeline-stage-title"),
+              textNode("div", "ΓÇö (Rejected)", "timeline-stage-val"),
+              textNode("div", ord.reason || "Broker rejected order", "timeline-stage-sub"),
+            );
+          } else {
+            s5.className = "timeline-stage stage-dimmed";
+            s5.append(
+              textNode("span", "5. Fill Execution", "timeline-stage-title"),
+              textNode("div", "ΓÇö", "timeline-stage-val"),
+              textNode("div", "No execution fill", "timeline-stage-sub"),
+            );
+          }
+
+          // Stage 6: Financial Result
+          const s6 = document.createElement("div");
+          if (ordFills.length > 0) {
+            const pos = positions.find(
+              (p) =>
+                p.strategy_instance_id === flow.strategy &&
+                p.symbol === flow.symbol,
+            );
+            const netQty = pos ? pos.net_quantity : "ΓÇö";
+            const netPnl = pos ? Number(pos.net_pnl || 0) : 0;
+            s6.className = `timeline-stage ${netPnl >= 0 ? "stage-pass" : "stage-fail"}`;
+            s6.append(
+              textNode("span", "6. Financial Result", "timeline-stage-title"),
+              textNode("div", `Pos: ${netQty > 0 ? "+" + netQty : netQty}`, "timeline-stage-val"),
+              textNode("div", `Net P&L: ${money(netPnl)}`, "timeline-stage-sub"),
+            );
+          } else {
+            s6.className = "timeline-stage stage-dimmed";
+            s6.append(
+              textNode("span", "6. Financial Result", "timeline-stage-title"),
+              textNode("div", "Pos unchanged", "timeline-stage-val"),
+              textNode("div", "Γé╣0.00 financial impact", "timeline-stage-sub"),
+            );
+          }
+
+          pipeline.append(s1, s2, s3, s4, s5, s6);
+          item.append(header, pipeline);
+          container.append(item);
+        }
+      }
+      function renderFeed(list, items, renderer, emptyText) {
+        list.replaceChildren();
+        if (!items.length) {
+          list.append(textNode("li", emptyText, "empty"));
+          return;
+        }
+        for (const item of items.slice().reverse().slice(0, 8))
+          list.append(renderer(item));
+      }
+      function render(snapshot) {
+        state = snapshot;
+        $("mode").textContent = snapshot.mode;
+        $("demo").disabled = snapshot.mode !== "MOCK / REPLAY";
+        $("health").textContent = snapshot.health;
+        $("health").className = `status ${statusClass(snapshot.health)}`;
+        $("health-note").textContent =
+          snapshot.health === "HEALTHY"
+            ? "Broker and local projections reconciled"
+            : "Trading requires healthy reconciliation";
+        $("gate").textContent = snapshot.gate;
+        $("gate").className = `status ${statusClass(snapshot.gate)}`;
+        $("gate-note").textContent =
+          snapshot.gate === "RUNNING"
+            ? "Strategy callbacks enabled"
+            : "New strategy exposure blocked";
+        $("execution-count").textContent =
+          `${snapshot.orders.length} ┬╖ ${snapshot.fills.length}`;
+        $("execution-count").className = "";
+        $("execution-note").textContent = "orders ┬╖ unique fills";
+        $("tick-count").textContent = snapshot.market_data.accepted_ticks;
+        $("tick-count").className = "";
+        $("tick-note").textContent =
+          `${snapshot.market_data.duplicate_ticks} duplicate ┬╖ ${snapshot.market_data.late_ticks} late`;
+
+        renderFeedStatus(snapshot);
+        renderStrategies(snapshot);
+        renderStrategyCards(snapshot);
+        renderSafety(snapshot);
+        renderRiskBudgets(snapshot);
+        renderExecutionTimeline(snapshot);
+        renderRiskDecisions(snapshot);
+        renderCandlesTable(snapshot);
+        renderHistoricalKill(snapshot);
+
+        if ($("safety-state-raw")) {
+          $("safety-state-raw").textContent = JSON.stringify(
+            snapshot.safety || { status: "UNKNOWN" },
+            null,
+            2,
+          );
+        }
+        if ($("risk-budgets-raw")) {
+          $("risk-budgets-raw").textContent = JSON.stringify(
+            snapshot.risk_budgets || {},
+            null,
+            2,
+          );
+        }
+        $("signal-count").textContent = `${snapshot.signals.length} emitted`;
+        renderFeed(
+          $("signals"),
+          snapshot.signals,
+          (signal) => {
+            const item = document.createElement("li");
+            const heading = document.createElement("strong");
+            heading.append(
+              textNode("span", `${signal.strategy} ┬╖ ${signal.symbol}`),
+              textNode(
+                "span",
+                signal.side,
+                signal.side === "BUY" ? "side-buy" : "side-sell",
+              ),
+            );
+            item.append(
+              heading,
+              textNode(
+                "p",
+                `${signal.reason} ┬╖ ${signal.interval / 60}m candle`,
+              ),
+            );
+            return item;
+          },
+          "No signals yet. Run replay or resume a configured account.",
+        );
+        $("fill-count").textContent = `${snapshot.fills.length} unique`;
+        renderFeed(
+          $("fills"),
+          snapshot.fills,
+          (fill) => {
+            const item = document.createElement("li");
+            const heading = document.createElement("strong");
+            heading.append(
+              textNode("span", `${fill.strategy} ┬╖ ${fill.symbol}`),
+              textNode(
+                "span",
+                fill.side,
+                fill.side === "BUY" ? "side-buy" : "side-sell",
+              ),
+            );
+            item.append(
+              heading,
+              textNode(
+                "p",
+                `${fill.quantity} @ ${fill.price} ┬╖ charges ${money(fill.charges)}`,
+              ),
+            );
+            return item;
+          },
+          "No fill evidence yet.",
+        );
+        $("candle-count").textContent =
+          `${snapshot.candles.length} recent closed candles`;
+        $("candles").textContent = snapshot.candles.length
+          ? JSON.stringify(snapshot.candles, null, 2)
+          : "No completed candles recorded.";
+        $("strategy-errors").textContent = snapshot.strategy_errors.length
+          ? JSON.stringify(snapshot.strategy_errors, null, 2)
+          : "No callback errors recorded.";
+        $("audit").textContent = snapshot.audit.length
+          ? snapshot.audit
+              .map(
+                (event) => `${event.sequence}  ${event.type}  ${event.payload}`,
+              )
+              .join("\n")
+          : "No audit events recorded.";
+      }
+      function clearStaleData() {
+        $("strategy-rows").replaceChildren();
+        if ($("strategy-cards-grid")) $("strategy-cards-grid").replaceChildren();
+        if ($("execution-timeline")) {
+          $("execution-timeline").replaceChildren();
+          $("execution-timeline").append(
+            textNode(
+              "div",
+              "No execution cycles recorded yet. Start strategies and run replay.",
+              "empty",
+            ),
+          );
+        }
+        if ($("risk-decisions-feed")) {
+          $("risk-decisions-feed").replaceChildren();
+          $("risk-decisions-feed").append(
+            textNode("li", "No risk decisions recorded yet.", "empty"),
+          );
+        }
+        if ($("candles-table-body")) {
+          $("candles-table-body").replaceChildren();
+          const tr = document.createElement("tr");
+          const td = textNode("td", "No completed candles recorded yet.", "empty");
+          td.colSpan = 8;
+          tr.append(td);
+          $("candles-table-body").append(tr);
+        }
+        if ($("kill-cert-body")) {
+          $("kill-cert-body").replaceChildren();
+          const p = document.createElement("p");
+          p.className = "kill-card-notice";
+          p.id = "certificate";
+          p.textContent = "No kill switch certificate issued for this account session.";
+          $("kill-cert-body").append(p);
+        }
+        if ($("kill-cert-badge")) {
+          $("kill-cert-badge").textContent = " NOT ISSUED";
+          $("kill-cert-badge").className = "badge badge-muted";
+        }
+        $("fills").replaceChildren();
+        $("signals").replaceChildren();
+        $("audit").textContent = "No audit events recorded.";
+        $("strategy-errors").textContent = "No callback errors recorded.";
+        $("candles").textContent = "No completed candles recorded.";
+        $("strategy-count").textContent = "0 configured";
+        $("execution-count").textContent = "0 ┬╖ 0";
+        $("fill-count").textContent = "0 unique";
+        $("signal-count").textContent = "0 emitted";
+        if ($("timeline-count")) $("timeline-count").textContent = "0 cycles tracked";
+        if ($("risk-decision-count")) $("risk-decision-count").textContent = "0 decisions";
+      }
+      async function request(url, options = {}) {
+        const response = await fetch(url, options);
+        if (response.status === 401) {
+          clearStaleData();
+          window.location.replace("/login");
+          throw new Error("Your session has expired.");
+        }
+        if (!response.ok) {
+          let detail = `Request failed (${response.status})`;
+          try {
+            detail = (await response.json()).detail || detail;
+          } catch (_) {}
+          throw new Error(detail);
+        }
+        return response.json();
+      }
+      async function refresh() {
+        try {
+          render(await request("/api/state"));
+          $("connection").textContent = "Connected";
+          $("connection-dot").className = "connection-dot ok";
+        } catch (error) {
+          $("connection").textContent = "Disconnected (ReconnectingΓÇª)";
+          $("connection-dot").className = "connection-dot";
+          setMessage(error.message);
+        }
+      }
+      async function runAction(action) {
+        const button = $(action);
+        button.disabled = true;
+        setMessage("");
+        try {
+          await request(endpoints[action], { method: "POST" });
+          await refresh();
+          setMessage(`${button.textContent} completed.`, true);
+        } catch (error) {
+          setMessage(error.message);
+        } finally {
+          button.disabled =
+            action === "demo" && state?.mode !== "MOCK / REPLAY";
+        }
+      }
+      async function controlSubscription(subscription, action, button) {
+        button.disabled = true;
+        setMessage("");
+        try {
+          await request(
+            `/api/subscriptions/${encodeURIComponent(subscription.id)}/${action}`,
+            {
+              method: "POST",
+            },
+          );
+          await refresh();
+          setMessage(
+            `${subscription.id} ${action === "start" ? "started" : "stopped"}.`,
+            true,
+          );
+        } catch (error) {
+          setMessage(error.message);
+          button.disabled = false;
+        }
+      }
+      async function submitForm(event, url) {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const button = form.querySelector("button");
+        button.disabled = true;
+        setMessage("");
+        try {
+          await request(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(Object.fromEntries(new FormData(form))),
+          });
+          if (url === "/api/subscriptions") form.reset();
+          await refresh();
+          setMessage("Strategy subscribed.", true);
+        } catch (error) {
+          setMessage(error.message);
+        } finally {
+          button.disabled = false;
+        }
+      }
+      for (const action of Object.keys(endpoints))
+        $(action).addEventListener("click", () => runAction(action));
+      $("subscription-form").addEventListener("submit", (event) =>
+        submitForm(event, "/api/subscriptions"),
+      );
+      function setupTelemetryStream() {
+        if (!window.WebSocket) return;
+        let fallbackTimer;
+        const fallback = () => {
+          if (!fallbackTimer) fallbackTimer = setInterval(refresh, 5000);
+          $("connection").textContent = "Polling fallback";
+        };
+        try {
+          const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+          const socket = new WebSocket(`${protocol}://${window.location.host}/api/stream/ws`);
+          socket.onopen = () => {
+            if (fallbackTimer) {
+              clearInterval(fallbackTimer);
+              fallbackTimer = undefined;
+            }
+            $("connection").textContent = "Live WebSocket";
+            $("connection-dot").className = "connection-dot ok";
+          };
+          socket.onmessage = (event) => {
+            try {
+              render(JSON.parse(event.data));
+              $("connection").textContent = "Live WebSocket";
+              $("connection-dot").className = "connection-dot ok";
+            } catch (_) {}
+          };
+          socket.onerror = fallback;
+          socket.onclose = (event) => {
+            if (event && event.code === 1008) {
+              clearStaleData();
+              window.location.replace("/login");
+              return;
+            }
+            fallback();
+            window.setTimeout(setupTelemetryStream, 3000);
+          };
+        } catch (_) {
+          fallback();
+        }
+      }
+      async function initAuthWidget() {
+        try {
+          const response = await fetch("/api/auth/me");
+          if (!response.ok) {
+            window.location.replace("/login");
+            return;
+          }
+          const { user } = await response.json();
+          const widget = $("user-auth-widget");
+          widget.replaceChildren();
+          const label = document.createElement("span");
+          label.append("Signed in as ", textNode("strong", user.username));
+          const button = textNode("button", "Sign out");
+          button.type = "button";
+          button.addEventListener("click", async () => {
+            clearStaleData();
+            await fetch("/api/auth/logout", { method: "POST" });
+            window.location.replace("/login");
+          });
+          widget.append(label, button);
+        } catch (_) {
+          window.location.replace("/login");
+        }
+      }
+      async function initialize() {
+        await initAuthWidget();
+        await refresh();
+        setupTelemetryStream();
+      }
+      initialize();
+    </script>
+  </body>
+</html>

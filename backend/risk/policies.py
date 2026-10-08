@@ -18,7 +18,10 @@ class PolicyRepository(MutableMapping):
             raise KeyError(strategy)
         p = rows[0]
         return RiskPolicy(
-            Decimal(p["max_daily_loss"]), p["max_position"], p["max_orders_per_minute"]
+            Decimal(p["max_daily_loss"]),
+            p["max_position"],
+            p["max_orders_per_minute"],
+            p["max_price_deviation_bps"],
         )
 
     def __setitem__(self, strategy, policy):
@@ -30,14 +33,18 @@ class PolicyRepository(MutableMapping):
             ).fetchone():
                 raise ValueError("strategy is not subscribed")
             db.execute(
-                "INSERT INTO risk_policies VALUES (?,?,?,?) ON CONFLICT(strategy) DO UPDATE SET "
+                "INSERT INTO risk_policies "
+                "(strategy,max_daily_loss,max_position,max_orders_per_minute,max_price_deviation_bps) "
+                "VALUES (?,?,?,?,?) ON CONFLICT(strategy) DO UPDATE SET "
                 "max_daily_loss=excluded.max_daily_loss,max_position=excluded.max_position,"
-                "max_orders_per_minute=excluded.max_orders_per_minute",
+                "max_orders_per_minute=excluded.max_orders_per_minute,"
+                "max_price_deviation_bps=excluded.max_price_deviation_bps",
                 (
                     strategy,
                     str(policy.max_daily_loss),
                     policy.max_position,
                     policy.max_orders_per_minute,
+                    policy.max_price_deviation_bps,
                 ),
             )
             self.store.audit(

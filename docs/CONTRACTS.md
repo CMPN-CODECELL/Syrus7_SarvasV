@@ -184,3 +184,21 @@ Every broker adapter (including `MockBrokerAdapter` and the eventual `Broker021A
      - `POST /api/demo` (replay stream trigger)
      - `POST /api/accounts` (unauthenticated account creation)
 
+## Evidence and operations contract
+
+- Account risk and limit-price checks run inside the serialized risk gateway; strategies cannot bypass them.
+- Safety Proof and execution traces are server-built, read-only projections of persisted evidence. Missing evidence is reported as `UNKNOWN`, never inferred as safe.
+- Reconciliation reports include position differences and recovered fill identifiers. Recovery never manufactures fills.
+- Kill certificates retain stage timings and final broker/virtual evidence. A successful certificate still requires verified flat state within the deadline.
+- Operational metrics are bounded, process-local diagnostics and are not financial truth. SafetyBench uses an isolated SQLite/mock platform and is disabled for PostgreSQL and non-mock providers.
+- Failure injection remains local mock-only. No endpoint claims real 021 connectivity while provider details remain unknown.
+
+## React presentation contract
+
+- Browser sessions use the HttpOnly cookie through `credentials: include`; no token is stored in local storage.
+- Protected routes render no account data until `/api/auth/me` succeeds. HTTP 401 or WebSocket close 1008 clears the current snapshot.
+- One telemetry provider owns `/api/stream/ws`, reconnects with a bounded backoff, and refreshes from `/api/state`; pages do not open independent streams.
+- Mutations wait for backend responses and then refresh backend state. They never optimistically set `VERIFIED`, `MATCHED`, `SUCCESS`, positions, P&L, or fill status.
+- `FAILED`, `UNKNOWN`, and `SAFE_LATE` are displayed verbatim and must not be mapped to successful labels.
+- Failure Lab choices come from authenticated `GET /api/failure-lab/scenarios`; strategy choices come from `GET /api/strategies`. The UI must not maintain duplicate capability lists.
+- Nested backend evidence is rendered as labeled fields, lists, and status indicators. Raw JSON is not the user-facing representation.

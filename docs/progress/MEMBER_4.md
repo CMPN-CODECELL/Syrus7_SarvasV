@@ -179,4 +179,45 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 ## Handoff Notes
 Member 4 tasks 1 through 8 are 100% complete and fully verified. User workflows are strictly account-isolated server-side. Subscriptions, orders, fills, positions, signals, risk budgets, and execution timeline never leak across accounts. All unit tests, scenario tests, and linters pass cleanly. Ready for Task 9 market feed integration upon sponsor contract release.
 
+## 2026-10-08 — Integration baseline
+
+- Merged the latest `origin/main` account-isolation, callback-shutdown, market-session, and kill-deadline work with the evidence/telemetry layer.
+- Restored authenticated account-scoped WebSocket/SSE snapshots, direct subscription reads, reconciliation recovery evidence, and mock replay fill execution.
+- Real 021 provider details remain blocked behind adapters; this remains mock/replay evidence only.
+
+## 2026-10-08 — React frontend migration
+
+- Replaced static HTML/inline JavaScript with a React/Vite SPA and routes for all strategy, execution, safety, recovery, observability, and audit workflows.
+- Added protected session routing, centralized credentialed API calls, one account-scoped WebSocket provider with bounded reconnect, and stale-state eviction on 401/1008.
+- Added responsive shell/mobile navigation, backend-driven strategy controls, replay/reconcile/resume/kill actions, and isolated Failure Lab/SafetyBench surfaces.
+- FastAPI serves the production build with nested-route fallback; Docker builds assets in a Node stage and runs only Python/FastAPI.
+- Validation: 298 Python tests passed, 1 PostgreSQL integration skipped; 8 Vitest tests, ESLint, Ruff, and Vite build passed.
+
+## 2026-10-08 — Light responsive evidence UI
+
+- Removed dark component surfaces from authentication, navigation, evidence, and control states while retaining accessible dark text and semantic status colors.
+- Made the complete navigation fit compact desktop heights and wrap into a responsive tablet/mobile grid; constrained document overflow and retained table-local scrolling.
+- Replaced raw JSON output with recursive labeled evidence fields, status indicators, and lists sourced directly from backend responses.
+- Removed duplicate frontend capability lists: strategy kinds and Failure Lab scenarios are now discovered from backend endpoints.
+- Validation: 299 Python tests passed, 1 PostgreSQL integration skipped; 9 React tests, ESLint, Ruff, and Vite production build passed.
+
+## 2026-10-08 — Mobile navigation drawer
+
+- Replaced the mobile navigation grid with a light hamburger drawer while preserving the desktop sidebar.
+- Added overlay/Close/Escape dismissal, route-change auto-close, body scroll locking, internal overflow safety, and a persistently reachable kill control.
+- Added responsive compact-height rules so all navigation groups fit common mobile viewports while remaining scrollable on smaller displays.
+- Validation: 10 React tests, ESLint, Vite production build, 21 focused backend tests, and Ruff passed.
+
+## 2026-10-08 — Failure Lab response hardening
+
+- Prevented SPA fallback from returning HTML with HTTP 200 for unknown `/api/...` routes; unmatched APIs now return JSON 404 evidence.
+- Added centralized rejection of non-JSON API success responses and defensive validation for discovered Failure Lab scenarios and strategy capabilities.
+- Failure Lab now renders an inline error instead of crashing when an older/stale backend lacks the discovery endpoint.
+- Validation: 299 Python tests passed, 1 PostgreSQL integration skipped; 11 React tests, ESLint, Ruff, and Vite production build passed.
+
+## 2026-10-08 — Branch integration: codex/usp-evidence-layer into main
+- Successfully merged `codex/usp-evidence-layer` into `main`.
+- Preserved all Member 4 Tasks 1–8 functionality: isolated bounded callbacks/shutdown, generation invalidation, sequential indicator updates, monotonic replay, candle/session correctness, authenticated account scoping, truthful historical evidence, deterministic restart/kill scenarios, rehearsal runner (`scripts/rehearsal_runner.py`), and operational UX.
+- Standalone single-file operational dashboard preserved in `frontend/static_dashboard.html`; canonical Vite entrypoint in `frontend/index.html` with production build in `frontend/dist/`.
+- Full regression verification: 311 Python tests passing, 11 Vitest frontend tests passing, all 7 rehearsal runner scenarios passing with zero errors, Ruff/ESLint/TypeScript passing. Merge integrity tests added in `tests/test_merge_integrity.py`.
 

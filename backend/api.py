@@ -16,13 +16,14 @@ from fastapi.responses import (
 )
 from pydantic import BaseModel, ConfigDict, StrictInt, field_validator
 from psycopg.errors import UniqueViolation
+from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
 
 from backend.platform import Platform
 from backend.broker.http_adapter import HTTPMockBrokerAdapter
-from backend.reliability.failure_lab import FailureLab
+from backend.reliability.failure_lab import FailureLab, SCENARIOS
 from backend.shared.config import settings
-from backend.shared.contracts import RiskPolicy, StrategyState
+from backend.shared.contracts import AccountRiskPolicy, RiskPolicy, StrategyState
 from backend.shared.postgres import PostgresStore
 
 
@@ -71,6 +72,12 @@ class PolicyRequest(BaseModel):
     max_daily_loss: Decimal
     max_position: StrictInt
     max_orders_per_minute: StrictInt
+    max_price_deviation_bps: StrictInt = 500
+
+
+class AccountPolicyRequest(BaseModel):
+    max_net_position_per_symbol: StrictInt | None = None
+    max_gross_virtual_position_per_symbol: StrictInt | None = None
 
 
 class StrategyStateRequest(BaseModel):
@@ -79,6 +86,10 @@ class StrategyStateRequest(BaseModel):
 
 class MarketSessionRequest(BaseModel):
     status: str
+
+
+class SafetyBenchRequest(BaseModel):
+    iterations: StrictInt = 1
 
 
 class RegisterRequest(BaseModel):
@@ -155,6 +166,11 @@ def create_app(platform=None):
     app = FastAPI(title="AlgoShield mock control plane", lifespan=lifespan)
     app.state.platform = engine
     session_cookie = "algoshield_session"
+    frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+    if (frontend_dist / "assets").is_dir():
+        app.mount(
+            "/assets", StaticFiles(directory=frontend_dist / "assets"), name="assets"
+        )
 
     def request_token(request: Request) -> str:
         auth_header = request.headers.get("Authorization", "")
@@ -166,6 +182,28 @@ def create_app(platform=None):
         user = engine.auth.verify_token(request_token(request))
         if not user:
             raise HTTPException(401, "authentication required")
+        return user
+
+    def require_strategy_owner(request: Request, strategy: str):
+        user = require_user(request)
+        rows = engine.store.rows(
+            "SELECT account FROM subscriptions WHERE id=?", (strategy,)
+        )
+        if not rows:
+            raise HTTPException(404, "strategy subscription not found")
+        if rows[0]["account"] != user["account_id"]:
+            raise HTTPException(
+                403, "access denied: strategy belongs to another account"
+            )
+        return user
+
+    def require_order_owner(request: Request, order_id: str):
+        user = require_user(request)
+        rows = engine.store.rows("SELECT account FROM orders WHERE id=?", (order_id,))
+        if not rows:
+            raise HTTPException(404, "order not found")
+        if rows[0]["account"] != user["account_id"]:
+            raise HTTPException(403, "order belongs to another account")
         return user
 
     def set_session_cookie(response, token: str):
@@ -189,21 +227,27 @@ def create_app(platform=None):
     def dashboard(request: Request):
         if not engine.auth.verify_token(request_token(request)):
             return RedirectResponse("/login", status_code=303)
-        return FileResponse(
-            Path(__file__).resolve().parent.parent / "frontend/index.html"
-        )
+        if not (frontend_dist / "index.html").is_file():
+            raise HTTPException(
+                503, "React build missing; run npm --prefix frontend run build"
+            )
+        return FileResponse(frontend_dist / "index.html")
 
     @app.get("/login")
     def login_page():
-        return FileResponse(
-            Path(__file__).resolve().parent.parent / "frontend/login.html"
-        )
+        if not (frontend_dist / "index.html").is_file():
+            raise HTTPException(
+                503, "React build missing; run npm --prefix frontend run build"
+            )
+        return FileResponse(frontend_dist / "index.html")
 
     @app.get("/register")
     def register_page():
-        return FileResponse(
-            Path(__file__).resolve().parent.parent / "frontend/register.html"
-        )
+        if not (frontend_dist / "index.html").is_file():
+            raise HTTPException(
+                503, "React build missing; run npm --prefix frontend run build"
+            )
+        return FileResponse(frontend_dist / "index.html")
 
     @app.post("/api/auth/register", status_code=201)
     def register(body: RegisterRequest, response: Response):
@@ -256,7 +300,7 @@ def create_app(platform=None):
     @app.get("/api/state")
     def state(request: Request):
         user = require_user(request)
-        return financial_json(engine.snapshot(account_id=user["account_id"]))
+        return financial_json(engine.snapshot(user["account_id"]))
 
     @app.get("/api/stream/telemetry")
     async def stream_telemetry(
@@ -267,13 +311,11 @@ def create_app(platform=None):
         user = engine.auth.verify_token(token)
         if not user:
             raise HTTPException(401, "authentication required")
-
         account_id = user["account_id"]
 
         async def event_generator():
             count = 0
-            current_user = engine.auth.verify_token(token)
-            if not current_user:
+            if not engine.auth.verify_token(token):
                 return
             snapshot = engine.snapshot(account_id=account_id)
             payload = json.dumps(
@@ -285,9 +327,10 @@ def create_app(platform=None):
                 return
             try:
                 while True:
+                    if await request.is_disconnected():
+                        break
                     await asyncio.sleep(0.1)
-                    current_user = engine.auth.verify_token(token)
-                    if not current_user:
+                    if not engine.auth.verify_token(token):
                         break
                     snapshot = engine.snapshot(account_id=account_id)
                     payload = json.dumps(
@@ -322,18 +365,15 @@ def create_app(platform=None):
             auth_header = websocket.headers.get("authorization", "")
             if auth_header.startswith("Bearer "):
                 token = auth_header.removeprefix("Bearer ").strip()
-
         user = engine.auth.verify_token(token)
         if not user:
             await websocket.close(code=1008, reason="authentication required")
             return
-
         await websocket.accept()
         account_id = user["account_id"]
         try:
             while True:
-                current_user = engine.auth.verify_token(token)
-                if not current_user:
+                if not engine.auth.verify_token(token):
                     await websocket.close(code=1008, reason="session expired")
                     break
                 snapshot = engine.snapshot(account_id=account_id)
@@ -363,7 +403,8 @@ def create_app(platform=None):
         return engine.history("orders", limit, offset, account_id=user["account_id"])
 
     @app.post("/api/orders/{order_id}/cancel")
-    def cancel_order(order_id: str):
+    def cancel_order(order_id: str, request: Request):
+        require_order_owner(request, order_id)
         try:
             return financial_json(engine.cancel(order_id))
         except ValueError as exc:
@@ -372,20 +413,24 @@ def create_app(platform=None):
             raise HTTPException(400, str(exc)) from None
 
     @app.post("/api/broker/updates/sync")
-    def sync_broker_updates():
+    def sync_broker_updates(request: Request):
+        require_user(request)
         results = engine.sync_broker_updates()
         return financial_json({"processed": len(results), "updates": results})
 
     @app.post("/api/broker/disconnect")
-    def disconnect_broker():
+    def disconnect_broker(request: Request):
+        require_user(request)
         return financial_json(engine.disconnect_broker())
 
     @app.post("/api/broker/reconnect")
-    def reconnect_broker():
+    def reconnect_broker(request: Request):
+        require_user(request)
         return financial_json(engine.reconnect_broker())
 
     @app.post("/api/accounts", status_code=201)
-    def account(body: AccountRequest):
+    def account(body: AccountRequest, request: Request):
+        require_user(request)
         try:
             engine.account(body.account_id)
         except (sqlite3.IntegrityError, UniqueViolation):
@@ -401,17 +446,13 @@ def create_app(platform=None):
         return financial_json(engine.market_session.to_dict(engine.clock()))
 
     @app.post("/api/market/session")
-    def set_market_session(body: MarketSessionRequest):
+    def set_market_session(body: MarketSessionRequest, request: Request):
+        require_user(request)
         try:
             engine.market_session.set_status(body.status)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from None
         return financial_json(engine.market_session.to_dict(engine.clock()))
-
-    @app.get("/api/subscriptions")
-    def list_subscriptions(request: Request):
-        user = require_user(request)
-        return engine.snapshot(account_id=user["account_id"])["subscriptions"]
 
     @app.post("/api/subscriptions", status_code=201)
     def subscribe(body: SubscriptionRequest, request: Request):
@@ -422,40 +463,28 @@ def create_app(platform=None):
             )
         except (sqlite3.IntegrityError, UniqueViolation):
             raise HTTPException(409, "strategy instance exists") from None
+        return engine.snapshot(user["account_id"])["subscriptions"]
+
+    @app.get("/api/subscriptions")
+    def subscriptions(request: Request):
+        user = require_user(request)
         return engine.snapshot(account_id=user["account_id"])["subscriptions"]
 
     @app.post("/api/subscriptions/{strategy_instance_id}/start")
     def start_subscription(strategy_instance_id: str, request: Request):
-        user = require_user(request)
-        rows = engine.store.rows(
-            "SELECT account FROM subscriptions WHERE id=?", (strategy_instance_id,)
-        )
-        if not rows:
-            raise HTTPException(404, "subscription does not exist")
-        if rows[0]["account"] != user["account_id"]:
-            raise HTTPException(
-                403, "access denied: subscription belongs to another account"
-            )
+        user = require_strategy_owner(request, strategy_instance_id)
         engine.strategies.set_enabled(user["account_id"], strategy_instance_id, True)
-        return engine.snapshot(account_id=user["account_id"])["subscriptions"]
+        return engine.snapshot(user["account_id"])["subscriptions"]
 
     @app.post("/api/subscriptions/{strategy_instance_id}/stop")
     def stop_subscription(strategy_instance_id: str, request: Request):
-        user = require_user(request)
-        rows = engine.store.rows(
-            "SELECT account FROM subscriptions WHERE id=?", (strategy_instance_id,)
-        )
-        if not rows:
-            raise HTTPException(404, "subscription does not exist")
-        if rows[0]["account"] != user["account_id"]:
-            raise HTTPException(
-                403, "access denied: subscription belongs to another account"
-            )
+        user = require_strategy_owner(request, strategy_instance_id)
         engine.strategies.set_enabled(user["account_id"], strategy_instance_id, False)
-        return engine.snapshot(account_id=user["account_id"])["subscriptions"]
+        return engine.snapshot(user["account_id"])["subscriptions"]
 
     @app.post("/api/demo")
-    def demo():
+    def demo(request: Request):
+        user = require_user(request)
         if not engine.demo_enabled:
             raise HTTPException(403, "replay demo is disabled for this database")
         # A restart begins RECOVERING. A deliberate replay action may perform
@@ -463,17 +492,19 @@ def create_app(platform=None):
         # bypass an actual drift/uncertainty result.
         if engine.risk.state == "RECOVERING" and not engine.reliability.reconcile():
             raise HTTPException(409, "reconciliation required")
-        state = engine.demo()
+        engine.demo(user["account_id"])
         engine.start_replay_stream()
-        return financial_json(state)
+        return financial_json(engine.snapshot(user["account_id"]))
 
     @app.put("/api/risk/policies/{strategy}")
-    def policy(strategy: str, body: PolicyRequest):
+    def policy(strategy: str, body: PolicyRequest, request: Request):
+        require_strategy_owner(request, strategy)
         engine.risk.policies[strategy] = RiskPolicy(**body.model_dump())
         return financial_json(engine.risk.policies[strategy])
 
     @app.put("/api/risk/strategies/{strategy}")
-    def strategy_control(strategy: str, body: StrategyStateRequest):
+    def strategy_control(strategy: str, body: StrategyStateRequest, request: Request):
+        require_strategy_owner(request, strategy)
         engine.risk.set_strategy_state(strategy, body.state)
         return {
             "strategy_instance_id": strategy,
@@ -487,12 +518,72 @@ def create_app(platform=None):
             engine.snapshot(account_id=user["account_id"])["risk_budgets"]
         )
 
+    @app.get("/api/risk/account-policy")
+    def get_account_policy(request: Request):
+        user = require_user(request)
+        return engine.risk.account_policies.get(user["account_id"]).__dict__
+
+    @app.put("/api/risk/account-policy")
+    def set_account_policy(body: AccountPolicyRequest, request: Request):
+        user = require_user(request)
+        policy = AccountRiskPolicy(**body.model_dump())
+        return engine.risk.account_policies.set(user["account_id"], policy).__dict__
+
+    @app.get("/api/safety-proof")
+    def safety_proof(request: Request):
+        require_user(request)
+        return financial_json(engine.safety_proof.build())
+
+    @app.get("/api/reconciliation")
+    def reconciliation_center(request: Request):
+        require_user(request)
+        return financial_json(engine.reliability.reconciliation_center())
+
+    @app.get("/api/traces")
+    def recent_traces(request: Request, limit: int = Query(20, ge=1, le=100)):
+        user = require_user(request)
+        return financial_json(engine.traces.recent_traces(limit, user["account_id"]))
+
+    @app.get("/api/traces/{trace_id}")
+    def trace(trace_id: str, request: Request):
+        user = require_user(request)
+        try:
+            return financial_json(engine.traces.trace(trace_id, user["account_id"]))
+        except PermissionError:
+            raise HTTPException(403, "trace belongs to another account") from None
+
+    @app.get("/api/metrics")
+    def metrics(request: Request):
+        require_user(request)
+        return financial_json(engine.metrics.snapshot())
+
+    @app.post("/api/safety-bench/run")
+    def run_safety_bench(body: SafetyBenchRequest, request: Request):
+        require_user(request)
+        engine.require_offline_demo()
+        return financial_json(engine.safety_bench.run(body.iterations))
+
+    @app.get("/api/safety-bench/latest")
+    def latest_safety_bench(request: Request):
+        require_user(request)
+        result = engine.safety_bench.latest()
+        if result is None:
+            raise HTTPException(404, "no completed SafetyBench run")
+        return financial_json(result)
+
+    @app.get("/api/failure-lab/scenarios")
+    def failure_lab_scenarios(request: Request):
+        require_user(request)
+        return {"scenarios": sorted(SCENARIOS)}
+
     @app.post("/api/failure-lab/{scenario}")
-    def failure_lab(scenario: str):
+    def failure_lab(scenario: str, request: Request):
+        require_user(request)
         return financial_json(FailureLab(engine).run(scenario))
 
     @app.post("/api/reconcile")
-    def reconcile():
+    def reconcile(request: Request):
+        require_user(request)
         return financial_json(
             {
                 "reconciled": engine.reliability.reconcile(),
@@ -501,22 +592,38 @@ def create_app(platform=None):
         )
 
     @app.post("/api/resume")
-    def resume():
+    def resume(request: Request):
+        require_user(request)
         engine.reliability.resume()
         return financial_json(engine.snapshot())
 
     @app.post("/api/reduce-only")
-    def reduce_only():
+    def reduce_only(request: Request):
+        require_user(request)
         engine.reliability.resume(reduce_only=True)
         return financial_json(engine.snapshot())
 
     @app.post("/api/kill/reset")
-    def reset_kill():
+    def reset_kill(request: Request):
+        require_user(request)
         engine.reliability.reset_kill()
         return financial_json(engine.snapshot())
 
     @app.post("/api/kill")
-    def kill():
+    def kill(request: Request):
+        require_user(request)
         return engine.kill()
+
+    @app.get("/{spa_path:path}", include_in_schema=False)
+    def spa_fallback(spa_path: str, request: Request):
+        if spa_path == "api" or spa_path.startswith("api/"):
+            raise HTTPException(404, "API endpoint not found")
+        if not engine.auth.verify_token(request_token(request)):
+            return RedirectResponse("/login", status_code=303)
+        if not (frontend_dist / "index.html").is_file():
+            raise HTTPException(
+                503, "React build missing; run npm --prefix frontend run build"
+            )
+        return FileResponse(frontend_dist / "index.html")
 
     return app

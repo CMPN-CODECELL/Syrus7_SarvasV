@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.pytest-tmp*/
 .pytest-tmp/
 .ruff_cache/
 .venv/
@@ -23,3 +24,5 @@ data/
 .agents/
 skills-lock.json
 node_modules/
+frontend/dist/
+frontend/coverage/

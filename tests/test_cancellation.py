@@ -9,6 +9,7 @@ from backend.shared.contracts import (
     OrderStatus,
 )
 from test_recovery import intent, ready
+from tests.usp_helpers import authenticate
 
 
 def test_cancel_open_order():
@@ -237,6 +238,7 @@ def test_cancel_api_endpoint():
 
     app = create_app(p)
     with TestClient(app) as client:
+        authenticate(client, p)
         # Cancel existing order
         resp = client.post("/api/orders/ord-api/cancel")
         assert resp.status_code == 200

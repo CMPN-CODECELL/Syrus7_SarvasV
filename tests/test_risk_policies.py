@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from backend.api import create_app
 from backend.platform import Platform
 from backend.shared.contracts import OrderIntent, RiskPolicy, Side, StrategyState, Tick
+from tests.usp_helpers import authenticate
 
 
 def subscribed(path=":memory:", broker=None, clock=lambda: 1_700_000_000):
@@ -83,6 +84,7 @@ def test_budget_tracks_reservation_conversion_and_release():
 def test_policy_api_changes_authoritative_risk():
     p = subscribed()
     with TestClient(create_app(p)) as client:
+        authenticate(client, p)
         assert (
             client.put(
                 "/api/risk/policies/A",
@@ -102,7 +104,7 @@ def test_policy_api_changes_authoritative_risk():
         assert (
             p.risk.submit(request(p, "halted", 1)).reason_code == "RISK_STRATEGY_HALTED"
         )
-        assert client.get("/api/risk/budgets").status_code == 401
+        assert client.get("/api/risk/budgets").json()[0]["state"] == "HALTED"
         tok = p.auth.register("trader_a", "password123", account_id="a")["token"]
         client.cookies.set("algoshield_session", tok)
         assert client.get("/api/risk/budgets").json()[0]["state"] == "HALTED"
@@ -115,7 +117,7 @@ def test_policy_api_changes_authoritative_risk():
                     "max_orders_per_minute": 2,
                 },
             ).status_code
-            == 409
+            == 404
         )
     p.store.close()
 
@@ -124,6 +126,41 @@ def test_lower_policy_does_not_drop_existing_reservations():
     p = subscribed()
     p.risk.submit(request(p, "one", 100))
     p.risk.policies["A"] = RiskPolicy(max_position=50)
-    assert p.risk.submit(request(p, "two", 1)).reason_code == "RISK_MAX_POSITION"
+    decision = p.risk.submit(request(p, "two", 1))
+    assert decision.reason_code == "RISK_MAX_POSITION"
+    assert "REJECTED — POSITION LIMIT" in decision.reason_text
+    assert (
+        "Current: 0, Pending: 100, Requested: 1, Projected: 101, Limit: 50"
+        in decision.reason_text
+    )
     assert p.risk.budget("a", "A", "X")["position"]["reserved_buy"] == 100
+    p.store.close()
+
+
+def test_structured_risk_decision_reason_codes():
+    p = subscribed()
+    p.risk.policies["A"] = RiskPolicy(
+        max_daily_loss=Decimal("100"),
+        max_position=10,
+        max_orders_per_minute=2,
+    )
+    # Rate limit test
+    d1 = p.risk.submit(request(p, "r1", 1))
+    assert d1.allowed
+    d2 = p.risk.submit(request(p, "r2", 1))
+    assert d2.allowed
+    d3 = p.risk.submit(request(p, "r3", 1))
+    assert not d3.allowed
+    assert d3.reason_code == "RISK_RATE_LIMIT"
+    assert (
+        "REJECTED — RATE LIMIT: Consumed: 2, Requested: 1, Limit: 2 orders/min"
+        in d3.reason_text
+    )
+
+    # Global gate test
+    p.risk.kill_requested.set()
+    d4 = p.risk.submit(request(p, "r4", 1))
+    assert not d4.allowed
+    assert d4.reason_code == "RISK_GLOBAL_GATE"
+    assert "REJECTED — GLOBAL GATE" in d4.reason_text
     p.store.close()

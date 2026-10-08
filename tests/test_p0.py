@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 from backend.api import create_app
 from backend.platform import Platform
+from tests.usp_helpers import authenticate
 
 
 def test_replay_survives_real_platform_recreation(tmp_path):
@@ -24,6 +25,7 @@ def test_replay_survives_real_platform_recreation(tmp_path):
 def test_failure_lab_exposes_real_partial_rejection_and_risk():
     p = Platform()
     with TestClient(create_app(p)) as client:
+        authenticate(client, p, "failure-lab", "pzero-user")
         partial = client.post("/api/failure-lab/partial").json()
         assert partial["state"]["orders"][-1]["filled"] == 40
         assert partial["state"]["positions"][-1]["net_quantity"] == 40

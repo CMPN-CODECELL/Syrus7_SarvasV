@@ -1,7 +1,9 @@
 # AlgoShield â€” Demo, Rehearsal & Debug Guide
 
 ## Overview
-This document outlines deterministic demonstration scenarios, execution commands, and a step-by-step 4â€“5 minute live walkthrough script for technical vivas, hackathon evaluation, and regression validation.
+This document outlines deterministic demonstration scenarios, execution commands, and a step-by-step 4–5 minute live walkthrough script for technical vivas, hackathon evaluation, and regression validation.
+
+Start using README commands. The React operational dashboard is split into Overview, Strategies, Orders, Risk, Reconciliation, Traces, Failure Lab, SafetyBench, Metrics, Market Data, and Audit routes. Run replay, inspect subscriptions, strategy signal evidence, attributed fills, both candle intervals, independent virtual positions, market-data counters and backend health. Demo ends STOPPED after reconciliation; enabled subscriptions show READY rather than pretending to run. Per-strategy stop/start is durable and risk-enforced. Kill produces actual mock closing fills and a verified certificate; failed/late results must remain visible.
 
 All scenarios execute authentic platform workflows:
 `Strategy Callback -> OrderIntent -> RiskGateway -> OrderManager -> MockBroker -> Fills -> Ledger`.

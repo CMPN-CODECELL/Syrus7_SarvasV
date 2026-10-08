@@ -10,6 +10,7 @@ from backend.broker.adapters import MockBrokerAdapter
 from backend.market_data.candles import CandleBuilder
 from backend.platform import Platform
 from backend.shared.contracts import OrderIntent, RiskPolicy, Side, Tick
+from tests.usp_helpers import authenticate
 
 
 class Clock:
@@ -262,6 +263,7 @@ def test_candles_boundary_duplicate_late():
 def test_api_vertical_slice():
     p = Platform()
     with TestClient(create_app(p)) as client:
+        authenticate(client, p, "demo", "safety-user")
         assert client.get("/health").json()["trading"] == "RECOVERING"
         assert client.get("/").status_code == 200
         response = client.post("/api/demo")

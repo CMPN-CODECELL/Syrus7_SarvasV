@@ -68,3 +68,9 @@ Expose live invariant status:
 
 ## Bootstrap limits
 Mock tests encode I1-I10. The implementation assumes one process and serialized callbacks; real network deadlines, durable kill latch, feed freshness and arbitrary-code isolation are required before live execution. The dashboard reports gate/health and execution evidence, not a fabricated universal invariant pass. See PHASE_PLAN.md.
+
+## Runtime Safety Proof projection
+
+The read-only proof service exposes current evidence for: broker bypass prevention; fill-derived positions; fill idempotency; attribution; position-policy evidence; global gate/runtime consistency; restart reconciliation/resume ordering; fresh broker reconciliation; kill completion; and unknown-state containment. Historical policy reconstruction remains `UNKNOWN` where authoritative history is unavailable. Stale reconciliation, broker or feed evidence cannot be presented as verified. A STOPPED/KILLED platform may still be safe because proof verdict and trading state are separate.
+
+Account net/gross checks and strategy checks reserve under the same process lock. Pending BUY and SELL endpoints are evaluated independently. Existing over-limit exposure may strictly reduce but may not increase. LIMIT-price reasonability uses only a fresh mark and Decimal arithmetic.

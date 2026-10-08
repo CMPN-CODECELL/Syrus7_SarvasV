@@ -3,6 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 from backend.api import create_app
 from backend.platform import Platform
+from tests.usp_helpers import authenticate
 
 
 @pytest.mark.parametrize(
@@ -21,6 +22,7 @@ from backend.platform import Platform
 def test_failure_lab_evidence(scenario):
     p = Platform()
     with TestClient(create_app(p)) as client:
+        authenticate(client, p, "failure-lab", f"user-{scenario}")
         response = client.post("/api/failure-lab/" + scenario)
         assert response.status_code == 200
         result = response.json()
@@ -64,9 +66,21 @@ def test_failure_lab_evidence(scenario):
     p.store.close()
 
 
+def test_failure_lab_scenarios_are_discovered_from_backend():
+    p = Platform()
+    with TestClient(create_app(p)) as client:
+        authenticate(client, p, "failure-lab", "scenario-list-user")
+        response = client.get("/api/failure-lab/scenarios")
+        assert response.status_code == 200
+        assert response.json()["scenarios"] == sorted(response.json()["scenarios"])
+        assert "duplicate_fill" in response.json()["scenarios"]
+    p.store.close()
+
+
 def test_disconnect_reconnect_requires_verification():
     p = Platform()
     with TestClient(create_app(p)) as client:
+        authenticate(client, p, "failure-lab", "disconnect-user")
         assert (
             client.post("/api/failure-lab/disconnect").json()["state"]["gate"]
             == "UNCERTAIN"

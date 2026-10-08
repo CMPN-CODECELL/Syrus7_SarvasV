@@ -146,4 +146,21 @@ Neon CLI 8.0.11 installed. Requested project/branch not yet authenticated/linked
   - Corrected Task 7 position arithmetic in `backend/demo_scenarios.py` using actual ledger aggregate sums (`p.ledger.aggregate().get((acc, "TCS"), 0)`).
   - Validated across all 282 regression tests, 7 rehearsal runner scenarios, and linters. Full Member 4 scope (Tasks 1–8) complete.
 
+- 2026-10-08 USP integration: added authenticated account-scoped control-plane boundaries, explainable risk evidence, durable account net/gross and LIMIT-price policy, conservative Safety Proof, reconciliation delta/recovery projection, trace correlation, Failure Lab V2, Kill Certificate V2, bounded metrics, isolated 19-case SafetyBench and responsive operational UI. Additive SQLite migrations 008-011 and PostgreSQL migrations 007-010 are packaged. Regression: 280 passed / 1 PostgreSQL integration skipped; Ruff and frontend syntax clean. Live 021 and remote Neon remain blocked/unclaimed.
+- 2026-10-08 React migration: synced latest main, preserved account isolation/deadline/callback fixes, and replaced legacy pages with a modular React/Vite SPA. Added protected routes, central cookie API client, one authenticated WebSocket provider, operational/USP pages, truthful safety label tests, FastAPI SPA fallback, and multi-stage Docker delivery. Regression: 298 Python passed / 1 PostgreSQL skipped; 8 frontend tests, ESLint, Ruff, and production build passed. Live 021 and remote Neon remain blocked/unclaimed.
+- 2026-10-08 Safe merge of `codex/usp-evidence-layer` (7901702) into `main` (ff1848e):
+  - Base commit: `27310237143fd0690d89fe245da9b0c0bc54b3e7`.
+  - Preserved Member 4 Tasks 1–8: rehearsal runner (`backend/demo_scenarios.py`, `scripts/rehearsal_runner.py`, `tests/test_demo_scenarios.py`), standalone operational dashboard (`frontend/static_dashboard.html`), monotonic replay streams, authenticated account scoping, and honest non-bypassable safety state machines.
+  - Preserved USP evidence layer: explainable risk rules, account policies, conservative Safety Proof, server-built execution traces, Failure Lab V2, Kill Certificate V2, bounded metrics, isolated SafetyBench, and React/Vite SPA (`frontend/src/` with production build in `frontend/dist/`).
+  - Resolved material conflicts semantically:
+    - `docs/DEMO_AND_DEBUG.md`: Combined overview linking deterministic scenarios, debugging guide, and React operational dashboard routes.
+    - `frontend/index.html`: Maintained as canonical Vite/React SPA HTML shell; preserved Task 8 monolithic static dashboard in `frontend/static_dashboard.html`.
+    - `conftest.py`: Added root test harness ensuring `tests/` and `usp_helpers` resolve cleanly across all test environments without package shadowing.
+  - Regression validation:
+    - Python tests: 311 passed / 1 skipped (PostgreSQL).
+    - Vitest frontend tests: 11 passed across 4 test suites.
+    - Deterministic rehearsal runner: all 7 scenarios passed with zero errors.
+    - Ruff check, Ruff format, ESLint, and `npm run check` (TypeScript) all clean.
+    - Added merge integrity regression tests in `tests/test_merge_integrity.py`.
+    - Browser testing: live desktop/mobile browser validation pending automated driver execution.
 

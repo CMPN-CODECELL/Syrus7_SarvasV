@@ -1,5 +1,6 @@
 import json
 from decimal import Decimal as D
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -229,14 +230,17 @@ def test_subscription_api_normalizes_inputs_and_controls_state():
         assert registered.status_code == 201
         dashboard = client.get("/")
         assert dashboard.status_code == 200
-        assert "Independent strategy ledgers" in dashboard.text
-        assert 'id="account-form"' not in dashboard.text
-        assert 'name="account_id"' not in dashboard.text
-        assert 'id="subscription-form"' in dashboard.text
-        assert "RSI reversal" in dashboard.text
-        assert 'id="safety-state"' not in dashboard.text
-        assert 'class="safety-strip"' in dashboard.text
-        assert 'id="signals"' in dashboard.text
+        assert 'id="root"' in dashboard.text
+        strategies_source = (
+            Path(__file__).resolve().parent.parent
+            / "frontend/src/pages/StrategiesPage.jsx"
+        ).read_text(encoding="utf-8")
+        assert "Independent strategy ledgers" in strategies_source
+        assert any(
+            item["kind"] == "rsi_reversal"
+            for item in client.get("/api/strategies").json()
+        )
+        assert "account_id" not in strategies_source
         response = client.post(
             "/api/subscriptions",
             json={
@@ -268,15 +272,30 @@ def test_subscription_api_normalizes_inputs_and_controls_state():
 def test_demo_is_forbidden_when_persistent_mode_disables_it():
     platform = Platform(demo_enabled=False)
     with TestClient(create_app(platform)) as client:
+        assert (
+            client.post(
+                "/api/auth/register",
+                json={"username": "persistent", "password": "password123"},
+            ).status_code
+            == 201
+        )
         response = client.post("/api/demo")
         assert response.status_code == 403
-        assert not platform.store.rows("SELECT id FROM accounts")
+        assert not platform.store.rows("SELECT id FROM subscriptions")
+        assert not platform.store.rows("SELECT id FROM orders")
     platform.store.close()
 
 
 def test_api_preserves_money_and_prices_as_decimal_strings():
     platform = Platform()
     with TestClient(create_app(platform)) as client:
+        assert (
+            client.post(
+                "/api/auth/register",
+                json={"username": "decimal", "password": "password123"},
+            ).status_code
+            == 201
+        )
         response = client.post("/api/demo")
         assert response.status_code == 200
         state = response.json()
