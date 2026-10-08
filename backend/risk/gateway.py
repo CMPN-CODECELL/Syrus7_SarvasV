@@ -177,15 +177,13 @@ class RiskGateway:
     def submit(self, intent):
         # Atomically reserve; network waits never hold the control-plane lock.
         with self.store.lock:
-            reason, projected = self._check(intent)
+            reason, projected, reason_text = self._check(intent)
             decision = RiskDecision(
                 intent.intent_id,
                 not reason,
                 reason or "ALLOWED",
                 projected,
-                reason.replace("_", " ").lower()
-                if reason
-                else "platform risk approved",
+                reason_text or ("platform risk approved" if not reason else reason.replace("_", " ").lower()),
                 (reason or "ALL_RULES_PASSED",),
                 self.clock(),
                 intent.intent_id if not reason else None,
@@ -217,26 +215,33 @@ class RiskGateway:
 
     def _check(self, intent):
         if self.kill_requested.is_set():
-            return "RISK_GLOBAL_GATE", None
+            return "RISK_GLOBAL_GATE", None, "REJECTED — GLOBAL GATE: Kill requested"
         if self.state not in {
             GlobalTradingState.RUNNING,
             GlobalTradingState.REDUCE_ONLY,
         } or self.safety.get("kill_latched", False):
-            return "RISK_GLOBAL_GATE", None
+            return "RISK_GLOBAL_GATE", None, f"REJECTED — GLOBAL GATE: Trading gate is {self.state.value} (kill_latched={self.safety.get('kill_latched', False)})"
         if self.store.rows("SELECT id FROM orders WHERE id=?", (intent.intent_id,)):
-            return "RISK_DUPLICATE_INTENT", None
+            return "RISK_DUPLICATE_INTENT", None, f"REJECTED — DUPLICATE INTENT: Order ID {intent.intent_id} already exists"
         subscriptions = self.store.rows(
             "SELECT enabled FROM subscriptions WHERE id=? AND account=? AND symbol=?",
             (intent.strategy_instance_id, intent.account_id, intent.symbol),
         )
         if not subscriptions:
-            return "RISK_NOT_SUBSCRIBED", None
+            return "RISK_NOT_SUBSCRIBED", None, f"REJECTED — NOT SUBSCRIBED: {intent.strategy_instance_id} not subscribed for {intent.symbol}"
         if not subscriptions[0]["enabled"]:
-            return "RISK_STRATEGY_STOPPED", None
+            return "RISK_STRATEGY_STOPPED", None, f"REJECTED — STRATEGY STOPPED: Strategy {intent.strategy_instance_id} is disabled"
         policy = self.policies.get(intent.strategy_instance_id, RiskPolicy())
         unsafe = self.evidence_gate(intent)
         if unsafe:
-            return unsafe, None
+            unsafe_texts = {
+                "RISK_RECONCILIATION_REQUIRED": "REJECTED — RECONCILIATION REQUIRED: System requires verified broker reconciliation",
+                "RISK_STALE_BROKER_STATE": "REJECTED — STALE BROKER STATE: Broker snapshot exceeds freshness threshold",
+                "RISK_STALE_MARKET_DATA": "REJECTED — STALE MARKET DATA: Feed age exceeds 15-second freshness threshold",
+                "RISK_MARKET_HALTED": "REJECTED — MARKET HALTED: Market trading is currently halted",
+                "RISK_MARKET_CLOSED": "REJECTED — MARKET CLOSED: Market session is closed",
+            }
+            return unsafe, None, unsafe_texts.get(unsafe, f"REJECTED — SAFETY GATE: {unsafe}")
         budget = self.budget(
             intent.account_id, intent.strategy_instance_id, intent.symbol
         )
@@ -249,7 +254,7 @@ class RiskGateway:
         )
         reduce_only = self.state == GlobalTradingState.REDUCE_ONLY
         if reduce_only and not reducing:
-            return "RISK_NOT_REDUCING", None
+            return "RISK_NOT_REDUCING", None, f"REJECTED — NOT REDUCING: Gate is REDUCE_ONLY and intent does not reduce position {q}"
         if budget["daily_loss"]["consumed"] >= policy.max_daily_loss:
             self.set_strategy_state(
                 intent.strategy_instance_id,
@@ -257,27 +262,38 @@ class RiskGateway:
                 "RISK_MAX_DAILY_LOSS",
             )
             if not (reduce_only and reducing):
-                return "RISK_MAX_DAILY_LOSS", None
+                return (
+                    "RISK_MAX_DAILY_LOSS",
+                    None,
+                    f"REJECTED — DAILY LOSS LIMIT: Consumed: ₹{budget['daily_loss']['consumed']:.2f}, Limit: ₹{policy.max_daily_loss:.2f}",
+                )
         strategy_state = self.strategy_state(intent.strategy_instance_id)
         if strategy_state == StrategyState.HALTED or (
             strategy_state == StrategyState.LOSS_HALTED
             and not (reduce_only and reducing)
         ):
-            return "RISK_STRATEGY_HALTED", None
+            return "RISK_STRATEGY_HALTED", None, f"REJECTED — STRATEGY HALTED: Strategy is in {strategy_state.value} state"
         if budget["rate"]["consumed"] >= policy.max_orders_per_minute:
-            return "RISK_RATE_LIMIT", None
+            return (
+                "RISK_RATE_LIMIT",
+                None,
+                f"REJECTED — RATE LIMIT: Consumed: {budget['rate']['consumed']}, Requested: 1, Limit: {policy.max_orders_per_minute} orders/min",
+            )
         buys, sells = (
             budget["position"]["reserved_buy"],
             budget["position"]["reserved_sell"],
         )
+        pending = buys if intent.side == Side.BUY else sells
         if intent.side == Side.BUY:
             buys += intent.quantity
         else:
             sells += intent.quantity
         # Opposing pending orders cannot be assumed to offset each other.
         projected = max(abs(q + buys), abs(q - sells))
-        return (
-            "RISK_MAX_POSITION"
-            if projected > policy.max_position and not (reduce_only and reducing)
-            else ""
-        ), projected
+        if projected > policy.max_position and not (reduce_only and reducing):
+            return (
+                "RISK_MAX_POSITION",
+                projected,
+                f"REJECTED — POSITION LIMIT: Current: {q}, Pending: {pending}, Requested: {intent.quantity}, Projected: {projected}, Limit: {policy.max_position}",
+            )
+        return "", projected, "platform risk approved"
