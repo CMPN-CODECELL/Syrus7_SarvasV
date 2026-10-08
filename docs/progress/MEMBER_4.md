@@ -62,6 +62,17 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
   never automatically restarts after recovery or reconciliation. Kept replay explicitly mock-only
   and preserved broker freshness fail-closed checks. Added comprehensive tests in
   `tests/test_replay_stream.py`. Full test suite: 237 passed / 1 skipped; Ruff check and format passed.
+- 2026-10-08: Task 3 candle correctness audit and regression coverage completed.
+  Audited `CandleBuilder` and simulation generator against timestamp, volume, gap, and late-tick
+  policies. Verified exact half-open `[start, end)` buckets where boundary ticks belong to the succeeding
+  candle; verified per-tick volume accumulation and symbol independence; verified identical duplicates
+  affect neither candles nor marks; verified conflicting duplicates and late ticks fail closed; verified
+  bounded dedupe eviction never silently double-counts prior events; verified missing intervals create
+  no invented gap candles; verified final incomplete candles emit no strategy signals. Fixed kill wiring
+  ordering in `Platform.kill`: admission gate is now closed (`kill_requested.set()`, `kill_latched=True`,
+  `risk.state=KILLING`, `strategies.enabled=False`) BEFORE joining/waiting on the replay thread. Documented
+  policies in `docs/CONTRACTS.md`. Added regression test suite in `tests/test_candle_correctness.py`. Full
+  test suite: 246 passed / 1 skipped; Ruff check and format passed.
 
 
 ## In Progress

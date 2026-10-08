@@ -42,6 +42,15 @@ Strategy signal, sanitized callback-failure and rejected-market-data events prov
 - Bounded concurrency limits active threads: repeated hangs cannot create unlimited workers.
 - Trusted callback limit: threads provide latency isolation and fail-closed timeout bounding; they are not an arbitrary-code security sandbox against CPU spinning or malicious bytecode.
 
+## Candle and Market Data Processing Contract
+
+- **Timestamp Policy**: UTC epoch integer seconds. Half-open intervals `[start_time, end_time)` where `start_time <= event_timestamp < end_time`. Boundary ticks `t == end_time` strictly belong to the succeeding candle `[end_time, end_time + interval)`.
+- **Volume Policy**: Per-tick volume (`tick.quantity >= 0`). Candle volume is the sum of per-tick quantities ingested within the bucket. Adapters and providers must normalize cumulative volume into incremental per-tick volume if needed. Zero-volume ticks update OHLC without increasing volume. Negative volume is rejected as invalid tick.
+- **Gap Policy**: Missing intervals create no invented gap candles. A candle closes only upon the arrival of the first subsequent tick in a later bucket. Incomplete candles are never closed artificially at end of feed or replay.
+- **Deduplication Policy**: Idempotent symbol-scoped deduplication (`(symbol, event_id)`). Identical duplicates return `False`, increment `duplicate_ticks`, and modify neither active candles nor ledger marks. Conflicting duplicates (differing price/quantity/timestamp for the same ID) raise `ValueError("conflicting duplicate tick")`, audit `MARKET_DATA_REJECTED` (`CONFLICTING_DUPLICATE`), and fail closed with `MARKET_EVENT_REJECTED`.
+- **Late-Tick Policy**: Ticks with `event_timestamp < last_event_timestamp[symbol]` are rejected with `ValueError("late tick: replay must be ordered before ingestion")`, audit `MARKET_DATA_REJECTED` (`LATE_TICK`), increment `late_ticks`, and fail closed. Evicted ticks from the bounded dedupe cache cannot be silently re-ingested or double-counted because their timestamps precede the advance watermark.
+- **Incomplete Candle Policy**: Incomplete/active candles remain unclosed and are never dispatched to strategy callbacks or signal generation until closed by a subsequent bucket crossing.
+
 
 ## Risk reasons
 

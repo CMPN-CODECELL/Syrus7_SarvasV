@@ -260,7 +260,7 @@ class Platform:
         with self._replay_lock:
             latest = max(self.get_simulation_cursor(s) for s in sym_list)
             if latest == 0:
-                start_ts = 1_700_000_900 if align >= 300 else 1_700_000_000
+                start_ts = 1_700_000_100
             else:
                 start_ts = (latest // align + 1) * align
 
@@ -384,7 +384,7 @@ class Platform:
     def stop_replay_stream(self, timeout=1.0):
         self._replay_stop.set()
         thread = self._replay_thread
-        if thread and thread.is_alive() and thread is not current_thread():
+        if thread and thread is not current_thread():
             thread.join(timeout=timeout)
 
     def require_offline_demo(self):
@@ -407,7 +407,19 @@ class Platform:
             )
 
     def kill(self):
-        self.stop_replay_stream()
+        # 1. Close execution admission gate before any thread wait/join
+        self.risk.kill_requested.set()
+        self._replay_stop.set()
+        with self.store.transaction():
+            self.reliability.safety.set("kill_latched", True)
+            self.risk.state = Gate.KILLING
+            self.strategies.enabled = False
+            self.store.audit("KILL_GATE_CLOSED", {})
+
+        # 2. Join replay stream thread now that admission is closed
+        thread = self._replay_thread
+        if thread and thread is not current_thread():
+            thread.join(timeout=1.0)
 
         def execute(order):
             price = self.ledger.marks.get(order.intent.symbol, Decimal("100"))

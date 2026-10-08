@@ -70,4 +70,10 @@ Neon CLI 8.0.11 installed. Requested project/branch not yet authenticated/linked
   without overlapping or backwards timestamps. New ticks generate unique event IDs, while
   intentional repeat ticks retain IDs for idempotent deduplication. The stream is
   mock-only and never automatically restarts following recovery or reconciliation.
+- Kill switch ordering verified and enforced: `Platform.kill` explicitly closes the execution
+  admission gate and latches kill before waiting or joining the replay stream thread.
+- Candle and market data policies documented in `docs/CONTRACTS.md` covering exact half-open
+  UTC boundaries, per-tick volume accumulation, gap preservation (no invented candles),
+  fail-closed late ticks and conflicting duplicates, and signal emission exclusively from closed candles.
+
 
