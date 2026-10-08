@@ -73,6 +73,17 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
   `risk.state=KILLING`, `strategies.enabled=False`) BEFORE joining/waiting on the replay thread. Documented
   policies in `docs/CONTRACTS.md`. Added regression test suite in `tests/test_candle_correctness.py`. Full
   test suite: 246 passed / 1 skipped; Ruff check and format passed.
+- 2026-10-08: Task 4 Strategy Runtime Lifecycle and Interval Correctness completed.
+  Validated strategy registration (`interval` and `warmup` must be positive integers; `handler` must be callable).
+  Enforced registered interval candle routing on `on_candle`; dynamically wired custom intervals into `CandleBuilder.add_interval` via `on_interval_registered` callback.
+  Processed closed candles at most once per strategy run (`(strategy_id, generation)`); rejected duplicate and older out-of-order candles before worker callback allocation.
+  Serialized same-instance candidate state commits under `_state_lock` so out-of-order callbacks cannot overwrite newer indicator states.
+  Introduced monotonic `_global_epoch` counter to invalidate in-flight results across global stop, resume, kill, and broker recovery boundaries, even if runtime is re-enabled before workers finish.
+  Enforced that subscription stop/re-enable invalidates in-flight results and completely resets indicator warmup (`samples=0, ready=False`).
+  Exposed backend-derived sample count, required warmup, and readiness via `StrategyRuntime.readiness_for` and `Platform.snapshot()['subscriptions']`.
+  Aligned RSI reversal registry warmup to 15 (requiring 15 closes for 14 price differences).
+  Addressed Task 3 follow-up: included replay stream join time in the total kill deadline calculation and ensured execution admission closure is idempotent.
+  Added comprehensive tests in `tests/test_strategy_lifecycle.py`. Full test suite: 255 passed / 1 skipped; Ruff check and format clean.
 
 
 ## In Progress

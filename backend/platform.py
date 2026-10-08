@@ -13,7 +13,7 @@ from backend.execution.orders import OrderManager
 from backend.market_data.candles import CandleBuilder
 from backend.market_data.session import MarketSession
 from backend.reliability.control import Reliability
-from backend.reliability.broker_calls import BrokerSession
+from backend.reliability.broker_calls import BrokerSession, Deadline
 from backend.risk.gateway import RiskGateway
 from backend.shared.auth import AuthService
 from backend.shared.contracts import GlobalTradingState as Gate, Side, Tick
@@ -70,6 +70,9 @@ class Platform:
             market_session=self.market_session,
         )
         self.candles = CandleBuilder()
+        self.strategies.on_interval_registered = self.candles.add_interval
+        for meta in self.strategies.registry.values():
+            self.candles.add_interval(meta["interval"])
         self.closed_candles = deque(maxlen=128)
         self.auth = AuthService(self.store)
         self.demo_count = 0
@@ -124,6 +127,7 @@ class Platform:
         adapter = getattr(self.broker_calls, "adapter", self.broker)
         if hasattr(adapter, "disconnect"):
             adapter.disconnect()
+        self.strategies.invalidate_in_flight()
         with self.store.transaction():
             self.store.audit("BROKER_DISCONNECTED", {})
         self.reliability.fail_closed("BROKER_DISCONNECTED")
@@ -406,20 +410,22 @@ class Platform:
                 "demo replay requires an explicitly enabled local mock broker"
             )
 
-    def kill(self):
-        # 1. Close execution admission gate before any thread wait/join
+    def kill(self, deadline_seconds=9, deadline_clock=time.monotonic):
+        # 1. Close execution admission gate before any thread wait/join (idempotent)
+        deadline = Deadline(deadline_seconds, deadline_clock)
         self.risk.kill_requested.set()
         self._replay_stop.set()
         with self.store.transaction():
             self.reliability.safety.set("kill_latched", True)
             self.risk.state = Gate.KILLING
             self.strategies.enabled = False
+            self.strategies.invalidate_in_flight()
             self.store.audit("KILL_GATE_CLOSED", {})
 
-        # 2. Join replay stream thread now that admission is closed
+        # 2. Join replay stream thread now that admission is closed, bounded by remaining deadline
         thread = self._replay_thread
         if thread and thread is not current_thread():
-            thread.join(timeout=1.0)
+            thread.join(timeout=min(1.0, deadline.remaining))
 
         def execute(order):
             price = self.ledger.marks.get(order.intent.symbol, Decimal("100"))
@@ -442,7 +448,14 @@ class Platform:
                     )
                 )
 
-        return self.reliability.kill(execute)
+        return self.reliability.kill(
+            execute,
+            deadline_seconds=deadline.remaining,
+            deadline_clock=deadline_clock,
+        )
+
+    def strategy_readiness(self, strategy_id: str):
+        return self.strategies.readiness_for(strategy_id)
 
     def snapshot(self):
         with self.store.lock:
@@ -467,6 +480,7 @@ class Platform:
                         and self.risk.strategy_state(r["id"]) == "RUNNING",
                         "state": self.strategies.state_for(r),
                         "strategy_state": self.risk.strategy_state(r["id"]),
+                        "readiness": self.strategies.readiness_for(r["id"]),
                     }
                     for r in self.store.rows("SELECT * FROM subscriptions")
                 ],

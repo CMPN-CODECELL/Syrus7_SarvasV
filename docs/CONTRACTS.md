@@ -81,3 +81,30 @@ Every broker adapter (including `MockBrokerAdapter` and the eventual `Broker021A
    - Fills must possess stable, unique identifiers suitable for idempotent deduplication.
    - Partial fills must accurately report `filled_quantity` and remaining quantity.
    - A real adapter (`Broker021Adapter`) must translate broker-specific payloads (e.g. 021 JSON schemas) into AlgoShield's canonical contracts inside the adapter; raw provider payloads must never leak into execution, risk, or accounting modules.
+
+## Strategy Runtime Lifecycle and Interval Routing Contract
+
+1. **Registration & Validation**:
+   - `register_strategy(kind, handler, *, interval=60, warmup=5, description="")`:
+     Requires non-empty string `kind`, callable `handler`, and strict positive integers (`type is int and val > 0`) for both `interval` and `warmup`.
+   - Dynamic registration wires the interval into `CandleBuilder.add_interval(interval)` via `StrategyRuntime.on_interval_registered`.
+2. **Interval Routing**:
+   - Closed candles are routed strictly to subscriptions registered for that candle's interval (`candle.interval == registered_interval`). Mismatched intervals are skipped before worker thread allocation or callback execution.
+3. **Execution & Commit Serialization**:
+   - Process each closed candle at most once per strategy run (`(strategy_id, generation)`). Duplicate candles (`start_time == last_processed`) and older out-of-order candles (`start_time < last_processed`) are rejected prior to worker dispatch.
+   - Candidate indicator state commits are serialized under `_state_lock`. If callbacks complete out of order, older candle results (`start_time <= last_committed`) cannot overwrite newer indicator states.
+4. **Lifecycle & Epoch Invalidation**:
+   - A monotonic `_global_epoch` counter invalidates in-flight results across global stop, resume, kill, and broker recovery boundaries, even if the runtime is re-enabled before the callback worker finishes execution.
+   - Stopping/re-enabling an individual subscription increments its `_subscription_generations`, invalidates in-flight callback results, and completely resets indicator warmup (`samples = 0, ready = False`).
+   - Process restarts start with empty in-memory indicator states, requiring full warmup before risk-increasing order intents may be emitted.
+5. **Readiness & Sample Counting**:
+   - `readiness_for(strategy_id)` exposes `samples`, `warmup`, and `ready` (`samples >= warmup`).
+   - Momentum: EMA sample count, warmup 5.
+   - Mean reversion: close count in deque, warmup 5.
+   - Breakout: previous range established, warmup 1.
+   - RSI reversal: 15 closed candles required to calculate 14 price changes, warmup 15.
+   - Subscription snapshots project `readiness` for UI telemetry.
+6. **Kill Deadline & Admission Idempotency**:
+   - `Platform.kill(deadline_seconds, deadline_clock)` measures total execution time starting before admission closure and joins `_replay_thread` bounded by `min(1.0, deadline.remaining)`.
+   - Remaining deadline is passed directly into `reliability.kill(deadline_seconds=deadline.remaining)`.
+   - Admission closure (`kill_requested.set()`, `kill_latched=True`, `risk.state=KILLING`, `strategies.enabled=False`, `invalidate_in_flight()`) is strictly idempotent.

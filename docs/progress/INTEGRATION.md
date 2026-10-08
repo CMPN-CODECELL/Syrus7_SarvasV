@@ -75,5 +75,19 @@ Neon CLI 8.0.11 installed. Requested project/branch not yet authenticated/linked
 - Candle and market data policies documented in `docs/CONTRACTS.md` covering exact half-open
   UTC boundaries, per-tick volume accumulation, gap preservation (no invented candles),
   fail-closed late ticks and conflicting duplicates, and signal emission exclusively from closed candles.
+- Strategy runtime lifecycle and interval correctness:
+  Closed candles are routed strictly to strategies registered for that interval. `CandleBuilder.add_interval`
+  is dynamically wired into platform strategy registration.
+  Closed candles are processed at most once per strategy run (`(strategy_id, generation)`); duplicate
+  and older candles are rejected before worker callback execution.
+  Same-instance candidate state commits are serialized under `_state_lock` to prevent out-of-order
+  callbacks from overwriting newer indicator states.
+  Global stop, resume, kill, and broker recovery boundaries advance a monotonic `_global_epoch`,
+  invalidating in-flight results even if the runtime is re-enabled before workers complete.
+  Stopping or re-enabling a subscription increments run generation and completely resets warmup.
+  `Platform.snapshot` and `StrategyRuntime.readiness_for` expose backend-derived sample count, required
+  warmup, and readiness (`samples >= warmup`), with RSI reversal configured for 15 closed candles (14 price diffs).
+  Kill deadline deduction verified: replay stream join time is deducted from the total kill deadline,
+  and admission gate closure is strictly idempotent.
 
 

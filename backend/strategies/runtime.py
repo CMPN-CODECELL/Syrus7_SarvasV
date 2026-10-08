@@ -72,7 +72,13 @@ class StrategyRuntime:
         max_outstanding: int = 8,
     ):
         self.store = store
-        self.enabled = False
+        self._enabled = False
+        self._global_epoch = 1
+        self._epoch_lock = threading.Lock()
+        self._state_lock = threading.Lock()
+        self._last_processed_candle: dict[tuple[str, int], int] = {}
+        self._last_committed_candle: dict[tuple[str, int], int] = {}
+        self.on_interval_registered = None
         self.may_run = lambda strategy: True
         self.indicators = {}
         self.signals = deque(maxlen=100)
@@ -124,11 +130,28 @@ class StrategyRuntime:
             "rsi_reversal": {
                 "handler": self._rsi_reversal,
                 "interval": 60,
-                "warmup": 14,
+                "warmup": 15,
                 "description": "14-period RSI oversold (<30) and overbought (>70) reversal on 1m candles",
             },
         }
         self.handlers = {k: v["handler"] for k, v in self.registry.items()}
+
+    @property
+    def enabled(self) -> bool:
+        with self._epoch_lock:
+            return self._enabled
+
+    @enabled.setter
+    def enabled(self, value: bool):
+        new_val = bool(value)
+        with self._epoch_lock:
+            if self._enabled != new_val:
+                self._enabled = new_val
+                self._global_epoch += 1
+
+    def invalidate_in_flight(self):
+        with self._epoch_lock:
+            self._global_epoch += 1
 
     def close(self):
         """Shut down the bounded executor pool."""
@@ -143,11 +166,15 @@ class StrategyRuntime:
         warmup: int = 5,
         description: str = "",
     ):
-        kind = kind.strip().lower()
-        if not kind:
+        if not isinstance(kind, str) or not kind.strip():
             raise ValueError("strategy kind name required")
+        kind = kind.strip().lower()
         if not callable(handler):
             raise ValueError("strategy handler must be callable")
+        if type(interval) is not int or interval <= 0:
+            raise ValueError("interval must be a positive integer")
+        if type(warmup) is not int or warmup <= 0:
+            raise ValueError("warmup must be a positive integer")
         self.registry[kind] = {
             "handler": handler,
             "interval": interval,
@@ -156,6 +183,41 @@ class StrategyRuntime:
         }
         self.handlers[kind] = handler
         KINDS.add(kind)
+        if self.on_interval_registered is not None:
+            self.on_interval_registered(interval)
+
+    def readiness_for(self, strategy_id: str) -> dict[str, int | bool]:
+        rows = self.store.rows(
+            "SELECT kind FROM subscriptions WHERE id=?", (strategy_id,)
+        )
+        if not rows:
+            return {"samples": 0, "warmup": 0, "ready": False}
+        kind = rows[0]["kind"]
+        meta = self.registry.get(kind, {})
+        warmup = meta.get("warmup", 5)
+        state = self.indicators.get(strategy_id, {})
+
+        if kind == "momentum":
+            samples = state.get("samples", 0)
+        elif kind in ("mean_reversion", "rsi_reversal"):
+            closes = state.get("closes", ())
+            samples = len(closes)
+        elif kind == "breakout":
+            samples = 1 if "high" in state else 0
+        else:
+            if "samples" in state and isinstance(state["samples"], int):
+                samples = state["samples"]
+            elif "closes" in state and hasattr(state["closes"], "__len__"):
+                samples = len(state["closes"])
+            else:
+                samples = len(state) if state else 0
+
+        ready = bool(samples >= warmup)
+        return {
+            "samples": samples,
+            "warmup": warmup,
+            "ready": ready,
+        }
 
     def list_registered(self):
         return [
@@ -370,8 +432,11 @@ class StrategyRuntime:
             self.store.audit("STRATEGY_CALLBACK_FAILED", error)
 
     def on_candle(self, candle, now):
-        if not self.enabled or not candle.is_closed:
-            return []
+        with self._epoch_lock:
+            if not self._enabled or not candle.is_closed:
+                return []
+            expected_epoch = self._global_epoch
+
         subs = self.store.rows(
             "SELECT * FROM subscriptions WHERE symbol=? AND enabled=1 ORDER BY id",
             (candle.symbol,),
@@ -386,10 +451,23 @@ class StrategyRuntime:
             handler = self.handlers.get(sub["kind"])
             if not handler:
                 continue
+
+            strat_meta = self.registry.get(sub["kind"], {})
+            strat_interval = strat_meta.get("interval", 60)
+            if candle.interval != strat_interval:
+                continue
+
             expected_gen = self._subscription_generations.get(strat_id, 1)
-            working_state = self._copy_indicator_state(
-                self.indicators.get(strat_id, {})
-            )
+            key = (strat_id, expected_gen)
+
+            with self._state_lock:
+                last_proc = self._last_processed_candle.get(key, -1)
+                if candle.start_time <= last_proc:
+                    continue
+                self._last_processed_candle[key] = candle.start_time
+                working_state = self._copy_indicator_state(
+                    self.indicators.get(strat_id, {})
+                )
 
             # Bounded outstanding work via semaphore
             acquired = self._work_semaphore.acquire(
@@ -417,6 +495,7 @@ class StrategyRuntime:
         intents = []
         for sub, expected_gen, working_state, future in runs:
             strat_id = sub["id"]
+            key = (strat_id, expected_gen)
             try:
                 signal = future.result(timeout=self.callback_timeout)
             except FutureTimeoutError:
@@ -429,18 +508,26 @@ class StrategyRuntime:
                 self._halt_failed_subscription(sub, exc)
                 continue
 
-            # Validate originating run before committing any state or signals
-            if not self.enabled:
-                continue
-            if not self.may_run(strat_id):
-                continue
-            if self._subscription_generations.get(strat_id, 1) != expected_gen:
-                continue
-            if not self.is_subscription_enabled(strat_id):
-                continue
+            # Validate originating run and serialize state commits
+            with self._state_lock:
+                with self._epoch_lock:
+                    if not self._enabled or self._global_epoch != expected_epoch:
+                        continue
+                if not self.may_run(strat_id):
+                    continue
+                if self._subscription_generations.get(strat_id, 1) != expected_gen:
+                    continue
+                if not self.is_subscription_enabled(strat_id):
+                    continue
 
-            # Valid run: commit candidate indicator state
-            self.indicators[strat_id] = working_state
+                last_comm = self._last_committed_candle.get(key, -1)
+                if candle.start_time <= last_comm:
+                    # Newer or equal candle was already committed for this run
+                    continue
+
+                # Valid run: commit candidate indicator state
+                self.indicators[strat_id] = working_state
+                self._last_committed_candle[key] = candle.start_time
 
             if signal is None:
                 continue
