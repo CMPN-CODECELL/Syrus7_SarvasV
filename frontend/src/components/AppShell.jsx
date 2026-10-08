@@ -1,6 +1,64 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { useTelemetry } from '../telemetry/TelemetryContext'
 import { api } from '../api/client'
-const groups=[['Operate',[['/','Overview'],['/strategies','Strategies'],['/orders','Orders'],['/risk','Risk Center'],['/reconciliation','Reconciliation']]],['Prove',[['/traces','Execution Traces'],['/failure-lab','Failure Lab'],['/safety-bench','SafetyBench']]],['Observe',[['/metrics','Metrics'],['/market-data','Market Data'],['/audit','Audit']]]]
-export function AppShell(){const {user,logout}=useAuth();const {snapshot,status,refresh}=useTelemetry();const navigate=useNavigate();const kill=async()=>{if(!confirm('Close the global gate and begin verified flattening?'))return;await api.post('/api/kill');await refresh()};return <div className="app-shell"><aside className="sidebar"><NavLink className="brand" to="/"><b>AS</b><span>AlgoShield<small>Strategy safety control</small></span></NavLink><nav>{groups.map(([label,items])=><div className="nav-group" key={label}><span>{label}</span>{items.map(([to,text])=><NavLink end={to==='/'} to={to} key={to}>{text}</NavLink>)}</div>)}</nav><button className="kill" onClick={kill}>Kill all strategies</button></aside><div className="workspace"><header className="topbar"><div className="connection"><i className={status}/><span>{status==='live'?'Live backend evidence':status}</span></div><div><span className="user">{user?.username} · {user?.account_id}</span><button className="ghost" onClick={async()=>{await logout();navigate('/login')}}>Sign out</button></div></header><main className="content"><Outlet context={{snapshot,refresh}}/></main></div></div>}
+
+const groups = [
+  ['Operate', [['/', 'Overview'], ['/strategies', 'Strategies'], ['/orders', 'Orders'], ['/risk', 'Risk Center'], ['/reconciliation', 'Reconciliation']]],
+  ['Prove', [['/traces', 'Execution Traces'], ['/failure-lab', 'Failure Lab'], ['/safety-bench', 'SafetyBench']]],
+  ['Observe', [['/metrics', 'Metrics'], ['/market-data', 'Market Data'], ['/audit', 'Audit']]],
+]
+
+export function AppShell() {
+  const { user, logout } = useAuth()
+  const { snapshot, status, refresh } = useTelemetry()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  useEffect(() => setMenuOpen(false), [location.pathname])
+  useEffect(() => {
+    if (!menuOpen) return undefined
+    const closeOnEscape = event => { if (event.key === 'Escape') setMenuOpen(false) }
+    document.body.classList.add('menu-open')
+    window.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.body.classList.remove('menu-open')
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [menuOpen])
+
+  const kill = async () => {
+    if (!confirm('Close the global gate and begin verified flattening?')) return
+    await api.post('/api/kill')
+    await refresh()
+  }
+
+  return <div className="app-shell">
+    <aside className="sidebar">
+      <div className="sidebar-head">
+        <NavLink className="brand" to="/"><b>AS</b><span>AlgoShield<small>Strategy safety control</small></span></NavLink>
+        <button className="menu-toggle" type="button" aria-label="Open navigation" aria-expanded={menuOpen} aria-controls="primary-navigation" onClick={() => setMenuOpen(true)}><span/><span/><span/></button>
+      </div>
+      <button className={`menu-backdrop ${menuOpen ? 'open' : ''}`} type="button" aria-label="Close navigation" onClick={() => setMenuOpen(false)}/>
+      <div className={`nav-drawer ${menuOpen ? 'open' : ''}`}>
+        <div className="drawer-head"><span>Navigation</span><button type="button" aria-label="Close navigation" onClick={() => setMenuOpen(false)}>Close</button></div>
+        <nav id="primary-navigation" aria-label="Primary navigation">
+          {groups.map(([label, items]) => <div className="nav-group" key={label}>
+            <span>{label}</span>
+            {items.map(([to, text]) => <NavLink end={to === '/'} to={to} key={to}>{text}</NavLink>)}
+          </div>)}
+        </nav>
+        <button className="kill" onClick={kill}>Kill all strategies</button>
+      </div>
+    </aside>
+    <div className="workspace">
+      <header className="topbar">
+        <div className="connection"><i className={status}/><span>{status === 'live' ? 'Live backend evidence' : status}</span></div>
+        <div><span className="user">{user?.username} · {user?.account_id}</span><button className="ghost" onClick={async () => { await logout(); navigate('/login') }}>Sign out</button></div>
+      </header>
+      <main className="content"><Outlet context={{ snapshot, refresh }}/></main>
+    </div>
+  </div>
+}

@@ -168,3 +168,10 @@ User workflows are strictly account-isolated server-side. Subscriptions, orders,
 - Replaced raw JSON output with recursive labeled evidence fields, status indicators, and lists sourced directly from backend responses.
 - Removed duplicate frontend capability lists: strategy kinds and Failure Lab scenarios are now discovered from backend endpoints.
 - Validation: 299 Python tests passed, 1 PostgreSQL integration skipped; 9 React tests, ESLint, Ruff, and Vite production build passed.
+
+## 2026-10-08 — Mobile navigation drawer
+
+- Replaced the mobile navigation grid with a light hamburger drawer while preserving the desktop sidebar.
+- Added overlay/Close/Escape dismissal, route-change auto-close, body scroll locking, internal overflow safety, and a persistently reachable kill control.
+- Added responsive compact-height rules so all navigation groups fit common mobile viewports while remaining scrollable on smaller displays.
+- Validation: 10 React tests, ESLint, Vite production build, 21 focused backend tests, and Ruff passed.
