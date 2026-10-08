@@ -1,4 +1,52 @@
 import { useOutletContext } from 'react-router-dom'
+import { useState } from 'react'
 import { api } from '../api/client'
-import { Card, DataTable, Empty, Money, Page, Status } from '../components/UI'
-export function OverviewPage(){const {snapshot:s,refresh}=useOutletContext();if(!s)return <Empty>Waiting for authenticated backend state…</Empty>;const proof=s.safety_proof||{};const run=async(path)=>{await api.post(path);await refresh()};return <Page eyebrow="Control plane" title="Operational truth, at a glance." description="Live account state from fills, reconciliation, and the non-bypassable risk gateway." actions={<><button onClick={()=>run('/api/demo')} className="primary">Run replay</button><button onClick={()=>run('/api/reconcile')}>Reconcile</button><button onClick={()=>run('/api/resume')}>Resume</button></>}><div className="stat-grid"><Card title="Trading gate"><Status value={s.trading_state}/><p>New exposure follows the global gate.</p></Card><Card title="Reconciliation"><Status value={s.reconciliation_state}/><p>{s.safety?.reconciliation?.reason||'No report'}</p></Card><Card title="Execution evidence"><strong>{s.counts?.orders??0} · {s.counts?.fills??0}</strong><p>orders · unique fills</p></Card><Card title="Market data"><strong>{s.market_data?.accepted_ticks??0}</strong><p>{s.market_data?.duplicate_ticks??0} duplicate · {s.market_data?.late_ticks??0} late</p></Card></div><div className="grid two"><Card title="Subscribed strategies" meta={`${s.subscriptions?.length||0} configured`}><DataTable rows={s.subscriptions} columns={[{key:'id',label:'Strategy'},{key:'state',label:'State',render:r=><Status value={r.state}/>},{key:'position',label:'Position',render:r=>r.position??0},{key:'net_pnl',label:'Net P&L',render:r=><Money value={r.net_pnl}/>}]}/></Card><Card title="Safety proof"><div className="proof"><Status value={proof.overall_status||s.safety?.position_comparison?.status}/><p>{proof.summary||'Conservative backend evidence. Unknown remains unknown.'}</p></div></Card></div></Page>}
+import { Card, DataTable, Empty, Money, Page, Readiness, Status } from '../components/UI'
+import { strategyRows } from '../domain/snapshot'
+
+const actionLabels={
+  '/api/demo':'Run replay',
+  '/api/reconcile':'Reconcile',
+  '/api/resume':'Resume',
+}
+
+export function OverviewPage(){
+  const {snapshot:s,refresh}=useOutletContext()
+  const [pending,setPending]=useState('')
+  const [error,setError]=useState('')
+  if(!s)return <Empty>Waiting for authenticated backend state…</Empty>
+  const proof=s.safety_proof||{}
+  const rows=strategyRows(s)
+  const run=async(path)=>{
+    if(pending)return
+    setPending(path);setError('')
+    try{await api.post(path);await refresh()}
+    catch(actionError){setError(actionError.message||'Action failed.')}
+    finally{setPending('')}
+  }
+  const actionButton=(path,className='')=><button disabled={!!pending} onClick={()=>run(path)} className={className}>{pending===path?'Working…':actionLabels[path]}</button>
+  return <Page eyebrow="Control plane" title="Operational truth, at a glance." description="Live account state from fills, reconciliation, and the non-bypassable risk gateway." actions={<>{actionButton('/api/demo','primary')}{actionButton('/api/reconcile')}{actionButton('/api/resume')}</>}>
+    {error&&<div className="error" role="alert">{error}</div>}
+    <div className="stat-grid">
+      <Card title="Trading gate"><Status value={s.gate}/><p>New exposure follows the global gate.</p></Card>
+      <Card title="Reconciliation"><Status value={s.health}/><p>{s.safety?.reconciliation?.reason||'No report'}</p></Card>
+      <Card title="Execution evidence"><strong>{s.counts?.orders??0} · {s.counts?.fills??0}</strong><p>orders · unique fills</p></Card>
+      <Card title="Market data"><strong>{s.market_data?.accepted_ticks??0}</strong><p>{s.market_data?.duplicate_ticks??0} duplicate · {s.market_data?.late_ticks??0} late</p></Card>
+    </div>
+    <div className="grid two">
+      <Card title="Subscribed strategies" meta={`${s.subscriptions?.length||0} configured`}>
+        <DataTable rows={rows} columns={[
+          {key:'id',label:'Strategy'},
+          {key:'state',label:'State',render:r=><Status value={r.state}/>},
+          {key:'readiness',label:'Readiness',render:r=><Readiness value={r.readiness}/>},
+          {key:'net_quantity',label:'Position',render:r=>r.financial_position?.net_quantity??'—'},
+          {key:'net_pnl',label:'Net P&L',render:r=><Money value={r.financial_position?.net_pnl}/>},
+          {key:'charges',label:'Charges',render:r=><Money value={r.financial_position?.charges}/>},
+        ]}/>
+      </Card>
+      <Card title="Safety proof" meta={proof.generated_at??'Not generated'}>
+        <div className="proof"><Status value={proof.verdict}/><p>{Array.isArray(proof.invariants)?`${proof.invariants.length} backend invariant results.`:'Invariant evidence unavailable.'}</p></div>
+      </Card>
+    </div>
+  </Page>
+}

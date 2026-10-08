@@ -162,6 +162,40 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 ## In Progress
 - Member 4 mock/replay scope is COMPLETE. Awaiting Ram's (Member 3) operator authorization and 021 market-data feed contract.
 
+## 2026-10-09 — React contract and recovery integration fixes
+
+- Verified the current FastAPI/platform response shapes before editing the SPA. Overview now reads
+  `gate` and `health`; Safety Proof reads `verdict`, `generated_at`, and `invariants`.
+- Strategy financial rows now join account-scoped `snapshot.positions` to subscriptions by
+  `account_id`/`account`, `strategy_instance_id`/`id`, and `symbol`. The UI displays the backend's
+  `net_quantity`, `net_pnl`, and `charges`, plus backend readiness `samples`, `warmup`, and `ready`.
+  Missing financial evidence is shown as an em dash/Unavailable and real zero remains zero; decimal
+  strings are formatted without an intermediate JavaScript `Number` conversion.
+- Corrected execution trace rendering to the actual trace envelope (`trace_id`,
+  `strategy_instance_id`, `account_id`, nested `events`, and event `recorded_at`). Other React pages
+  were checked against the current API responses; focused fixes were made only where mismatches were
+  found.
+- Telemetry now clears old-account state immediately and uses a single generation-bound socket/timer.
+  Transient initial state failures retry with capped backoff; logout, account change, unmount, HTTP 401,
+  and WebSocket 1008 invalidate stale work. HTTP 401 and WS 1008 do not reconnect the invalid session.
+- Replay, reconcile/resume, kill, subscription, Failure Lab, and SafetyBench controls now expose pending
+  and readable rejected-action states and prevent duplicate submission. Kill retains confirmation.
+  Failure Lab now explicitly warns that scenarios mutate the current mock platform and requires
+  confirmation; only the separately created SafetyBench platforms retain an isolation label.
+- Focused frontend fixtures cover nonzero values, true zero, missing values, gate/health, Safety Proof,
+  readiness, telemetry recovery/cleanup, rejected actions, and confirmations. Validation: ESLint passed;
+  Vitest passed 28/28 tests across 6 files; Vite production build passed.
+- Browser validation used an isolated local SQLite test database: desktop login → replay →
+  strategies/orders showed backend positions/P&L/readiness; a duplicate subscription produced the
+  readable 409 error; the Failure Lab impact wording was visible; the responsive route was checked at
+  375×812; logout returned to the login page and browser console warning/error output was empty.
+- No backend, broker, risk, accounting, callback, kill, React/Vite dependency, production database, or
+  live-feed behavior changed. Navigation did not change, so `DEMO_AND_DEBUG.md` did not require an update.
+- Remaining backend dependencies: operator roles, complete account scoping, cross-account
+  reconciliation leakage, and unscoped global-action responses remain separate backend work. Frontend
+  filtering cannot establish those security guarantees. Live 021/market-feed integration remains
+  unimplemented and unclaimed.
+
 ## 2026-10-08 — Task 9A yfinance compatibility probe
 
 - Added the standalone read-only probe `scripts/probe_yfinance_stream.py`. It uses only

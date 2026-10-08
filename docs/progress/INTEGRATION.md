@@ -3,7 +3,33 @@
 ## Current Status
 - Phase: integrated mock/replay hardening with Member 4 strategy/runtime and local PostgreSQL verification
 - Status: BLOCKED
-- Last updated: 2026-10-08 16:35 Asia/Kolkata
+- Last updated: 2026-10-09 Asia/Kolkata
+
+## 2026-10-09 — React contract, telemetry, and action-rejection verification
+
+- Aligned Overview and Safety Proof with verified backend fields (`gate`, `health`, `verdict`,
+  `generated_at`, `invariants`) and aligned trace cards with the actual trace/event envelope.
+- Restored strategy accounting display by joining account-scoped subscriptions to canonical position
+  records on account, strategy instance, and symbol. The UI now renders backend `net_quantity`,
+  `net_pnl`, `charges`, and readiness evidence without recomputing accounting or coercing missing values
+  to zero. Decimal strings remain strings through display formatting.
+- Hardened the single TelemetryProvider lifecycle: capped transient initial-state retry, one active
+  socket/timer generation, immediate old-account eviction, stale-result suppression, and terminal
+  invalidation without retry for HTTP 401 and WebSocket 1008.
+- Added pending/error/duplicate-submit handling for replay, reconcile/resume, kill, subscriptions,
+  Failure Lab, and SafetyBench. Failure Lab now states that it mutates the current mock platform and
+  requires confirmation; backend behavior is unchanged.
+- Validation: 28/28 Vitest tests passed across 6 files, ESLint passed, and the Vite production build
+  passed. Browser checks against an isolated local SQLite instance covered desktop login/replay,
+  strategies/orders financial evidence, rejected subscription handling, Failure Lab wording, a
+  375×812 responsive route, and logout; no browser console warnings/errors were observed. Backend tests
+  were not rerun because no backend files changed.
+- No routes/navigation changed, so `docs/DEMO_AND_DEBUG.md` was not changed. No application dependencies,
+  production database, broker/risk/accounting/callback/kill semantics, or live-feed code changed.
+- Remaining backend work is explicit: operator authorization, complete multi-account security,
+  cross-account reconciliation leakage, and unscoped global-action responses. These cannot be repaired
+  by frontend filtering. Live 021 and market-feed integration remain absent and must not be inferred
+  from this frontend verification.
 
 - 2026-10-08 23:56 Asia/Kolkata — Task 9A yfinance probe: added a standalone,
   database-free `AsyncWebSocket` probe under `scripts/` and installed yfinance only in an

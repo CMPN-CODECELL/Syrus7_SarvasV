@@ -16,6 +16,8 @@ export function AppShell() {
   const navigate = useNavigate()
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [killPending, setKillPending] = useState(false)
+  const [killError, setKillError] = useState('')
 
   useEffect(() => setMenuOpen(false), [location.pathname])
   useEffect(() => {
@@ -30,9 +32,18 @@ export function AppShell() {
   }, [menuOpen])
 
   const kill = async () => {
+    if (killPending) return
     if (!confirm('Close the global gate and begin verified flattening?')) return
-    await api.post('/api/kill')
-    await refresh()
+    setKillPending(true)
+    setKillError('')
+    try {
+      await api.post('/api/kill')
+      await refresh()
+    } catch (error) {
+      setKillError(error.message || 'Kill request failed.')
+    } finally {
+      setKillPending(false)
+    }
   }
 
   return <div className="app-shell">
@@ -50,7 +61,7 @@ export function AppShell() {
             {items.map(([to, text]) => <NavLink end={to === '/'} to={to} key={to}>{text}</NavLink>)}
           </div>)}
         </nav>
-        <button className="kill" onClick={kill}>Kill all strategies</button>
+        <button className="kill" disabled={killPending} onClick={kill}>{killPending ? 'Kill in progress…' : 'Kill all strategies'}</button>
       </div>
     </aside>
     <div className="workspace">
@@ -58,6 +69,7 @@ export function AppShell() {
         <div className="connection"><i className={status}/><span>{status === 'live' ? 'Live backend evidence' : status}</span></div>
         <div><span className="user">{user?.username} · {user?.account_id}</span><button className="ghost" onClick={async () => { await logout(); navigate('/login') }}>Sign out</button></div>
       </header>
+      {killError && <div className="shell-alert error" role="alert">{killError}</div>}
       <main className="content"><Outlet context={{ snapshot, refresh }}/></main>
     </div>
   </div>
