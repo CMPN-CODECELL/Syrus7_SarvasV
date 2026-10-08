@@ -160,3 +160,11 @@ User workflows are strictly account-isolated server-side. Subscriptions, orders,
 - Added responsive shell/mobile navigation, backend-driven strategy controls, replay/reconcile/resume/kill actions, and isolated Failure Lab/SafetyBench surfaces.
 - FastAPI serves the production build with nested-route fallback; Docker builds assets in a Node stage and runs only Python/FastAPI.
 - Validation: 298 Python tests passed, 1 PostgreSQL integration skipped; 8 Vitest tests, ESLint, Ruff, and Vite build passed.
+
+## 2026-10-08 — Light responsive evidence UI
+
+- Removed dark component surfaces from authentication, navigation, evidence, and control states while retaining accessible dark text and semantic status colors.
+- Made the complete navigation fit compact desktop heights and wrap into a responsive tablet/mobile grid; constrained document overflow and retained table-local scrolling.
+- Replaced raw JSON output with recursive labeled evidence fields, status indicators, and lists sourced directly from backend responses.
+- Removed duplicate frontend capability lists: strategy kinds and Failure Lab scenarios are now discovered from backend endpoints.
+- Validation: 299 Python tests passed, 1 PostgreSQL integration skipped; 9 React tests, ESLint, Ruff, and Vite production build passed.

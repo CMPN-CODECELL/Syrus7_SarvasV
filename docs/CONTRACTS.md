@@ -200,3 +200,5 @@ Every broker adapter (including `MockBrokerAdapter` and the eventual `Broker021A
 - One telemetry provider owns `/api/stream/ws`, reconnects with a bounded backoff, and refreshes from `/api/state`; pages do not open independent streams.
 - Mutations wait for backend responses and then refresh backend state. They never optimistically set `VERIFIED`, `MATCHED`, `SUCCESS`, positions, P&L, or fill status.
 - `FAILED`, `UNKNOWN`, and `SAFE_LATE` are displayed verbatim and must not be mapped to successful labels.
+- Failure Lab choices come from authenticated `GET /api/failure-lab/scenarios`; strategy choices come from `GET /api/strategies`. The UI must not maintain duplicate capability lists.
+- Nested backend evidence is rendered as labeled fields, lists, and status indicators. Raw JSON is not the user-facing representation.

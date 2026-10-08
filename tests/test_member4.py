@@ -236,7 +236,10 @@ def test_subscription_api_normalizes_inputs_and_controls_state():
             / "frontend/src/pages/StrategiesPage.jsx"
         ).read_text(encoding="utf-8")
         assert "Independent strategy ledgers" in strategies_source
-        assert "RSI reversal" in strategies_source
+        assert any(
+            item["kind"] == "rsi_reversal"
+            for item in client.get("/api/strategies").json()
+        )
         assert "account_id" not in strategies_source
         response = client.post(
             "/api/subscriptions",

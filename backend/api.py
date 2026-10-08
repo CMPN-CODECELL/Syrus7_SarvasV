@@ -21,7 +21,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from backend.platform import Platform
 from backend.broker.http_adapter import HTTPMockBrokerAdapter
-from backend.reliability.failure_lab import FailureLab
+from backend.reliability.failure_lab import FailureLab, SCENARIOS
 from backend.shared.config import settings
 from backend.shared.contracts import AccountRiskPolicy, RiskPolicy, StrategyState
 from backend.shared.postgres import PostgresStore
@@ -575,6 +575,11 @@ def create_app(platform=None):
     def failure_lab(scenario: str, request: Request):
         require_user(request)
         return financial_json(FailureLab(engine).run(scenario))
+
+    @app.get("/api/failure-lab/scenarios")
+    def failure_lab_scenarios(request: Request):
+        require_user(request)
+        return {"scenarios": sorted(SCENARIOS)}
 
     @app.post("/api/reconcile")
     def reconcile(request: Request):

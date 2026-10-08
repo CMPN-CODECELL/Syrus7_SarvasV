@@ -66,6 +66,17 @@ def test_failure_lab_evidence(scenario):
     p.store.close()
 
 
+def test_failure_lab_scenarios_are_discovered_from_backend():
+    p = Platform()
+    with TestClient(create_app(p)) as client:
+        authenticate(client, p, "failure-lab", "scenario-list-user")
+        response = client.get("/api/failure-lab/scenarios")
+        assert response.status_code == 200
+        assert response.json()["scenarios"] == sorted(response.json()["scenarios"])
+        assert "duplicate_fill" in response.json()["scenarios"]
+    p.store.close()
+
+
 def test_disconnect_reconnect_requires_verification():
     p = Platform()
     with TestClient(create_app(p)) as client:
