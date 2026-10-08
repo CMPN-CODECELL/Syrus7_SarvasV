@@ -377,13 +377,29 @@ def create_app(platform=None):
     @app.post("/api/subscriptions/{strategy_instance_id}/start")
     def start_subscription(strategy_instance_id: str, request: Request):
         user = require_user(request)
-        engine.strategies.set_enabled(user["account_id"], strategy_instance_id, True)
+        sub = engine.store.rows(
+            "SELECT account FROM subscriptions WHERE id=?", (strategy_instance_id,)
+        )
+        account = (
+            sub[0]["account"]
+            if sub and sub[0]["account"] in {user["account_id"], "demo"}
+            else user["account_id"]
+        )
+        engine.strategies.set_enabled(account, strategy_instance_id, True)
         return engine.snapshot()["subscriptions"]
 
     @app.post("/api/subscriptions/{strategy_instance_id}/stop")
     def stop_subscription(strategy_instance_id: str, request: Request):
         user = require_user(request)
-        engine.strategies.set_enabled(user["account_id"], strategy_instance_id, False)
+        sub = engine.store.rows(
+            "SELECT account FROM subscriptions WHERE id=?", (strategy_instance_id,)
+        )
+        account = (
+            sub[0]["account"]
+            if sub and sub[0]["account"] in {user["account_id"], "demo"}
+            else user["account_id"]
+        )
+        engine.strategies.set_enabled(account, strategy_instance_id, False)
         return engine.snapshot()["subscriptions"]
 
     @app.post("/api/demo")
