@@ -37,6 +37,20 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
   After Run replay, synthetic ticks continue through the normal strategy/risk/order
   path and stop on kill or process shutdown; no live/021 source is implied. Added
   stream continuation coverage.
+- 2026-10-08: Fixed strategy callbacks blocking the control-plane lock. Moved
+  `StrategyRuntime.on_candle` execution in `Platform.tick` outside `self.store.lock`.
+  Added bounded thread pool execution (`BoundedStrategyExecutor`) with daemon worker
+  threads, configurable timeout (`callback_timeout`), and bounded concurrency (`Semaphore`).
+  Implemented durable quarantine on callback timeout (`enabled=0`, `STRATEGY_CALLBACK_FAILED`
+  with `TimeoutError`), allowing healthy strategies to continue uninterrupted. Introduced run
+  generation tracking per subscription; late callback completions after timeout, stop/re-enable,
+  global stop, or kill are discarded with zero state or order mutations. Ensured candidate
+  indicator state is only committed if the originating run is still valid. Documented trusted
+  callback limits: threads provide latency isolation, not a security sandbox for arbitrary
+  untrusted bytecode. Workers receive no store locks or broker authority. Added comprehensive
+  suite in `tests/test_strategy_execution_safety.py`. Full test suite: 226 passed / 1 skipped;
+  Ruff check and format passed.
+
 
 ## In Progress
 - No further 021 implementation is safe without an authoritative tick/reconnect/backfill contract. Existing adapter remains intentionally unavailable.

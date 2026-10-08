@@ -148,10 +148,9 @@ def create_app(platform=None):
             yield
         finally:
             if platform is None:
-                engine.stop_replay_stream()
                 if broker is not None:
                     broker.close()
-                engine.store.close()
+                engine.close()
 
     app = FastAPI(title="AlgoShield mock control plane", lifespan=lifespan)
     app.state.platform = engine

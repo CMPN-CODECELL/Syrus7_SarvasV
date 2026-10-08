@@ -173,16 +173,17 @@ class Platform:
                 return
             self.ledger.marks[tick.symbol] = tick.price
             self.reliability.observe_tick(tick, replay=replay)
-            intents = []
             for candle in closed:
                 self.closed_candles.append(candle)
-                try:
-                    intents.extend(self.strategies.on_candle(candle, self.clock()))
-                except Exception:
-                    self.reliability.fail_closed("STRATEGY_CALLBACK_FAILED")
-                    raise ValueError(
-                        "strategy callback failed; execution stopped"
-                    ) from None
+        intents = []
+        for candle in closed:
+            try:
+                intents.extend(self.strategies.on_candle(candle, self.clock()))
+            except Exception:
+                self.reliability.fail_closed("STRATEGY_CALLBACK_FAILED")
+                raise ValueError(
+                    "strategy callback failed; execution stopped"
+                ) from None
         for intent in intents:
             decision = self.risk.submit(intent)
             if (
@@ -422,3 +423,9 @@ class Platform:
                 "limit": limit,
                 "offset": offset,
             }
+
+    def close(self):
+        """Shut down the platform, strategy runtime executor, and store cleanly."""
+        self.stop_replay_stream()
+        self.strategies.close()
+        self.store.close()

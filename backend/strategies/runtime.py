@@ -1,23 +1,93 @@
-import json
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from concurrent.futures.thread import _threads_queues, _worker
 from decimal import Decimal
+import inspect
+import json
+import threading
+import weakref
 
 from backend.shared.contracts import OrderIntent, Side
-
 
 KINDS = {"momentum", "mean_reversion", "breakout", "rsi_reversal"}
 
 
-class StrategyRuntime:
-    """Built-in callbacks receive candles only; broker authority is never passed in."""
+class BoundedStrategyExecutor(ThreadPoolExecutor):
+    """ThreadPoolExecutor with daemon worker threads for bounded strategy callback execution."""
 
-    def __init__(self, store):
+    def _adjust_thread_count(self):
+        if self._idle_semaphore.acquire(timeout=0):
+            return
+
+        def weakref_cb(_, q=self._work_queue):
+            q.put(None)
+
+        num_threads = len(self._threads)
+        if num_threads < self._max_workers:
+            thread_name = f"{self._thread_name_prefix or self}_{num_threads}"
+            t = threading.Thread(
+                name=thread_name,
+                target=_worker,
+                args=(
+                    weakref.ref(self, weakref_cb),
+                    self._work_queue,
+                    self._initializer,
+                    self._initargs,
+                ),
+                daemon=True,
+            )
+            t.start()
+            self._threads.add(t)
+            _threads_queues[t] = self._work_queue
+
+
+def _call_handler(handler, subscription, candle, state):
+    try:
+        sig = inspect.signature(handler)
+        if "state" in sig.parameters:
+            return handler(subscription, candle, state=state)
+    except (ValueError, TypeError):
+        pass
+    return handler(subscription, candle)
+
+
+class StrategyRuntime:
+    """Built-in callbacks receive candles only; broker authority is never passed in.
+
+    LIMITATIONS & BOUNDARIES:
+    Built-in callbacks are trusted code implementations representing untrusted
+    decision logic. Callbacks execute in isolated daemon worker threads with bounded
+    execution time (callback_timeout) and bounded outstanding concurrency (max_workers).
+    Threads provide latency isolation and fail-closed timeout bounding; they are NOT
+    an arbitrary-code sandbox against malicious bytecode or CPU spinning.
+    Workers never receive store locks, risk gates, or broker authority.
+    """
+
+    def __init__(
+        self,
+        store,
+        *,
+        callback_timeout: float = 0.5,
+        max_workers: int = 4,
+        max_outstanding: int = 8,
+    ):
         self.store = store
         self.enabled = False
         self.may_run = lambda strategy: True
         self.indicators = {}
         self.signals = deque(maxlen=100)
         self.errors = deque(maxlen=50)
+        self.callback_timeout = callback_timeout
+        self.max_workers = max_workers
+        self.max_outstanding = max_outstanding
+        self._executor = BoundedStrategyExecutor(
+            max_workers=max_workers, thread_name_prefix="strategy-worker"
+        )
+        self._work_semaphore = threading.Semaphore(max_outstanding)
+        self._subscription_generations: dict[str, int] = {}
+        for row in self.store.rows("SELECT id FROM subscriptions"):
+            self._subscription_generations[row["id"]] = 1
+
         for row in reversed(
             self.store.rows(
                 "SELECT payload FROM audit WHERE type='STRATEGY_SIGNAL' "
@@ -59,6 +129,10 @@ class StrategyRuntime:
             },
         }
         self.handlers = {k: v["handler"] for k, v in self.registry.items()}
+
+    def close(self):
+        """Shut down the bounded executor pool."""
+        self._executor.shutdown(wait=False, cancel_futures=True)
 
     def register_strategy(
         self,
@@ -109,6 +183,9 @@ class StrategyRuntime:
                 "VALUES (?,?,?,?,1)",
                 (strategy, account, kind, symbol),
             )
+            self._subscription_generations[strategy] = (
+                self._subscription_generations.get(strategy, 0) + 1
+            )
             self.store.audit("SUBSCRIBED", {"strategy": strategy, "account": account})
 
     def set_enabled(self, account, strategy, enabled):
@@ -127,17 +204,43 @@ class StrategyRuntime:
                 "SUBSCRIPTION_STARTED" if enabled else "SUBSCRIPTION_STOPPED",
                 {"strategy": strategy, "account": account},
             )
+        self._subscription_generations[strategy] = (
+            self._subscription_generations.get(strategy, 0) + 1
+        )
         self.indicators.pop(strategy, None)
+
+    def is_subscription_enabled(self, strategy_id: str) -> bool:
+        rows = self.store.rows(
+            "SELECT enabled FROM subscriptions WHERE id=?", (strategy_id,)
+        )
+        return bool(rows and rows[0]["enabled"])
 
     def state_for(self, subscription):
         if not subscription["enabled"]:
             return "STOPPED"
         return "RUNNING" if self.enabled else "READY"
 
-    def _momentum(self, subscription, candle):
+    @staticmethod
+    def _copy_indicator_state(state: dict) -> dict:
+        copied = {}
+        for k, v in state.items():
+            if isinstance(v, deque):
+                copied[k] = deque(v, maxlen=v.maxlen)
+            elif isinstance(v, list):
+                copied[k] = list(v)
+            elif isinstance(v, dict):
+                copied[k] = dict(v)
+            elif isinstance(v, set):
+                copied[k] = set(v)
+            else:
+                copied[k] = v
+        return copied
+
+    def _momentum(self, subscription, candle, state=None):
         if candle.interval != 60:
             return None
-        state = self.indicators.setdefault(subscription["id"], {})
+        if state is None:
+            state = self.indicators.setdefault(subscription["id"], {})
         fast = state.get("ema_fast")
         slow = state.get("ema_slow")
         if fast is None:
@@ -169,10 +272,11 @@ class StrategyRuntime:
             "3/5 EMA bullish crossover" if trend > 0 else "3/5 EMA bearish crossover",
         )
 
-    def _mean_reversion(self, subscription, candle):
+    def _mean_reversion(self, subscription, candle, state=None):
         if candle.interval != 60:
             return None
-        state = self.indicators.setdefault(subscription["id"], {})
+        if state is None:
+            state = self.indicators.setdefault(subscription["id"], {})
         closes = state.setdefault("closes", deque(maxlen=5))
         closes.append(candle.close)
         if len(closes) < 5:
@@ -186,10 +290,11 @@ class StrategyRuntime:
             return Side.BUY, "close below five-period mean"
         return None
 
-    def _breakout(self, subscription, candle):
+    def _breakout(self, subscription, candle, state=None):
         if candle.interval != 300:
             return None
-        state = self.indicators.setdefault(subscription["id"], {})
+        if state is None:
+            state = self.indicators.setdefault(subscription["id"], {})
         previous_high = state.get("high")
         previous_low = state.get("low")
         state.update(high=candle.high, low=candle.low)
@@ -201,10 +306,11 @@ class StrategyRuntime:
             return Side.SELL, "5m close broke previous range low"
         return None
 
-    def _rsi_reversal(self, subscription, candle):
+    def _rsi_reversal(self, subscription, candle, state=None):
         if candle.interval != 60:
             return None
-        state = self.indicators.setdefault(subscription["id"], {})
+        if state is None:
+            state = self.indicators.setdefault(subscription["id"], {})
         closes = state.setdefault("closes", deque(maxlen=15))
         closes.append(candle.close)
         if len(closes) < 15:
@@ -252,6 +358,10 @@ class StrategyRuntime:
             "error_type": type(exc).__name__,
         }
         self.errors.append(error)
+        self._subscription_generations[subscription["id"]] = (
+            self._subscription_generations.get(subscription["id"], 0) + 1
+        )
+        self.indicators.pop(subscription["id"], None)
         with self.store.transaction() as db:
             db.execute(
                 "UPDATE subscriptions SET enabled=0 WHERE id=?",
@@ -262,23 +372,83 @@ class StrategyRuntime:
     def on_candle(self, candle, now):
         if not self.enabled or not candle.is_closed:
             return []
-        intents = []
-        for sub in self.store.rows(
-            "SELECT * FROM subscriptions WHERE symbol=? AND enabled=1", (candle.symbol,)
-        ):
-            if not self.may_run(sub["id"]):
+        subs = self.store.rows(
+            "SELECT * FROM subscriptions WHERE symbol=? AND enabled=1 ORDER BY id",
+            (candle.symbol,),
+        )
+        active_subs = [s for s in subs if self.may_run(s["id"])]
+        if not active_subs:
+            return []
+
+        runs = []
+        for sub in active_subs:
+            strat_id = sub["id"]
+            handler = self.handlers.get(sub["kind"])
+            if not handler:
                 continue
+            expected_gen = self._subscription_generations.get(strat_id, 1)
+            working_state = self._copy_indicator_state(
+                self.indicators.get(strat_id, {})
+            )
+
+            # Bounded outstanding work via semaphore
+            acquired = self._work_semaphore.acquire(
+                timeout=min(0.05, self.callback_timeout)
+            )
+            if not acquired:
+                self._halt_failed_subscription(
+                    sub, TimeoutError("strategy worker pool saturated")
+                )
+                continue
+
+            def worker_task(h=handler, s=dict(sub), c=candle, ws=working_state):
+                try:
+                    return _call_handler(h, s, c, ws)
+                finally:
+                    self._work_semaphore.release()
+
             try:
-                signal = self.handlers[sub["kind"]](sub, candle)
+                future = self._executor.submit(worker_task)
+                runs.append((sub, expected_gen, working_state, future))
+            except Exception as exc:
+                self._work_semaphore.release()
+                self._halt_failed_subscription(sub, exc)
+
+        intents = []
+        for sub, expected_gen, working_state, future in runs:
+            strat_id = sub["id"]
+            try:
+                signal = future.result(timeout=self.callback_timeout)
+            except FutureTimeoutError:
+                self._halt_failed_subscription(
+                    sub,
+                    TimeoutError(f"callback exceeded {self.callback_timeout}s timeout"),
+                )
+                continue
             except Exception as exc:
                 self._halt_failed_subscription(sub, exc)
                 continue
+
+            # Validate originating run before committing any state or signals
+            if not self.enabled:
+                continue
+            if not self.may_run(strat_id):
+                continue
+            if self._subscription_generations.get(strat_id, 1) != expected_gen:
+                continue
+            if not self.is_subscription_enabled(strat_id):
+                continue
+
+            # Valid run: commit candidate indicator state
+            self.indicators[strat_id] = working_state
+
             if signal is None:
                 continue
+
             side, reason = signal
             intent = OrderIntent(
-                f"{sub['id']}:{candle.interval}:{candle.start_time}",
-                sub["id"],
+                f"{strat_id}:{candle.interval}:{candle.start_time}",
+                strat_id,
                 sub["account"],
                 candle.symbol,
                 side,
@@ -288,7 +458,7 @@ class StrategyRuntime:
             )
             event = {
                 "intent_id": intent.intent_id,
-                "strategy": sub["id"],
+                "strategy": strat_id,
                 "kind": sub["kind"],
                 "symbol": candle.symbol,
                 "interval": candle.interval,
@@ -300,4 +470,5 @@ class StrategyRuntime:
             with self.store.transaction():
                 self.store.audit("STRATEGY_SIGNAL", event)
             intents.append(intent)
+
         return intents

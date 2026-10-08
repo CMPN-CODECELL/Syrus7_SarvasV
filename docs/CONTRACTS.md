@@ -32,6 +32,17 @@ Global: RECOVERING -> STOPPED after successful reconciliation -> RUNNING (or exp
 Audit schema: durable monotonic sequence, type, JSON payload, recorded_at UTC epoch timestamp; relevant state change and audit commit together. Legacy rows have recorded_at=0 (unknown). API state adds safety and risk_budgets to its real state projection.
 Strategy signal, sanitized callback-failure and rejected-market-data events provide durable Member 4 evidence. API state also exposes subscriptions, positions, orders, fills, candles, signals, callback errors, market-data counters, audit, kill and explicit mode.
 
+## Strategy Callback Execution Contract
+
+- Callbacks execute strictly outside `store.lock` with bounded execution (`callback_timeout`, default 0.5s) and bounded concurrency (`max_workers`).
+- Timed-out callbacks are durably quarantined (`enabled=0`, audit `STRATEGY_CALLBACK_FAILED` with `TimeoutError`); healthy subscriptions continue processing.
+- Candidate indicator updates run on isolated working state. Indicator state is committed and intents emitted ONLY if the originating run remains valid upon completion (matching subscription generation, active subscription, enabled runtime, and unhalted gate).
+- Late completions after timeout, stop/re-enable, global stop, or kill are discarded with zero state or order mutations.
+- Workers receive only plain subscription metadata and immutable candles; they never receive store locks or broker authority.
+- Bounded concurrency limits active threads: repeated hangs cannot create unlimited workers.
+- Trusted callback limit: threads provide latency isolation and fail-closed timeout bounding; they are not an arbitrary-code security sandbox against CPU spinning or malicious bytecode.
+
+
 ## Risk reasons
 
 ALLOWED, RISK_GLOBAL_GATE, RISK_DUPLICATE_INTENT, RISK_NOT_SUBSCRIBED, RISK_STRATEGY_STOPPED, RISK_MAX_DAILY_LOSS, RISK_RATE_LIMIT, RISK_MAX_POSITION.

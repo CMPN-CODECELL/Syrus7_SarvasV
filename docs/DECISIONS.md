@@ -402,3 +402,26 @@ LocalStorage bearer tokens, hidden account inputs and UI-only redirects were rej
 
 ### Reversal
 Replace the local session implementation with the selected production identity provider while retaining server-derived account ownership and dashboard access tests.
+
+## DEC-019 — Bounded strategy callback execution outside control-plane lock
+Date: 2026-10-08
+Status: ACCEPTED
+
+### Context
+Strategy callbacks were previously executed synchronously inside `with self.store.lock:` within `Platform.tick`. A slow or hanging callback blocked the entire control plane, preventing order cancellation, reconciliation, and the 10-second kill switch SLA. Additionally, a hung callback could pollute indicator state if it completed late or after a subscription restart.
+
+### Decision
+Execute strategy callbacks strictly outside `store.lock`. Run callbacks in an isolated bounded worker pool (`BoundedStrategyExecutor` with configurable timeout `callback_timeout` and bounded concurrency `max_workers`). Durably quarantine timed-out subscriptions (`enabled=0`, audit `STRATEGY_CALLBACK_FAILED` with `TimeoutError`) while healthy strategies continue uninterrupted. Track run generation per subscription; discard late results after timeout, stop/re-enable, global stop, or kill. Commit candidate indicator updates only if the originating run generation matches and remains valid upon completion. Workers are denied store locks and broker authority.
+
+### Reason
+Strategies are untrusted workloads and must never block control-plane operations or compromise the kill switch SLA. Latency isolation and fail-closed timeout enforcement ensure safety without allowing thread exhaustion.
+
+### Impact
+`StrategyRuntime`, `Platform.tick`, `docs/CONTRACTS.md`, `tests/test_strategy_execution_safety.py`. Trusted callback limits are documented: threads provide latency isolation, not a security sandbox for arbitrary untrusted bytecode.
+
+### Alternatives
+Running synchronous sequential callbacks with in-band timeouts or killing threads via OS signals was rejected because Python threads cannot be safely terminated asynchronously and store locks must not be held across untrusted code.
+
+### Reversal
+Arbitrary untrusted user strategy upload requires process-level sandboxing (e.g. WASM or container isolation) rather than thread-level latency bounding.
+
