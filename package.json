@@ -2,7 +2,11 @@
   "name": "algoshield-infrastructure",
   "private": true,
   "scripts": {
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build",
+    "frontend:test": "npm --prefix frontend run test",
+    "frontend:lint": "npm --prefix frontend run lint"
   },
   "devDependencies": {
     "@neon/config": "1.8.4",

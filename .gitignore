@@ -24,3 +24,5 @@ data/
 .agents/
 skills-lock.json
 node_modules/
+frontend/dist/
+frontend/coverage/
