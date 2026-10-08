@@ -30,3 +30,11 @@ P0 integration tests (`test_p0.py`) recreate the platform and external mock from
 Risk policy tests (`test_risk_policies.py`) cover durable policy/loss halt after restart, invalid finite/integer limits, authoritative API changes, reservation conversion/release and lowered limits retaining open exposure. SQLite upgrades are additive/versioned; PostgreSQL hashes normalize newlines across operating systems.
 
 Recovery tests (`test_recovery.py`) verify incomplete/stale/conflicting/missing snapshots, zero-net missing history, event reordering, duplicate snapshot fills, fresh receive vs old LIVE event time, persisted marks/latch/certificate, verified reset and strict reduce-only behavior. Kill tests cover bounded calls, cancel/fill races, convergent exits, SAFE_LATE and absent UNKNOWN resolution. Failure Lab tests cover deterministic HTTP scenarios and expiring/restart proof. Browser smoke remains opt-in and must use isolated offline SQLite.
+
+USP suites cover control-plane authentication/ownership, structured risk explanations, account net/gross exposure and races, LIMIT-price reasonability, proof freshness/read-only behavior, reconciliation deltas, durable trace correlation, Failure Lab V2, Kill Certificate V2, bounded metrics and the isolated 19-case SafetyBench. Current validation (2026-10-08): 280 passed, 1 environment-gated PostgreSQL integration skipped; Ruff check/format and frontend inline JavaScript syntax pass. No performance number is hard-coded as a product claim.
+
+```bash
+python -m pytest -q --basetemp=.pytest-tmp
+python -m ruff check .
+python -m ruff format --check .
+```

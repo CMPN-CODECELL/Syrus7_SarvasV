@@ -90,4 +90,5 @@ Neon CLI 8.0.11 installed. Requested project/branch not yet authenticated/linked
   Kill deadline deduction verified: replay stream join time is deducted from the total kill deadline,
   and admission gate closure is strictly idempotent.
 
+- 2026-10-08 USP integration: added authenticated account-scoped control-plane boundaries, explainable risk evidence, durable account net/gross and LIMIT-price policy, conservative Safety Proof, reconciliation delta/recovery projection, trace correlation, Failure Lab V2, Kill Certificate V2, bounded metrics, isolated 19-case SafetyBench and responsive operational UI. Additive SQLite migrations 008-011 and PostgreSQL migrations 007-010 are packaged. Regression: 280 passed / 1 PostgreSQL integration skipped; Ruff and frontend syntax clean. Live 021 and remote Neon remain blocked/unclaimed.
 

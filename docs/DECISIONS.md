@@ -452,4 +452,25 @@ Deriving simulation time directly from wall-clock sleep intervals was rejected b
 ### Reversal
 Live market data connections (e.g., 021 WebSocket feeds) will replace synthetic simulation batches entirely with the external broker/exchange feed adapter; the simulation cursor remains strictly within the mock/replay harness.
 
+## DEC-021 — Evidence-first USP layer with conservative proof and isolated benchmarking
+
+Status: ACCEPTED
+
+### Context
+The prototype needed judge-visible differentiation without weakening fill/reconciliation/kill safety or inventing unavailable 021 behavior.
+
+### Decision
+Add account-wide risk and LIMIT-price checks inside the serialized gateway; additive audit correlation and policy/benchmark tables; a read-only conservative Safety Proof; server-built traces; bounded non-critical metrics; Failure Lab V2; Kill Certificate V2; and isolated SQLite/mock SafetyBench. Protect critical APIs with local sessions, enforce strategy/order ownership and scope user financial snapshots to the authenticated account.
+
+### Reason
+This makes actual backend evidence explainable and demonstrable while preserving one modular monolith, canonical contracts and fail-closed uncertainty.
+
+### Impact
+SQLite schema advances to version 11 and PostgreSQL gains migrations 007-010. SafetyBench is disabled for PostgreSQL/non-mock modes. Metrics reset on process restart. Historical risk-policy reconstruction stays explicitly unknown.
+
+### Alternatives
+Static UI proof, synthetic reconciliation fills, Prometheus/Redis infrastructure, client-built timelines and live fault injection were rejected as unsafe, misleading or unnecessary.
+
+### Reversal
+Production identity and telemetry may replace bootstrap implementations behind the same boundaries. Preserve reason codes, invariant statuses, correlation IDs and completed benchmark summaries.
 

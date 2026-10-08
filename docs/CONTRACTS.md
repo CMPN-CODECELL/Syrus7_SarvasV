@@ -108,3 +108,15 @@ Every broker adapter (including `MockBrokerAdapter` and the eventual `Broker021A
    - `Platform.kill(deadline_seconds, deadline_clock)` measures total execution time starting before admission closure and joins `_replay_thread` bounded by `min(1.0, deadline.remaining)`.
    - Remaining deadline is passed directly into `reliability.kill(deadline_seconds=deadline.remaining)`.
    - Admission closure (`kill_requested.set()`, `kill_latched=True`, `risk.state=KILLING`, `strategies.enabled=False`, `invalidate_in_flight()`) is strictly idempotent.
+
+## USP contract extensions
+
+- `RiskDecision.details` is a backward-compatible dictionary of structured rule evidence. Numeric rejections include applicable current, pending, requested, projected and limit values.
+- `RiskPolicy.max_price_deviation_bps` is a positive integer (default 500) used only for LIMIT orders against a fresh Decimal mark.
+- `AccountRiskPolicy` has optional positive `max_net_position_per_symbol` and `max_gross_virtual_position_per_symbol`; `None` disables the rule. Gross exposure sums each strategy's independent worst-case endpoint, so opposing strategies do not erase gross risk.
+- Stable reasons add `RISK_ACCOUNT_NET_POSITION`, `RISK_ACCOUNT_GROSS_POSITION` and `RISK_PRICE_REASONABILITY` without renaming prior codes.
+- `KillCertificate` adds defaulted `target_seconds`, `started_at`, `completed_at`, `stage_durations_ms` and `final_evidence`. Old persisted certificates remain loadable.
+- Audit rows add nullable `correlation_id`, normally the intent/order ID, for durable server-built traces.
+- Safety proof invariant status is exactly `VERIFIED`, `FAILED`, `UNKNOWN` or `NOT_APPLICABLE`. Missing/expired evidence cannot become verified.
+
+Authenticated operational APIs are `GET/PUT /api/risk/account-policy`, `GET /api/safety-proof`, `GET /api/reconciliation`, `GET /api/traces`, `GET /api/traces/{id}`, `GET /api/metrics`, `POST /api/safety-bench/run`, and `GET /api/safety-bench/latest`. SafetyBench accepts 1-100 iterations and is offline/mock-only.

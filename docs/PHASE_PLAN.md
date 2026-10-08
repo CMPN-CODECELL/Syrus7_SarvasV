@@ -24,3 +24,7 @@ Obtain sponsor contract/credentials first. Implement the existing provider inter
 Failure Lab controls, persistent replay scenario manifests, invariant dashboard evidence, WebSocket delivery if beneficial, demo/viva rehearsals. No ML/profitability work before mandatory execution safety passes.
 
 Neon persistence extension: centralized psycopg store, checksum migrations and requested TypeScript infrastructure policy are prepared. Primary durable target is Neon PostgreSQL; offline SQLite remains available. Remote authentication/link/schema/connectivity/deployment status is recorded in progress/INTEGRATION.md.
+
+## USP layer status (2026-10-08)
+
+Phases 0-12 from `usp_implementation_plan.md` are implemented for the offline/mock bootstrap: authenticated controls, explainable decisions, account net/gross controls, LIMIT price guard, Safety Proof, Reconciliation Center, durable traces, Failure Lab V2, Kill Certificate V2, bounded metrics, isolated 19-case SafetyBench, operational dashboard panels, regression coverage and documentation. This does not change the live-provider blocker: no 021 payload, authentication, stream, reconnect or sandbox behavior was invented, and no remote Neon production data was mutated.

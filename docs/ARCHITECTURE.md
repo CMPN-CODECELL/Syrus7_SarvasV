@@ -50,3 +50,9 @@ Opposing virtual positions can externally net to zero while still carrying strat
 | Kill race | Shared lock; no ordinary dispatch after gate closure |
 
 The Python lock does not provide multi-process safety; PostgreSQL adds a session advisory ownership lock to reject duplicate control planes. Real broker adapter contract tests, deadlines, durable health/latches, feed freshness and authenticated account boundaries must land before live execution.
+
+## USP operational evidence layer
+
+The platform projects a read-only evidence layer over the existing control plane. `SafetyProofService` evaluates invariants I1-I10 from durable orders, decisions, fills, positions, reconciliation freshness and kill evidence; it never mutates trading state and uses `UNKNOWN` when proof is unavailable. Account net/gross limits and LIMIT-price deviation checks execute inside the serialized risk reservation boundary. Additive audit correlation supports server-built execution traces. `MetricsRegistry` keeps bounded process-local samples and is isolated from safety decisions.
+
+Failure Lab V2 and SafetyBench remain SQLite/mock-only; SafetyBench creates a fresh platform per case and persists only completed summaries. The reconciliation center reports local/broker deltas and recovered canonical fill IDs without synthetic balancing fills. Kill certificates add protocol-stage timing and final evidence without changing SUCCESS/SAFE_LATE/FAILED semantics. Authenticated snapshots scope subscriptions, positions, orders, fills, signals, decisions and traces to the current account; strategy/order mutations also verify ownership.

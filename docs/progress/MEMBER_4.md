@@ -101,3 +101,5 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 
 ## Handoff Notes
 Demo replay ends STOPPED; enabled subscriptions show READY and stopped/faulted subscriptions show STOPPED. Indicator state requires a fresh complete warm-up after restart, while subscription state and signal/error evidence are durable. Neon PostgreSQL schema is initialized and verified.
+
+- 2026-10-08 USP delivery: implemented authenticated/account-owned controls, structured risk evidence, durable account net/gross policy, LIMIT-price guard, Safety Proof I1-I10, Reconciliation Center, durable traces, Failure Lab V2, Kill Certificate V2, bounded metrics, isolated 19-case SafetyBench and responsive operational dashboard panels. Added SQLite migrations 008-011 and PostgreSQL migrations 007-010. Full suite: 280 passed / 1 environment-gated PostgreSQL skipped; Ruff and frontend JavaScript syntax pass. No remote Neon mutation or live 021 claim.
