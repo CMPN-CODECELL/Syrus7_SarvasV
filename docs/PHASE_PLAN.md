@@ -1,12 +1,14 @@
 # Implementation status and next phases
 
-## Current: validated mock/replay bootstrap
+Active work: [IMPLEMENTATION_DELTA.md](IMPLEMENTATION_DELTA.md). Fresh evidence: [progress/INTEGRATION.md](progress/INTEGRATION.md). The v2 and earlier outstanding-task descriptions below preserve history; they do not override current v12 code or DEC-026.
+
+## Historical bootstrap phases (superseded as active backlog)
 
 Implemented: contracts, modular monolith, SQLite schema v2, API and backend-fed dashboard, accounts/subscriptions, three built-in candle strategies, 1m/5m candles, max position/rate/daily loss, atomic directional reservations, mock partial/rejected orders, idempotent accounting, reconciliation, explicit recovery/resume and verified mock kill. Safety/invariant tests cover mandatory S1-S7 and additional failures.
 
 This is a vertical slice, **not completion of the official PS**. Runtime is serialized, so simultaneous strategies share one account/event loop rather than run in separate threads. Demo ends STOPPED; do not label subscriptions RUNNING after replay.
 
-## Next: mandatory hardening before real execution
+## Historical hardening task inventory
 
 Member 1: exact sponsor charges, durable configurable policy/session accounting, audit timestamps, charge corrections and stronger ledger projection/property tests.
 Member 2 completed in mock/replay (T1–T5): authoritative state-machine invariants, explicit cancellation lifecycle, lightweight broker update flow, disconnect/reconnect recovery, and offline broker adapter behavioral contract suite. Remaining external work: real 021 contract fixtures and sandbox integration once sponsor documentation and credentials are provided.

@@ -8,7 +8,7 @@ Canonical executable definitions: `backend/shared/contracts.py`. Documentation d
 - Quantity is a positive integer; signed quantity uses Side.sign. BUY/SELL are canonical enums.
 - `Tick`: symbol, event_timestamp, price, quantity (per-tick volume), event_id. Adapter must normalize cumulative volume if needed.
 - `Candle`: symbol, interval (60/300 seconds), start_time, end_time, OHLCV, is_closed. Half-open UTC windows; no empty gap candles; no end-of-replay fabricated closure.
-- `OrderIntent`: intent_id, strategy_instance_id, account_id, symbol, side, quantity, created_at, order_type, limit_price, reason. MARKET only in bootstrap.
+- `OrderIntent`: intent_id, strategy_instance_id, account_id, symbol, side, quantity, created_at, order_type, limit_price, reason. MARKET and LIMIT are accepted; LIMIT requires a positive Decimal limit_price.
 - `RiskDecision`: intent_id, allowed, reason_code, projected_position, reason_text, rule_results, created_at, reservation_id. New fields have backward-compatible defaults. Approval indicates admission, **not broker acceptance**; inspect canonical order status.
 - `CanonicalOrder`: order_id, intent, status, filled_quantity, derived remaining_quantity. Mock broker order ID equals intent ID; real adapter must retain explicit broker/client mapping.
 - `Fill`: fill_id, broker_order_id, strategy_instance_id, account_id, symbol, side, quantity, price, timestamp, charges. IDs unique across configured provider/account; adapter must namespace them if broker IDs are only locally unique.
@@ -164,10 +164,10 @@ Every broker adapter (including `MockBrokerAdapter` and the eventual `Broker021A
    - Streaming loops continuously revalidate the session token before pushing snapshots.
    - Upon user logout or session expiration, SSE streams terminate immediately and WebSockets close with status code 1008 (`WS_1008_POLICY_VIOLATION`).
 5. **Stale UI Clearance on Invalidation**:
-   - On HTTP 401 responses or WebSocket close code 1008, the client UI invokes `clearStaleData()`, clearing subscriptions, positions, orders, fills, signals, errors, budgets, and safety indicators, and redirects to `/login`.
-6. **Platform-Wide Authorization Boundary & Unprotected Mutation Endpoints**:
+   - On HTTP 401 responses or WebSocket close code 1008, the React providers clear the current account snapshot, clearing subscriptions, positions, orders, fills, signals, errors, budgets, and safety indicators, and redirects to `/login`.
+6. **Historical pre-DEC-026 authorization gap**:
    - Ownership: Member 3 (Ram) owns risk, security, reliability, global trading gates, kill switch, and platform-level reconciliation. Member 1 (Akshat) owns accounting, fill ledgers, and financial positions. Member 4 owns market data, strategy runtimes, and user workflow.
-   - Platform-wide authorization is NOT complete. The following global mutation endpoints currently lack operator role authorization and remain to be protected by Ram (Member 3):
+   - The following list records the earlier gap inventory. DEC-026 supersedes it: global mutations now require durable operator authority; own strategy policies/controls and order cancellation require ownership. Current rules and provisioning are in SECURITY_OPERATIONS.md.
      - `PUT /api/risk/policies/{strategy}` (risk policy modifications)
      - `PUT /api/risk/strategies/{strategy}` (manual strategy halt/resume)
      - `POST /api/reconcile` (platform-wide broker reconciliation trigger)
@@ -202,3 +202,7 @@ Every broker adapter (including `MockBrokerAdapter` and the eventual `Broker021A
 - `FAILED`, `UNKNOWN`, and `SAFE_LATE` are displayed verbatim and must not be mapped to successful labels.
 - Failure Lab choices come from authenticated `GET /api/failure-lab/scenarios`; strategy choices come from `GET /api/strategies`. The UI must not maintain duplicate capability lists.
 - Nested backend evidence is rendered as labeled fields, lists, and status indicators. Raw JSON is not the user-facing representation.
+
+## DEC-026 current authorization contract
+
+Verified sessions include is_operator (0/1), resolved from durable operator_grants on each request. No public API grants authority. Anonymous global actions return 401; authenticated ordinary users return 403 before mutation. Operators may execute global controls but account-facing responses still exclude other accounts. Own policy/start/stop/cancel actions remain owner-only even for operators. AccountResponseScope is the shared nested projection; unknown/unowned trace access is denied. Exceptions from global domain operations expose a generic conflict message rather than broker/private IDs. SQLite v12 and PostgreSQL migration 011 add only operator_grants; earlier migration files are immutable. Global gate/health/verdict, historical kill status/timing and aggregate diagnostics are explicitly permitted, while financial/identity records remain scoped. See SECURITY_OPERATIONS.md for provisioning and current environment limits.

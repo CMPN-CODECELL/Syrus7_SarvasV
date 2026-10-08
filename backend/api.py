@@ -25,6 +25,7 @@ from backend.reliability.failure_lab import FailureLab, SCENARIOS
 from backend.shared.config import settings
 from backend.shared.contracts import AccountRiskPolicy, RiskPolicy, StrategyState
 from backend.shared.postgres import PostgresStore
+from backend.shared.presentation import AccountResponseScope
 
 
 class AccountRequest(BaseModel):
@@ -184,6 +185,19 @@ def create_app(platform=None):
             raise HTTPException(401, "authentication required")
         return user
 
+    def require_operator(request: Request):
+        user = require_user(request)
+        if not user["is_operator"]:
+            raise HTTPException(403, "operator authority required")
+        return user
+
+    def account_response(user, value):
+        with engine.store.lock:
+            encoded = jsonable_encoder(value, custom_encoder={Decimal: str})
+            return financial_json(
+                AccountResponseScope(engine.store, user["account_id"]).project(encoded)
+            )
+
     def require_strategy_owner(request: Request, strategy: str):
         user = require_user(request)
         rows = engine.store.rows(
@@ -221,7 +235,12 @@ def create_app(platform=None):
     async def invalid(request, exc):
         from fastapi.responses import JSONResponse
 
-        return JSONResponse(status_code=409, content={"detail": str(exc)})
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": "operation rejected; inspect authorized local audit evidence"
+            },
+        )
 
     @app.get("/")
     def dashboard(request: Request):
@@ -404,33 +423,33 @@ def create_app(platform=None):
 
     @app.post("/api/orders/{order_id}/cancel")
     def cancel_order(order_id: str, request: Request):
-        require_order_owner(request, order_id)
+        user = require_order_owner(request, order_id)
         try:
-            return financial_json(engine.cancel(order_id))
+            return account_response(user, engine.cancel(order_id))
         except ValueError as exc:
             if "not found" in str(exc):
-                raise HTTPException(404, str(exc)) from None
-            raise HTTPException(400, str(exc)) from None
+                raise HTTPException(404, "order not found") from None
+            raise HTTPException(400, "operation rejected") from None
 
     @app.post("/api/broker/updates/sync")
     def sync_broker_updates(request: Request):
-        require_user(request)
+        user = require_operator(request)
         results = engine.sync_broker_updates()
-        return financial_json({"processed": len(results), "updates": results})
+        return account_response(user, {"processed": len(results), "updates": results})
 
     @app.post("/api/broker/disconnect")
     def disconnect_broker(request: Request):
-        require_user(request)
-        return financial_json(engine.disconnect_broker())
+        user = require_operator(request)
+        return account_response(user, engine.disconnect_broker())
 
     @app.post("/api/broker/reconnect")
     def reconnect_broker(request: Request):
-        require_user(request)
-        return financial_json(engine.reconnect_broker())
+        user = require_operator(request)
+        return account_response(user, engine.reconnect_broker())
 
     @app.post("/api/accounts", status_code=201)
     def account(body: AccountRequest, request: Request):
-        require_user(request)
+        require_operator(request)
         try:
             engine.account(body.account_id)
         except (sqlite3.IntegrityError, UniqueViolation):
@@ -447,12 +466,12 @@ def create_app(platform=None):
 
     @app.post("/api/market/session")
     def set_market_session(body: MarketSessionRequest, request: Request):
-        require_user(request)
+        user = require_operator(request)
         try:
             engine.market_session.set_status(body.status)
-        except ValueError as exc:
-            raise HTTPException(400, str(exc)) from None
-        return financial_json(engine.market_session.to_dict(engine.clock()))
+        except ValueError:
+            raise HTTPException(400, "operation rejected") from None
+        return account_response(user, engine.market_session.to_dict(engine.clock()))
 
     @app.post("/api/subscriptions", status_code=201)
     def subscribe(body: SubscriptionRequest, request: Request):
@@ -484,7 +503,7 @@ def create_app(platform=None):
 
     @app.post("/api/demo")
     def demo(request: Request):
-        user = require_user(request)
+        user = require_operator(request)
         if not engine.demo_enabled:
             raise HTTPException(403, "replay demo is disabled for this database")
         # A restart begins RECOVERING. A deliberate replay action may perform
@@ -494,7 +513,7 @@ def create_app(platform=None):
             raise HTTPException(409, "reconciliation required")
         engine.demo(user["account_id"])
         engine.start_replay_stream()
-        return financial_json(engine.snapshot(user["account_id"]))
+        return account_response(user, engine.snapshot(user["account_id"]))
 
     @app.put("/api/risk/policies/{strategy}")
     def policy(strategy: str, body: PolicyRequest, request: Request):
@@ -531,45 +550,49 @@ def create_app(platform=None):
 
     @app.get("/api/safety-proof")
     def safety_proof(request: Request):
-        require_user(request)
-        return financial_json(engine.safety_proof.build())
+        user = require_user(request)
+        return account_response(user, engine.safety_proof.build())
 
     @app.get("/api/reconciliation")
     def reconciliation_center(request: Request):
-        require_user(request)
-        return financial_json(engine.reliability.reconciliation_center())
+        user = require_user(request)
+        return account_response(user, engine.reliability.reconciliation_center())
 
     @app.get("/api/traces")
     def recent_traces(request: Request, limit: int = Query(20, ge=1, le=100)):
         user = require_user(request)
-        return financial_json(engine.traces.recent_traces(limit, user["account_id"]))
+        return account_response(
+            user, engine.traces.recent_traces(limit, user["account_id"])
+        )
 
     @app.get("/api/traces/{trace_id}")
     def trace(trace_id: str, request: Request):
         user = require_user(request)
         try:
-            return financial_json(engine.traces.trace(trace_id, user["account_id"]))
+            return account_response(
+                user, engine.traces.trace(trace_id, user["account_id"])
+            )
         except PermissionError:
             raise HTTPException(403, "trace belongs to another account") from None
 
     @app.get("/api/metrics")
     def metrics(request: Request):
-        require_user(request)
-        return financial_json(engine.metrics.snapshot())
+        user = require_user(request)
+        return account_response(user, engine.metrics.snapshot())
 
     @app.post("/api/safety-bench/run")
     def run_safety_bench(body: SafetyBenchRequest, request: Request):
-        require_user(request)
+        user = require_operator(request)
         engine.require_offline_demo()
-        return financial_json(engine.safety_bench.run(body.iterations))
+        return account_response(user, engine.safety_bench.run(body.iterations))
 
     @app.get("/api/safety-bench/latest")
     def latest_safety_bench(request: Request):
-        require_user(request)
+        user = require_user(request)
         result = engine.safety_bench.latest()
         if result is None:
             raise HTTPException(404, "no completed SafetyBench run")
-        return financial_json(result)
+        return account_response(user, result)
 
     @app.get("/api/failure-lab/scenarios")
     def failure_lab_scenarios(request: Request):
@@ -578,41 +601,42 @@ def create_app(platform=None):
 
     @app.post("/api/failure-lab/{scenario}")
     def failure_lab(scenario: str, request: Request):
-        require_user(request)
-        return financial_json(FailureLab(engine).run(scenario))
+        user = require_operator(request)
+        return account_response(user, FailureLab(engine).run(scenario))
 
     @app.post("/api/reconcile")
     def reconcile(request: Request):
-        require_user(request)
-        return financial_json(
+        user = require_operator(request)
+        return account_response(
+            user,
             {
                 "reconciled": engine.reliability.reconcile(),
-                "state": engine.snapshot(),
-            }
+                "state": engine.snapshot(user["account_id"]),
+            },
         )
 
     @app.post("/api/resume")
     def resume(request: Request):
-        require_user(request)
+        user = require_operator(request)
         engine.reliability.resume()
-        return financial_json(engine.snapshot())
+        return account_response(user, engine.snapshot(user["account_id"]))
 
     @app.post("/api/reduce-only")
     def reduce_only(request: Request):
-        require_user(request)
+        user = require_operator(request)
         engine.reliability.resume(reduce_only=True)
-        return financial_json(engine.snapshot())
+        return account_response(user, engine.snapshot(user["account_id"]))
 
     @app.post("/api/kill/reset")
     def reset_kill(request: Request):
-        require_user(request)
+        user = require_operator(request)
         engine.reliability.reset_kill()
-        return financial_json(engine.snapshot())
+        return account_response(user, engine.snapshot(user["account_id"]))
 
     @app.post("/api/kill")
     def kill(request: Request):
-        require_user(request)
-        return engine.kill()
+        user = require_operator(request)
+        return account_response(user, engine.kill())
 
     @app.get("/{spa_path:path}", include_in_schema=False)
     def spa_fallback(spa_path: str, request: Request):

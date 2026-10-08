@@ -61,3 +61,7 @@ All answers above belong in `021BrokerAdapter` / `MarketData021Provider` configu
 Public 021 Carbon sign-up material was found, but no authoritative sandbox endpoint, authentication, tick/order/fill schema or charge table was established. No CONFIRMED_021_BEHAVIOR exists yet. See DECISIONS.md for sources and classification. Adapter placeholders raise NotImplementedError; mock behavior must not be presented as sponsor behavior.
 
 Additional blockers: snapshot completeness/pagination and consistency, short-selling/product restrictions, bounded request deadlines, opposing virtual exit sequencing, delayed charge corrections, and durable kill recovery.
+
+## 2026-10-09 remediation boundary
+
+Local operator authority and account response scoping do not confirm sponsor authentication or multi-account API semantics. Broker021Adapter remains a raising placeholder. Execution identity/corrections, history completeness/consistency, charges, netting/shorting and measured live kill semantics remain UNKNOWN/BLOCKED. No sandbox or production Neon access occurred; local mock regression evidence is recorded in progress/INTEGRATION.md.

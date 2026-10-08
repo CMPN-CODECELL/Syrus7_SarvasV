@@ -21,7 +21,12 @@ class TraceService:
                 or payload.get("strategy")
                 or payload.get("strategy_instance_id")
             )
-            account = account or payload.get("account") or payload.get("account_id")
+            account = (
+                account
+                or payload.get("account")
+                or payload.get("account_id")
+                or payload.get("details", {}).get("account_id")
+            )
             events.append(
                 {
                     "sequence": row["sequence"],
@@ -36,7 +41,7 @@ class TraceService:
         if order:
             account = account or order[0]["account"]
             strategy = strategy or order[0]["strategy"]
-        if account_id and account and account != account_id:
+        if account_id and account != account_id:
             raise PermissionError("trace belongs to another account")
         return {
             "trace_id": trace_id,

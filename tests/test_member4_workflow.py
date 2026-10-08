@@ -549,18 +549,9 @@ def test_backend_derived_states_preserved():
 
 
 def test_unavailable_backend_and_reconnect_handling():
-    from pathlib import Path
-
-    # Verify the React providers clear account state on HTTP/WS session invalidation.
-    frontend = Path(__file__).resolve().parent.parent / "frontend/src"
-    client_source = (frontend / "api/client.js").read_text(encoding="utf-8")
-    telemetry_source = (frontend / "telemetry/TelemetryContext.jsx").read_text(
-        encoding="utf-8"
-    )
-    assert "algoshield:unauthorized" in client_source
-    assert "setSnapshot(null)" in telemetry_source
-    assert "event.code===1008" in telemetry_source
-
+    # Browser session invalidation is exercised behaviorally in
+    # frontend/src/test/telemetry.test.jsx (logout/account switch, HTTP 401,
+    # WS 1008, stale socket teardown). This test owns backend lifecycle behavior.
     # Backend shutdown and restore lifecycle
     platform = Platform()
     try:

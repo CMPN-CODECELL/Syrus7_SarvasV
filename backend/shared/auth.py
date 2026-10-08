@@ -93,15 +93,37 @@ class AuthService:
             return None
         now = time.time()
         rows = self.store.rows(
-            """SELECT u.username, u.account_id, t.expires_at 
+            """SELECT u.username, u.account_id, t.expires_at,
+                      CASE WHEN g.username IS NULL THEN 0 ELSE 1 END AS is_operator
                FROM user_tokens t 
                JOIN users u ON t.username = u.username 
+               LEFT JOIN operator_grants g ON g.username = u.username
                WHERE t.token = ? AND t.expires_at > ?""",
             (token, now),
         )
         if not rows:
             return None
         return dict(rows[0])
+
+    def provision_operator(self, username: str, *, granted: bool):
+        """Trusted local administration only; never exposed through HTTP."""
+        username = username.strip().lower()
+        with self.store.transaction() as db:
+            if not db.execute(
+                "SELECT username FROM users WHERE username=?", (username,)
+            ).fetchone():
+                raise ValueError("existing registered user required")
+            if granted:
+                db.execute(
+                    "INSERT INTO operator_grants(username,granted_at) VALUES (?,?) "
+                    "ON CONFLICT(username) DO NOTHING",
+                    (username, time.time()),
+                )
+            else:
+                db.execute("DELETE FROM operator_grants WHERE username=?", (username,))
+            self.store.audit(
+                "OPERATOR_GRANT_CHANGED", {"username": username, "granted": granted}
+            )
 
     def logout(self, token: str) -> bool:
         if not token:

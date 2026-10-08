@@ -1,9 +1,30 @@
 # AlgoShield â€” AI Engineering Instructions
+---
+
+## CURRENT ALGOSHIELD PROJECT BASELINE — READ FIRST (2026-10-09)
+
+Before changing code, agents MUST read, in order:
+1. `docs/PROJECT_TRUTH.md` — short product, architecture and authority map.
+2. `docs/IMPLEMENTATION_DELTA.md` — actual gap-first task order and release blockers.
+3. `docs/REQUIREMENTS_TRACEABILITY.md` — PS-06 requirement/test/evidence mapping.
+4. `docs/RESEARCH_DECISIONS.md` — research verdicts, rejected claims and 021 unknowns.
+5. Task-specific `docs/CONTRACTS.md`, `docs/ARCHITECTURE.md`, `docs/SAFETY_INVARIANTS.md`, `docs/DECISIONS.md`, `docs/TESTING.md`, `docs/021_API_UNKNOWN.md` and relevant source/tests.
+
+Status rule: history/progress/research files are **not** proof of the current checkout. Use actual code and test results to label `VERIFIED_CURRENT_COMMIT`; use `REPORTED_IMPLEMENTED` otherwise.
+
+**Research Sessions 1–7 have been consolidated into the four new docs; do not reproduce old proposal phases or edit previously applied migrations.** Existing 2026-10-08 logs report a React SPA, account scoping, bounded callback workers, Safety Proof, explainable risk, account net/gross policies, Failure Lab V2, SafetyBench and historical kill certificates. Verify/reuse rather than rebuild.
+
+Non-negotiable: Strategies cannot call broker directly; durable risk reservation precedes dispatch; effective unique attributed fills control financial state; ambiguity/restart fail closed; incomplete broker data cannot certify safety; kill never succeeds from submitted requests alone; React never computes safety/P&L; external 021 behavior is UNKNOWN until verified. Mock fault injection never accesses a live broker.
+
+Do not modify/push `main`. Safely preserve local work, integrate on `dev` or a branch targeting `dev`, run the relevant tests, update existing docs with evidence, append decision history, and report the exact commit/results/blockers.
+
+---
+
 
 ## Read this first
 This file is the canonical instruction file for every coding model working in this repository.
 
-Before changing code:
+After the baseline reading order above, read:
 1. Read `README.md`.
 2. Read `docs/REQUIREMENTS.md`.
 3. Read `docs/ARCHITECTURE.md`.
@@ -130,7 +151,7 @@ A change is complete only when:
 - README/docs are updated if the contract or behavior changed.
 
 ## Bootstrap operating constraints
-Use one backend worker. This is mock/replay only; do not claim sandbox completion. SQLite schema v2 supports offline mock/replay; Neon PostgreSQL is the accepted durable persistence layer. Real API details are absent. Read README for exact run/test commands and restart limitations. Never discard durable history to fake reconciliation. Preserve user-provided requirements even when the original sponsor statement is missing.
+Use one backend worker. This is mock/replay only; do not claim sandbox completion. SQLite schema v12 supports offline mock/replay; Neon PostgreSQL is the accepted durable persistence layer. Real API details are absent. Read README for exact run/test commands and restart limitations. Never discard durable history to fake reconciliation. Preserve user-provided requirements even when the original sponsor statement is missing.
 
 ## Persistent progress and decisions
 Before work: read canonical docs, relevant `docs/progress/MEMBER_N.md` and `docs/progress/INTEGRATION.md`, relevant ACCEPTED entries in `docs/DECISIONS.md`, and current code/tests.
@@ -140,3 +161,7 @@ After a meaningful implementation task: run relevant tests, update each affected
 Before changing an ACCEPTED decision: read DECISIONS.md, explain why it no longer works, make the smallest safe change, update/supersede its entry, and update affected docs/tests. Meaningful dependency, shared-contract, schema, infrastructure, safety-rule and module-boundary changes require decision entries; tiny refactors do not.
 
 Neon PostgreSQL is the durable target; SQLite supports offline mock/replay. Requested project `muddy-tooth-14996153`, branch `production`. Inspect existing schema before additive migrations; never reset/delete production data or seed fake demo rows there. No frontend/strategy database connections. Real secrets belong only in ignored local environment files or process configuration. If a tracked secret is discovered, stop and report it.
+
+## Operator and response boundary (DEC-026)
+
+Public registration never grants operator authority. Global controls require a durable explicit operator grant; account owners retain their own strategy/policy/order controls. Use the shared account response projection for nested evidence and streams. Read `docs/SECURITY_OPERATIONS.md` for provisioning. Never provision a production identity or migrate a production database through the offline CLI. Historical audit remains in `docs/CURRENT_REPO_AUDIT.md`; current evidence is in `docs/progress/INTEGRATION.md`.

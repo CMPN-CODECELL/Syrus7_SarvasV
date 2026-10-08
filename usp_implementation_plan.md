@@ -1,5 +1,7 @@
 # AlgoShield USP Implementation Plan
 
+> HISTORICAL PROPOSAL / MOSTLY IMPLEMENTED IN MOCK. Do not replay its phases or migration numbers. Use [Project Truth](docs/PROJECT_TRUTH.md), [Implementation Delta](docs/IMPLEMENTATION_DELTA.md), and [fresh verification](docs/progress/INTEGRATION.md). Earlier claims are retained as proposal history, not current certification.
+
 **Project:** AlgoShield — SYRUS 7.0 PS-06  
 **Owner focus:** Member 3 (Ram) — Risk, Security, Reliability & Scale  
 **Goal:** Turn AlgoShield from a correct PS-06 implementation into a prototype that can **prove safety under failure**, demonstrate more adversarial edge cases than competing teams, and produce measurable safety/performance results.
