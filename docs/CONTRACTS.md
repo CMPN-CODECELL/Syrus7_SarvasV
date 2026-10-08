@@ -35,10 +35,11 @@ Strategy signal, sanitized callback-failure and rejected-market-data events prov
 ## Strategy Callback Execution Contract
 
 - Callbacks execute strictly outside `store.lock` with bounded execution (`callback_timeout`, default 0.5s) and bounded concurrency (`max_workers`).
+- Workers are strictly isolated: callback workers never receive store locks, SQLite connections, broker authority, or runtime mutation capability. Workers compute pure candidate signals over isolated working state copies and return candidate results to the control plane.
+- The control plane thread validates and commits candidate results: state updates and order intents are committed ONLY if the originating run remains valid upon completion (matching subscription generation, enabled subscription, active runtime epoch, unhalted risk gate, and monotonic candle ordering). Timed-out or invalidated results cannot mutate runtime or persistent state.
+- Bounded shutdown: `StrategyRuntime.close()` invalidates pending results and cancels queued futures without unbounded thread waiting (`shutdown(wait=False, cancel_futures=True)`). Late callback releases after store closure execute zero database calls and trigger no access violations.
+- Same-instance serialization: callbacks for the same subscription instance serialize sequential indicator updates without allowing a timed-out worker to retain locks needed by `kill`, `set_enabled` (stop/re-enable), `close`, or healthy strategies. Timeouts and subscription state changes provision fresh instance locks.
 - Timed-out callbacks are durably quarantined (`enabled=0`, audit `STRATEGY_CALLBACK_FAILED` with `TimeoutError`); healthy subscriptions continue processing.
-- Candidate indicator updates run on isolated working state. Indicator state is committed and intents emitted ONLY if the originating run remains valid upon completion (matching subscription generation, active subscription, enabled runtime, and unhalted gate).
-- Late completions after timeout, stop/re-enable, global stop, or kill are discarded with zero state or order mutations.
-- Workers receive only plain subscription metadata and immutable candles; they never receive store locks or broker authority.
 - Bounded concurrency limits active threads: repeated hangs cannot create unlimited workers.
 - Trusted callback limit: threads provide latency isolation and fail-closed timeout bounding; they are not an arbitrary-code security sandbox against CPU spinning or malicious bytecode.
 

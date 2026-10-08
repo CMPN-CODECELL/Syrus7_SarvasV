@@ -483,4 +483,28 @@ Using raw UTC day offsets rejected due to day boundary errors across UTC midnigh
 ### Reversal
 Any future multi-exchange support or exchange holiday calendar will be introduced via clean pluggable session provider adapters without altering risk layer contracts.
 
+## DEC-022 — Worker callback storage isolation, control-plane commit, and bounded shutdown
+Date: 2026-10-08
+Status: ACCEPTED
+
+### Context
+`StrategyRuntime.close` previously used `shutdown(wait=True)` to avoid SQLite teardown access violations under the assumption that waiting for workers prevented teardown errors. However, if a callback hung or blocked indefinitely, `close()` would block forever, violating bounded platform shutdown SLAs. Inspection of the worker path revealed that workers called `may_run` and `is_subscription_enabled` (executing SQL on SQLite) and committed indicator state directly from worker threads while holding instance locks across untrusted callbacks. If a worker timed out, it retained instance locks, blocking controls or future candles, and if SQLite was closed, delayed worker threads triggered SQLite access violations.
+
+### Decision
+Amends DEC-021 item 3:
+1. **Worker Storage Isolation**: Callback worker tasks run purely isolated calculations on copies of working indicator state and immutable candle inputs. Workers never hold SQLite connections, never call `Store`, never access broker authority, and never commit runtime state.
+2. **Control-Plane Validation and Commit**: The control plane thread in `on_candle` dispatches candidate work, bounds wait time by `callback_timeout`, and validates candidate outputs (`_enabled`, `_global_epoch`, `_subscription_generations`, `is_subscription_enabled`, `may_run`, and candle monotonic start time). Only valid, timely outputs have their indicator state and order intents committed to platform state. Timed-out or invalidated candidate results cannot mutate any platform or indicator state.
+3. **Bounded Non-Blocking Shutdown**: `StrategyRuntime.close()` invalidates pending results (`_global_epoch += 1`, `_enabled = False`) and immediately cancels queued work via `self._executor.shutdown(wait=False, cancel_futures=True)`. Because daemon worker threads have zero DB handles and commit no state, storage can close immediately; late worker thread completions execute zero database queries and trigger no access violations.
+4. **Lock Non-Retention on Timeout**: Instance-level locks (`inst_lock`) serialize same-instance callbacks in the control plane to preserve sequential indicator updates without letting a timed-out worker retain locks needed by `kill`, `set_enabled` (stop/re-enable), `close`, or healthy strategies. Stopping or halting a subscription provisions a fresh instance lock.
+
+### Reason
+Strategies are untrusted workloads. Workers must never have database or mutation authority, and process shutdown must never hang on slow or infinite callbacks. Pure computation in workers and control-plane state commits completely eliminate SQLite teardown race conditions and lock contention.
+
+### Impact
+`backend/strategies/runtime.py`, `docs/CONTRACTS.md`, `tests/test_strategy_execution_safety.py`. Full test suite passes (265 passed, 1 skipped).
+
+### Alternatives
+Using unbounded `shutdown(wait=True)` was rejected because it violates shutdown SLAs when callbacks hang. Allowing workers to query SQLite or commit state directly was rejected because it causes teardown access violations and state corruptions.
+
+
 

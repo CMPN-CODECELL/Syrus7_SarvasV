@@ -90,7 +90,12 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
   Kept state consistency between `is_open()`, `status_at()`, `to_dict()`, and `Reliability.check_evidence()` (`HALTED`, manual `OPEN`/`CLOSED`, and `AUTO`).
   Task 4 Follow-up 1: Serialized same-strategy callback execution per instance under `inst_lock` prior to state copying and committing, guaranteeing intermediate candle updates are never lost or computed concurrently from stale indicator states.
   Task 4 Follow-up 2: Verified kill certificate elapsed time includes admission closure and replay join; exhausted deadline budgets return a truthful failure certificate (`status="FAILED", reason="KILL_DEADLINE_EXPIRED"`) without throwing `ValueError` from `Deadline`.
-  Added comprehensive tests in `tests/test_market_session.py` and updated `tests/test_member4.py`. Full test suite: 262 passed / 1 skipped; Ruff check and format clean.
+- 2026-10-08: Task 5 Follow-up Callback Isolation and Bounded Shutdown completed.
+  Addressed StrategyRuntime.close unbounded executor shutdown: eliminated `shutdown(wait=True)` in favor of bounded `shutdown(wait=False, cancel_futures=True)` with pre-shutdown epoch invalidation.
+  Completely isolated strategy callback workers from SQLite, `Store`, broker authority, and runtime mutation. Workers now execute pure candidate calculations over working state copies and return candidate results to the control plane.
+  The control plane validates and commits candidate results (`_enabled`, `_global_epoch`, `_subscription_generations`, `is_subscription_enabled`, `may_run`, candle start time monotonicity); timed-out and invalidated runs cannot mutate state.
+  Ensured same-instance serialization (`inst_lock`) is acquired and released boundedly on timeout, never retaining locks needed by `kill`, `set_enabled`, `close`, or healthy strategies. Stopping or halting a subscription provisions a fresh instance lock.
+  Added regression coverage in `tests/test_strategy_execution_safety.py` verifying: callback remains blocked while close returns in bounded time; late release after store closure triggers zero DB queries or state mutations; same-instance timeout does not block controls or other strategies; test workers released in `finally` blocks. Full test suite: 265 passed / 1 skipped; Ruff check and format clean.
 
 
 ## In Progress
