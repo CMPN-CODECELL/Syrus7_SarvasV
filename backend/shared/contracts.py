@@ -1,6 +1,6 @@
 """Canonical domain contracts. Money is Decimal; timestamps are UTC epoch seconds."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import StrEnum
 from math import isfinite
@@ -144,6 +144,7 @@ class RiskDecision:
     rule_results: tuple[str, ...] = ()
     created_at: float = 0
     reservation_id: str | None = None
+    details: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -250,6 +251,7 @@ class RiskPolicy:
     max_daily_loss: Decimal = Decimal("1000")
     max_position: int = 100
     max_orders_per_minute: int = 10
+    max_price_deviation_bps: int = 500
 
     def __post_init__(self):
         if (
@@ -265,6 +267,28 @@ class RiskPolicy:
             or self.max_orders_per_minute <= 0
         ):
             raise ValueError("max_orders_per_minute must be a positive integer")
+        if (
+            type(self.max_price_deviation_bps) is not int
+            or self.max_price_deviation_bps <= 0
+        ):
+            raise ValueError("max_price_deviation_bps must be a positive integer")
+
+
+@dataclass(frozen=True)
+class AccountRiskPolicy:
+    max_net_position_per_symbol: int | None = None
+    max_gross_virtual_position_per_symbol: int | None = None
+
+    def __post_init__(self):
+        for name, value in (
+            ("max_net_position_per_symbol", self.max_net_position_per_symbol),
+            (
+                "max_gross_virtual_position_per_symbol",
+                self.max_gross_virtual_position_per_symbol,
+            ),
+        ):
+            if value is not None and (type(value) is not int or value <= 0):
+                raise ValueError(f"{name} must be a positive integer or null")
 
 
 @dataclass(frozen=True)
@@ -284,6 +308,11 @@ class KillCertificate:
     broker_positions: dict[str, int]
     virtual_positions_flat: bool
     reason: str
+    target_seconds: float = 10.0
+    started_at: float | None = None
+    completed_at: float | None = None
+    stage_durations_ms: dict = field(default_factory=dict)
+    final_evidence: dict = field(default_factory=dict)
 
 
 class BrokerUpdateType(StrEnum):

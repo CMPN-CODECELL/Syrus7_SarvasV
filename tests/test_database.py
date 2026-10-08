@@ -33,6 +33,10 @@ def test_additive_migration_constraints_and_checksum():
         "004_dispatch_evidence.sql",
         "005_history_indexes.sql",
         "006_user_authentication.sql",
+        "007_account_risk.sql",
+        "008_audit_correlation.sql",
+        "009_risk_price_guard.sql",
+        "010_benchmark_runs.sql",
     ]
     for name, checksum, sql in items:
         assert checksum == hashlib.sha256(sql.encode()).hexdigest()
@@ -100,6 +104,6 @@ def test_sqlite_v1_subscription_state_migrates_additively(tmp_path):
     try:
         row = store.rows("SELECT enabled FROM subscriptions WHERE id='s'")[0]
         assert row["enabled"] == 1
-        assert store.rows("PRAGMA user_version")[0][0] == 7
+        assert store.rows("PRAGMA user_version")[0][0] == 11
     finally:
         store.close()

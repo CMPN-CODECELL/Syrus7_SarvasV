@@ -39,7 +39,7 @@ class Store:
         """)
         version = self.db.execute("PRAGMA user_version").fetchone()[0]
         self.audit_clock = time.time
-        if version > 7:
+        if version > 11:
             raise ValueError("SQLite schema is newer than this application")
         if version < 1:
             self.db.execute("PRAGMA user_version=1")
@@ -58,6 +58,10 @@ class Store:
             (5, "005_history_indexes.sql"),
             (6, "006_subscription_state.sql"),
             (7, "007_user_authentication.sql"),
+            (8, "008_account_risk.sql"),
+            (9, "009_audit_correlation.sql"),
+            (10, "010_risk_price_guard.sql"),
+            (11, "011_benchmark_runs.sql"),
         ):
             if version < number:
                 sql = (
@@ -101,11 +105,23 @@ class Store:
         with self.lock:
             return self.db.execute(query, args).fetchall()
 
-    def audit(self, event_type, payload):
+    def audit(self, event_type, payload, correlation_id=None):
         # Caller holds the transaction; event commits atomically with its transition.
+        if correlation_id is None and isinstance(payload, dict):
+            correlation_id = payload.get("intent_id") or payload.get("order_id")
+            if correlation_id is None and payload.get("fill_id"):
+                row = self.db.execute(
+                    "SELECT order_id FROM fills WHERE id=?", (payload["fill_id"],)
+                ).fetchone()
+                correlation_id = row["order_id"] if row else None
         self.db.execute(
-            "INSERT INTO audit(type,payload,recorded_at) VALUES (?,?,?)",
-            (event_type, json.dumps(payload, default=str), self.audit_clock()),
+            "INSERT INTO audit(type,payload,recorded_at,correlation_id) VALUES (?,?,?,?)",
+            (
+                event_type,
+                json.dumps(payload, default=str),
+                self.audit_clock(),
+                correlation_id,
+            ),
         )
 
     def close(self):

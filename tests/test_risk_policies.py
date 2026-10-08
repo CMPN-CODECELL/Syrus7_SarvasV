@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from backend.api import create_app
 from backend.platform import Platform
 from backend.shared.contracts import OrderIntent, RiskPolicy, Side, StrategyState, Tick
+from tests.usp_helpers import authenticate
 
 
 def subscribed(path=":memory:", broker=None, clock=lambda: 1_700_000_000):
@@ -83,6 +84,7 @@ def test_budget_tracks_reservation_conversion_and_release():
 def test_policy_api_changes_authoritative_risk():
     p = subscribed()
     with TestClient(create_app(p)) as client:
+        authenticate(client, p)
         assert (
             client.put(
                 "/api/risk/policies/A",
@@ -112,7 +114,7 @@ def test_policy_api_changes_authoritative_risk():
                     "max_orders_per_minute": 2,
                 },
             ).status_code
-            == 409
+            == 404
         )
     p.store.close()
 
