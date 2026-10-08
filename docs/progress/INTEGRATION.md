@@ -5,6 +5,19 @@
 - Status: BLOCKED
 - Last updated: 2026-10-08 16:35 Asia/Kolkata
 
+- 2026-10-08 23:56 Asia/Kolkata — Task 9A yfinance probe: added a standalone,
+  database-free `AsyncWebSocket` probe under `scripts/` and installed yfinance only in an
+  ignored isolated environment (Python 3.13.7, yfinance 1.7.0, websockets 17.2); application
+  dependencies and React were unchanged. Installed source declares `id`, `price`, `time`,
+  `day_volume`, `last_size`, bid/ask and size fields, but does not declare timestamp units,
+  per-trade volume semantics, or a unique trade ID. A default `TCS.NS`/`INFY.NS` 30-second
+  run subscribed successfully at 1.328s, received zero messages/errors, closed cleanly, and
+  exited at 30.276s. Because NSE was closed, the result is INCONCLUSIVE and historical REST
+  was not used. Smallest safe next step is an open-session repeat before deciding any adapter
+  mapping; timestamp conversion, cumulative-volume normalization, event identity, reconnect
+  gaps and bounded queue behavior remain unresolved and must fail closed. No production
+  yfinance or 021 adapter claim is made.
+
 - 2026-10-08: Member 4 Strategy Callback Lock-Free Bounded Execution. Moved `StrategyRuntime.on_candle` execution in `Platform.tick` strictly outside `self.store.lock`. Added bounded thread pool execution (`BoundedStrategyExecutor`) with daemon worker threads, configurable timeout (`callback_timeout=0.5s`), and bounded concurrency (`Semaphore`). Timed-out subscriptions are durably quarantined (`enabled=0`, `STRATEGY_CALLBACK_FAILED` with `TimeoutError`) while healthy strategies continue uninterrupted. Implemented subscription run generation tracking: late callback completions after timeout, stop/re-enable, global stop, or kill are discarded with zero state or order mutations. Ensured candidate indicator state is only committed if originating run is still valid. Workers receive no store locks or broker authority. Documented trusted callback limits: threads provide latency isolation, not an arbitrary-code security sandbox. 226 passed / 1 PostgreSQL skipped; Ruff and format clean.
 - 2026-10-07 21:25 Asia/Kolkata: Member 4 Advancements Integration. Completed pluggable strategy & candle interval registry (with RSI reversal strategy), market session hours & feed freshness gate coordination, standalone mock market data streaming feed API, and real-time SSE telemetry push. 173 tests passed / 1 PostgreSQL skipped; Ruff and TypeScript clean.
 

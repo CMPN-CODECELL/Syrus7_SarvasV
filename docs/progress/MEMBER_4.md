@@ -7,7 +7,7 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 - Phase: Member 4 mock/replay implementation complete; live provider integration pending
 - Current task: await authoritative 021 feed contract and production identity-provider integration
 - Status: BLOCKED
-- Last updated: 2026-10-07 17:14 Asia/Kolkata
+- Last updated: 2026-10-08 23:56 Asia/Kolkata
 - 2026-10-07 integration pass: merged published Member 2/3 persistence, durable risk policies, recovery/freshness gates, bounded broker calls, kill convergence and failure-lab APIs into the Member 4 branch. Preserved the Member 4 strategy indicators, durable subscription controls, callback quarantine, symbol-scoped tick dedupe and dashboard. Combined suite: 89 passed, 1 skipped by default; isolated local PostgreSQL integration: 1 passed after applying migrations 001-005. Ruff check/format pass.
 - 2026-10-07: gated the dashboard behind the durable local session, removed account-ID entry from registration/dashboard/subscription controls, derived strategy ownership from the verified session, replaced raw safety JSON with compact evidence indicators, and verified the strategy form at a 390x844 mobile viewport with no page overflow or browser console errors. RSI reversal is the default form selection. Validation: 218 passed / 1 optional PostgreSQL skipped; Ruff and TypeScript checks pass.
 
@@ -161,6 +161,43 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 
 ## In Progress
 - Member 4 mock/replay scope is COMPLETE. Awaiting Ram's (Member 3) operator authorization and 021 market-data feed contract.
+
+## 2026-10-08 — Task 9A yfinance compatibility probe
+
+- Added the standalone read-only probe `scripts/probe_yfinance_stream.py`. It uses only
+  yfinance's documented `AsyncWebSocket.subscribe()`, `listen()` and `close()` surface,
+  has configurable symbols/duration (defaults: `TCS.NS INFY.NS`, 30 seconds), retains at
+  most 10 decoded samples by default, redacts credential-like fields, and applies a hard
+  duration plus bounded cancellation/close handling. It does not import AlgoShield, use
+  REST history, access an application database, start strategies, or place orders.
+- Isolated environment evidence: Python 3.13.7, yfinance 1.7.0, websockets 17.2. The
+  application dependency manifest was unchanged. Installed source SHA-256 for
+  `AsyncWebSocket` was
+  `84ac9d1af1645d1d1e4f32a68ad854bad5c432b73ce87cca297851f7e74ccb59`.
+- Installed-source facts: decoded messages are dictionaries created from the bundled
+  `PricingData` protobuf. Relevant declared fields are `id` (string), `price` (float),
+  `time` (uint64), `day_volume` (uint64), `last_size` (uint64), `bid`/`ask` (float), and
+  `bid_size`/`ask_size` (uint64). The schema does not declare the `time` unit, say that a
+  volume field is incremental/per-trade quantity, or expose a documented unique trade ID.
+- Default live run at 2026-10-08 23:55 Asia/Kolkata: subscription returned after 1.328s;
+  the full probe exited cleanly after 30.276s; `close()` returned; no errors and no decoded
+  messages were observed. Consequently runtime field presence, timestamp units, price and
+  volume values, and update frequency were **not observed**. With the Indian market closed,
+  zero messages is **INCONCLUSIVE**, not evidence that the symbols or feed are unsupported.
+  No historical REST result was requested or counted as streaming success.
+- Smallest safe adapter plan: do not add a production dependency or adapter yet. Repeat the
+  same probe during an open NSE session and require decoded messages for both symbols. Then
+  validate the timestamp unit against UTC, determine whether `day_volume` is cumulative and
+  whether `last_size` is suitable as per-tick quantity, and establish a reconnect-stable
+  idempotency key. Only after those facts are observed should an adapter normalize
+  `price` through `Decimal(str(value))`, convert timestamps to UTC epoch integer seconds,
+  normalize volume to incremental quantity, and emit canonical `Tick` values through a
+  bounded queue/lifecycle wrapper. Missing identity, ambiguous volume, malformed timestamps,
+  queue overflow, disconnects, and reconnect gaps must fail closed; no hash/sequence should
+  be presented as a provider trade ID. `Platform.tick` should remain unchanged and continue
+  recording receive freshness separately through `Reliability.observe_tick`.
+- Next step: rerun Task 9A during live NSE hours. Production `MarketData021Provider`, React,
+  contracts, and dependency files remain unchanged.
 
 ## Blockers / Teammate Dependencies
 - **Ram (Member 3) Operator Authorization**: Global mutation endpoints (`POST /api/kill`, `POST /api/reconcile`, `POST /api/resume`, `PUT /api/risk/policies/{strategy}`, `POST /api/failure-lab/{scenario}`, etc.) currently operate in offline demo mode. Ram must implement role-based operator authorization before multi-user production deployment.
