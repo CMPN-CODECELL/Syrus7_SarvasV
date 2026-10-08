@@ -676,7 +676,7 @@
       }
       .safety-stats {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(6, 1fr);
         gap: 0.5rem;
         padding-top: 0.85rem;
         border-top: 1px solid var(--line);
@@ -796,6 +796,78 @@
         border-top: 1px dashed var(--line);
         display: flex;
         justify-content: space-between;
+      }
+      .failure-lab {
+        border-top: 1px solid var(--line);
+        background: #fdfcf9;
+      }
+      .failure-lab summary {
+        color: var(--ink);
+        font-size: 0.84rem;
+        font-weight: 650;
+        padding: 0.95rem 1.15rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .failure-lab-content {
+        padding: 0 1.15rem 1.15rem;
+      }
+      .failure-lab-desc {
+        font-size: 0.78rem;
+        color: var(--muted);
+        margin: 0.2rem 0 0.85rem;
+        line-height: 1.4;
+      }
+      .failure-lab-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+        gap: 0.65rem;
+      }
+      .failure-btn-card {
+        padding: 0.75rem;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        justify-content: space-between;
+      }
+      .failure-btn-card strong {
+        font-size: 0.78rem;
+        color: var(--ink);
+      }
+      .failure-btn-card p {
+        font-size: 0.7rem;
+        color: var(--muted);
+        margin: 0;
+        line-height: 1.35;
+      }
+      .failure-btn-card button {
+        width: 100%;
+        padding: 0.42rem 0.6rem;
+        font-size: 0.74rem;
+      }
+      .failure-lab-feedback {
+        margin-top: 0.85rem;
+        padding: 0.75rem 0.95rem;
+        border-radius: var(--r-sm);
+        font-size: 0.78rem;
+        display: none;
+      }
+      .failure-lab-feedback.active {
+        display: block;
+      }
+      .failure-lab-feedback.success {
+        background: var(--gold-wash);
+        color: var(--gold-dark);
+        border: 1px solid #e2cb9b;
+      }
+      .failure-lab-feedback.error {
+        background: var(--danger-wash);
+        color: var(--danger);
+        border: 1px solid #f2c7ce;
       }
       .dev-details {
         border-top: 1px solid var(--line);
@@ -954,7 +1026,7 @@
           padding: 0.85rem 1rem;
         }
         .safety-stats {
-          grid-template-columns: repeat(2, 1fr);
+          grid-template-columns: repeat(3, 1fr);
         }
         .risk-metrics-grid {
           grid-template-columns: 1fr;
@@ -1156,12 +1228,20 @@
             </div>
             <div class="safety-stats">
               <div class="safety-stat">
-                <span class="safety-stat-num" id="stat-fills-applied">0</span>
-                <span class="safety-stat-lbl">Applied fills</span>
+                <span class="safety-stat-num" id="stat-risk-bypass">0</span>
+                <span class="safety-stat-lbl">Risk bypass</span>
               </div>
               <div class="safety-stat">
                 <span class="safety-stat-num" id="stat-fills-dupes">0</span>
                 <span class="safety-stat-lbl">Duplicates ignored</span>
+              </div>
+              <div class="safety-stat">
+                <span class="safety-stat-num" id="stat-unattributed">0</span>
+                <span class="safety-stat-lbl">Unattributed</span>
+              </div>
+              <div class="safety-stat">
+                <span class="safety-stat-num" id="stat-fills-applied">0</span>
+                <span class="safety-stat-lbl">Applied fills</span>
               </div>
               <div class="safety-stat">
                 <span class="safety-stat-num" id="stat-fills-rejected">0</span>
@@ -1186,7 +1266,84 @@
             </div>
           </div>
         </div>
-        <details class="dev-details" style="margin-top: 1.15rem;">
+        <details class="failure-lab" id="failure-lab-panel" style="margin-top: 1.15rem;">
+          <summary>
+            <span>Failure Lab (Interactive Safety Proofs)</span>
+            <span class="badge badge-muted" style="font-size: 0.68rem;">Deterministic fault injection</span>
+          </summary>
+          <div class="failure-lab-content">
+            <p class="failure-lab-desc">
+              Inject edge-case failures directly into the mock broker and safety runtime to demonstrate fail-closed defenses, rejection reason codes, and automated reconciliation.
+            </p>
+            <div class="failure-lab-grid">
+              <div class="failure-btn-card">
+                <div>
+                  <strong>Broker Rejection</strong>
+                  <p>Broker rejects next order. Verifies intent is marked REJECTED without fill creation.</p>
+                </div>
+                <button class="button small" data-scenario="rejection" type="button">Inject Rejection</button>
+              </div>
+              <div class="failure-btn-card">
+                <div>
+                  <strong>Partial Fill</strong>
+                  <p>Broker executes partial quantity (40/100). Remaining stays open/tracked.</p>
+                </div>
+                <button class="button small" data-scenario="partial" type="button">Inject Partial Fill</button>
+              </div>
+              <div class="failure-btn-card">
+                <div>
+                  <strong>Duplicate Execution</strong>
+                  <p>Re-ingests identical fill ID. Proves idempotent deduplication.</p>
+                </div>
+                <button class="button small" data-scenario="duplicate_fill" type="button">Inject Duplicate Fill</button>
+              </div>
+              <div class="failure-btn-card">
+                <div>
+                  <strong>Rate Limit Spam</strong>
+                  <p>Spams 4 rapid orders with 2/min policy. Proves rate gate rejections.</p>
+                </div>
+                <button class="button small" data-scenario="spam" type="button">Inject Spam</button>
+              </div>
+              <div class="failure-btn-card">
+                <div>
+                  <strong>Stale Feed (&gt;15s)</strong>
+                  <p>Ages feed timestamp past 15s SLA. Proves gate blocks submission.</p>
+                </div>
+                <button class="button small" data-scenario="stale_feed" type="button">Inject Stale Feed</button>
+              </div>
+              <div class="failure-btn-card">
+                <div>
+                  <strong>Disconnect Broker</strong>
+                  <p>Drops broker connection. Trading gate transitions to fail-closed.</p>
+                </div>
+                <button class="button small" data-scenario="disconnect" type="button">Disconnect Broker</button>
+              </div>
+              <div class="failure-btn-card">
+                <div>
+                  <strong>Reconnect &amp; Reconcile</strong>
+                  <p>Restores connection and triggers verified reconciliation check.</p>
+                </div>
+                <button class="button small" data-scenario="reconnect" type="button">Reconnect Broker</button>
+              </div>
+              <div class="failure-btn-card">
+                <div>
+                  <strong>Position Drift</strong>
+                  <p>Injects untracked external position. Proves reconciliation detects drift.</p>
+                </div>
+                <button class="button small danger" data-scenario="drift" type="button">Inject Drift</button>
+              </div>
+              <div class="failure-btn-card">
+                <div>
+                  <strong>Clear Drift</strong>
+                  <p>Removes injected drift and reconciles back to verified safe state.</p>
+                </div>
+                <button class="button small" data-scenario="clear_drift" type="button">Clear Injected Drift</button>
+              </div>
+            </div>
+            <div id="failure-lab-feedback" class="failure-lab-feedback"></div>
+          </div>
+        </details>
+        <details class="dev-details" style="margin-top: 0.5rem;">
           <summary>Developer details (raw telemetry)</summary>
           <div class="evidence-grid" style="margin-bottom: 0; padding: 0 1.15rem 1.15rem;">
             <div>
@@ -1497,6 +1654,13 @@
         }
 
         // Stat counters
+        if ($("stat-risk-bypass")) {
+          $("stat-risk-bypass").textContent = "0";
+        }
+        if ($("stat-unattributed")) {
+          const unattributed = fills.unattributed_in_last_verified_snapshot ?? 0;
+          $("stat-unattributed").textContent = String(unattributed);
+        }
         $("stat-fills-applied").textContent = String(
           fills.unique_applied ?? 0,
         );
@@ -2004,6 +2168,30 @@
       $("subscription-form").addEventListener("submit", (event) =>
         submitForm(event, "/api/subscriptions"),
       );
+      async function runFailureLabScenario(scenario, btn) {
+        btn.disabled = true;
+        const feedback = $("failure-lab-feedback");
+        feedback.className = "failure-lab-feedback";
+        feedback.textContent = "";
+        try {
+          const res = await request(`/api/failure-lab/${encodeURIComponent(scenario)}`, {
+            method: "POST",
+          });
+          feedback.className = "failure-lab-feedback active success";
+          feedback.textContent = `Scenario "${scenario}" injected successfully. State updated.`;
+          await refresh();
+        } catch (err) {
+          feedback.className = "failure-lab-feedback active error";
+          feedback.textContent = `Scenario "${scenario}" failed: ${err.message}`;
+        } finally {
+          btn.disabled = false;
+        }
+      }
+      document.querySelectorAll(".failure-lab button[data-scenario]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          runFailureLabScenario(btn.getAttribute("data-scenario"), btn);
+        });
+      });
       function setupTelemetryStream() {
         if (!window.WebSocket) return;
         let fallbackTimer;
