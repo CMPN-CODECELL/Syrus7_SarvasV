@@ -66,16 +66,16 @@ def test_auth_api_endpoints():
     app = create_app(platform)
     client = TestClient(app)
 
-    # Dedicated HTML pages exist
+    # React auth routes share the production SPA entry point.
     resp_login_page = client.get("/login")
     assert resp_login_page.status_code == 200
     assert "text/html" in resp_login_page.headers["content-type"]
-    assert "Sign In" in resp_login_page.text
+    assert 'id="root"' in resp_login_page.text
 
     resp_register_page = client.get("/register")
     assert resp_register_page.status_code == 200
     assert "text/html" in resp_register_page.headers["content-type"]
-    assert "Create Account" in resp_register_page.text
+    assert resp_register_page.text == resp_login_page.text
 
     # Dashboard access requires a valid session.
     anonymous_dashboard = client.get("/", follow_redirects=False)
@@ -95,6 +95,10 @@ def test_auth_api_endpoints():
     assert "algoshield_session=" in reg_resp.headers["set-cookie"]
     assert "HttpOnly" in reg_resp.headers["set-cookie"]
     assert client.get("/").status_code == 200
+    direct_route = client.get("/strategies")
+    assert direct_route.status_code == 200
+    assert 'id="root"' in direct_route.text
+    assert client.get("/failure-lab").status_code == 200
 
     # A caller cannot select a different trading account during registration.
     injected_account = client.post(

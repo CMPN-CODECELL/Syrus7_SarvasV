@@ -16,6 +16,7 @@ from fastapi.responses import (
 )
 from pydantic import BaseModel, ConfigDict, StrictInt, field_validator
 from psycopg.errors import UniqueViolation
+from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
 
 from backend.platform import Platform
@@ -165,6 +166,11 @@ def create_app(platform=None):
     app = FastAPI(title="AlgoShield mock control plane", lifespan=lifespan)
     app.state.platform = engine
     session_cookie = "algoshield_session"
+    frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+    if (frontend_dist / "assets").is_dir():
+        app.mount(
+            "/assets", StaticFiles(directory=frontend_dist / "assets"), name="assets"
+        )
 
     def request_token(request: Request) -> str:
         auth_header = request.headers.get("Authorization", "")
@@ -221,21 +227,27 @@ def create_app(platform=None):
     def dashboard(request: Request):
         if not engine.auth.verify_token(request_token(request)):
             return RedirectResponse("/login", status_code=303)
-        return FileResponse(
-            Path(__file__).resolve().parent.parent / "frontend/index.html"
-        )
+        if not (frontend_dist / "index.html").is_file():
+            raise HTTPException(
+                503, "React build missing; run npm --prefix frontend run build"
+            )
+        return FileResponse(frontend_dist / "index.html")
 
     @app.get("/login")
     def login_page():
-        return FileResponse(
-            Path(__file__).resolve().parent.parent / "frontend/login.html"
-        )
+        if not (frontend_dist / "index.html").is_file():
+            raise HTTPException(
+                503, "React build missing; run npm --prefix frontend run build"
+            )
+        return FileResponse(frontend_dist / "index.html")
 
     @app.get("/register")
     def register_page():
-        return FileResponse(
-            Path(__file__).resolve().parent.parent / "frontend/register.html"
-        )
+        if not (frontend_dist / "index.html").is_file():
+            raise HTTPException(
+                503, "React build missing; run npm --prefix frontend run build"
+            )
+        return FileResponse(frontend_dist / "index.html")
 
     @app.post("/api/auth/register", status_code=201)
     def register(body: RegisterRequest, response: Response):
@@ -596,5 +608,15 @@ def create_app(platform=None):
     def kill(request: Request):
         require_user(request)
         return engine.kill()
+
+    @app.get("/{spa_path:path}", include_in_schema=False)
+    def spa_fallback(spa_path: str, request: Request):
+        if not engine.auth.verify_token(request_token(request)):
+            return RedirectResponse("/login", status_code=303)
+        if not (frontend_dist / "index.html").is_file():
+            raise HTTPException(
+                503, "React build missing; run npm --prefix frontend run build"
+            )
+        return FileResponse(frontend_dist / "index.html")
 
     return app

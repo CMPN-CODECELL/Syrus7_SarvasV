@@ -1,5 +1,6 @@
 import json
 from decimal import Decimal as D
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -229,14 +230,14 @@ def test_subscription_api_normalizes_inputs_and_controls_state():
         assert registered.status_code == 201
         dashboard = client.get("/")
         assert dashboard.status_code == 200
-        assert "Independent strategy ledgers" in dashboard.text
-        assert 'id="account-form"' not in dashboard.text
-        assert 'name="account_id"' not in dashboard.text
-        assert 'id="subscription-form"' in dashboard.text
-        assert "RSI reversal" in dashboard.text
-        assert 'id="safety-state"' not in dashboard.text
-        assert 'class="safety-strip"' in dashboard.text
-        assert 'id="signals"' in dashboard.text
+        assert 'id="root"' in dashboard.text
+        strategies_source = (
+            Path(__file__).resolve().parent.parent
+            / "frontend/src/pages/StrategiesPage.jsx"
+        ).read_text(encoding="utf-8")
+        assert "Independent strategy ledgers" in strategies_source
+        assert "RSI reversal" in strategies_source
+        assert "account_id" not in strategies_source
         response = client.post(
             "/api/subscriptions",
             json={
