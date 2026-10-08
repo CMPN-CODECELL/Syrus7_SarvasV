@@ -195,3 +195,10 @@ User workflows are strictly account-isolated server-side. Subscriptions, orders,
 - Each strategy now has a responsive vertical evidence block whose backend-provided policy, position, daily-loss, and rate groups wrap downward without document or section-level horizontal scrolling.
 - Mobile forces a single group column while metric values remain compact and readable.
 - Validation: 13 React tests, ESLint, Vite production build, 10 focused risk tests, and Ruff passed.
+
+## 2026-10-08 — Vertical Reconciliation Center
+
+- Replaced the wide paired reconciliation panels with a single vertical evidence sequence that remains within the page width.
+- Kept verification, reason, and unknown-order state compact; broker, comparison, recovery, and event values remain sourced from backend responses.
+- Omitted empty nested collections from expanded recovery evidence and summarized a clean position comparison without blank panels.
+- Validation: 14 React tests, ESLint, Vite production build, 22 focused reconciliation/recovery tests, and Ruff passed.
