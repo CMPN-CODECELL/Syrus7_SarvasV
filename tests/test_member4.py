@@ -8,6 +8,7 @@ from backend.market_data.candles import CandleBuilder
 from backend.market_data.session import MarketSession
 from backend.platform import Platform
 from backend.shared.contracts import Candle, OrderIntent, Side, Tick
+from tests.usp_helpers import authenticate
 
 
 def closed_candle(interval=60, start=0, open_price="100", close_price="101"):
@@ -268,15 +269,17 @@ def test_subscription_api_normalizes_inputs_and_controls_state():
 def test_demo_is_forbidden_when_persistent_mode_disables_it():
     platform = Platform(demo_enabled=False)
     with TestClient(create_app(platform)) as client:
+        authenticate(client, platform, "persistent-test", "persistent-user")
         response = client.post("/api/demo")
         assert response.status_code == 403
-        assert not platform.store.rows("SELECT id FROM accounts")
+        assert not platform.store.rows("SELECT id FROM subscriptions")
     platform.store.close()
 
 
 def test_api_preserves_money_and_prices_as_decimal_strings():
     platform = Platform()
     with TestClient(create_app(platform)) as client:
+        authenticate(client, platform, "demo-money", "money-user")
         response = client.post("/api/demo")
         assert response.status_code == 200
         state = response.json()
@@ -532,6 +535,7 @@ def test_market_session_api_and_snapshot():
     platform = Platform()
     try:
         with TestClient(create_app(platform)) as client:
+            authenticate(client, platform, "market-test", "market-user")
             snap = client.get("/api/state").json()
             assert "market_session" in snap
             assert snap["market_session"]["status"] == "OPEN"
@@ -558,6 +562,7 @@ def test_telemetry_stream_endpoint():
     platform = Platform()
     try:
         with TestClient(create_app(platform)) as client:
+            authenticate(client, platform, "telemetry-test", "telemetry-user")
             with client.stream("GET", "/api/stream/telemetry?max_events=1") as response:
                 assert response.status_code == 200
                 assert "text/event-stream" in response.headers["content-type"]
@@ -582,6 +587,7 @@ def test_websocket_stream_pushes_backend_snapshot():
     platform = Platform()
     try:
         with TestClient(create_app(platform)) as client:
+            authenticate(client, platform, "websocket-test", "websocket-user")
             with client.websocket_connect("/api/stream/ws") as websocket:
                 payload = websocket.receive_json()
                 assert payload["mode"] == "MOCK / REPLAY"

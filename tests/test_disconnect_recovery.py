@@ -8,6 +8,7 @@ from backend.reliability.broker_calls import BrokerCallError
 from backend.reliability.failure_lab import FailureLab
 from backend.shared.contracts import OrderStatus
 from test_recovery import intent, ready
+from tests.usp_helpers import authenticate
 
 
 def test_broker_disconnect_operations_fail():
@@ -154,6 +155,7 @@ def test_broker_disconnect_and_reconnect_api():
     p = ready()
     app = create_app(p)
     with TestClient(app) as client:
+        authenticate(client, p)
         # Disconnect
         resp_disc = client.post("/api/broker/disconnect")
         assert resp_disc.status_code == 200

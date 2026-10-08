@@ -1,4 +1,5 @@
 import time
+import json
 from collections import deque
 from collections.abc import Iterable
 from threading import Event, Lock, Thread, current_thread
@@ -13,7 +14,11 @@ from backend.execution.orders import OrderManager
 from backend.market_data.candles import CandleBuilder
 from backend.market_data.session import MarketSession
 from backend.reliability.control import Reliability
+from backend.reliability.proof import SafetyProofService
+from backend.reliability.tracing import TraceService
+from backend.reliability.safety_bench import SafetyBench
 from backend.reliability.broker_calls import BrokerSession, Deadline
+from backend.observability import MetricsRegistry
 from backend.risk.gateway import RiskGateway
 from backend.shared.auth import AuthService
 from backend.shared.contracts import GlobalTradingState as Gate, Side, Tick
@@ -69,6 +74,14 @@ class Platform:
             clock,
             market_session=self.market_session,
         )
+        self.metrics = MetricsRegistry(clock=clock)
+        self.risk.metrics = self.metrics
+        self.reliability.metrics = self.metrics
+        self.safety_proof = SafetyProofService(
+            self.store, self.ledger, self.risk, self.reliability, clock
+        )
+        self.traces = TraceService(self.store)
+        self.safety_bench = SafetyBench(self.store, clock)
         self.candles = CandleBuilder()
         self.strategies.on_interval_registered = self.candles.add_interval
         for meta in self.strategies.registry.values():
@@ -90,12 +103,39 @@ class Platform:
             self.store.audit("ACCOUNT_CREATED", {"account_id": account_id})
 
     def ingest(self, fill):
+        started = time.perf_counter()
         with self.store.lock:
             try:
-                return self.orders.ingest(fill)
-            except Exception:
+                result = self.orders.ingest(fill)
+                if result:
+                    self._metric_counter("fills_processed_total")
+                else:
+                    self._metric_counter("duplicate_fill_ignored_count")
+                return result
+            except Exception as exc:
                 self.reliability.fail_closed("FILL_EVENT_REJECTED")
+                if "unattributed" in str(exc) or "attribution" in str(exc):
+                    self._metric_counter("unattributed_fill_count")
+                else:
+                    self._metric_counter("conflicting_fill_count")
                 raise
+            finally:
+                self._metric_observe(
+                    "fill_processing_latency_ms",
+                    (time.perf_counter() - started) * 1000,
+                )
+
+    def _metric_counter(self, name, amount=1):
+        try:
+            self.metrics.counter(name, amount)
+        except Exception:
+            pass
+
+    def _metric_observe(self, name, value):
+        try:
+            self.metrics.observe(name, value)
+        except Exception:
+            pass
 
     def cancel(self, order_id, timeout=None):
         return self.orders.cancel(order_id, timeout=timeout)
@@ -148,6 +188,7 @@ class Platform:
         }
 
     def tick(self, tick, *, replay=False):
+        started = time.perf_counter()
         if replay:
             self.require_replay_demo()
         with self.store.lock:
@@ -178,6 +219,7 @@ class Platform:
                 raise
             if not accepted:
                 return
+            self._metric_counter("ticks_processed_total")
             self._simulation_cursor[tick.symbol] = max(
                 self._simulation_cursor.get(tick.symbol, 0),
                 getattr(tick, "event_timestamp", 0),
@@ -220,6 +262,9 @@ class Platform:
                             charges_calc.total_charges,
                         )
                     )
+        self._metric_observe(
+            "tick_processing_latency_ms", (time.perf_counter() - started) * 1000
+        )
 
     def get_simulation_cursor(self, symbol: str | None = None) -> int:
         """Return the highest simulation timestamp seen for symbol or globally."""
@@ -285,18 +330,19 @@ class Platform:
                         )
             return batch
 
-    def demo(self):
+    def demo(self, account_id="demo"):
         with self.store.lock:
             if not self.demo_enabled:
                 raise ValueError("replay demo is disabled for this database")
             self.require_replay_demo()
-            if not self.store.rows("SELECT id FROM accounts WHERE id='demo'"):
-                self.account("demo")
+            if not self.store.rows("SELECT id FROM accounts WHERE id=?", (account_id,)):
+                self.account(account_id)
             for kind in ("momentum", "mean_reversion", "breakout"):
+                strategy_id = kind if account_id == "demo" else f"{account_id}:{kind}"
                 if not self.store.rows(
-                    "SELECT id FROM subscriptions WHERE id=?", (kind,)
+                    "SELECT id FROM subscriptions WHERE id=?", (strategy_id,)
                 ):
-                    self.strategies.subscribe("demo", kind, kind, "DEMO")
+                    self.strategies.subscribe(account_id, strategy_id, kind, "DEMO")
             self.demo_count += 1
             symbols = {"DEMO"}
             symbols.update(
@@ -457,8 +503,46 @@ class Platform:
     def strategy_readiness(self, strategy_id: str):
         return self.strategies.readiness_for(strategy_id)
 
-    def snapshot(self):
+    def snapshot(self, account_id=None):
         with self.store.lock:
+            subscriptions = self.store.rows(
+                "SELECT * FROM subscriptions WHERE account=?"
+                if account_id
+                else "SELECT * FROM subscriptions",
+                (account_id,) if account_id else (),
+            )
+            strategy_ids = {row["id"] for row in subscriptions}
+            orders = list(
+                reversed(self.history("orders", account_id=account_id)["items"])
+            )
+            fills = list(
+                reversed(self.history("fills", account_id=account_id)["items"])
+            )
+            decisions = [
+                json.loads(row["payload"])
+                for row in reversed(
+                    self.store.rows(
+                        "SELECT payload FROM audit WHERE type='RISK_DECISION' "
+                        "ORDER BY sequence DESC LIMIT 100"
+                    )
+                )
+            ]
+            if account_id:
+                decisions = [
+                    decision
+                    for decision in decisions
+                    if decision.get("details", {}).get("account_id") == account_id
+                ]
+            audit = self.store.rows(
+                "SELECT * FROM audit WHERE correlation_id IN "
+                "(SELECT id FROM orders WHERE account=?) "
+                "OR type IN ('RECONCILED','SAFETY_RESTRICTED','KILL_VERIFIED',"
+                "'GLOBAL_GATE_CHANGED','TRADING_RESUMED') "
+                "ORDER BY sequence DESC LIMIT 30"
+                if account_id
+                else "SELECT * FROM audit ORDER BY sequence DESC LIMIT 30",
+                (account_id,) if account_id else (),
+            )
             return {
                 "mode": (
                     "MOCK / REPLAY"
@@ -473,6 +557,11 @@ class Platform:
                 "health": self.reliability.health,
                 "gate": self.risk.state,
                 "safety": self.reliability.evidence(),
+                "safety_proof": self.safety_proof.build(),
+                "metrics": self.metrics.snapshot(),
+                "reconciliation_center": self.reliability.reconciliation_center(),
+                "traces": self.traces.recent_traces(10, account_id),
+                "safety_bench": self.safety_bench.latest(),
                 "subscriptions": [
                     dict(r)
                     | {
@@ -482,33 +571,47 @@ class Platform:
                         "strategy_state": self.risk.strategy_state(r["id"]),
                         "readiness": self.strategies.readiness_for(r["id"]),
                     }
-                    for r in self.store.rows("SELECT * FROM subscriptions")
+                    for r in subscriptions
                 ],
                 "positions": [
                     _contract_dict(p) | {"account_id": a}
                     for (a, _, _), p in self.ledger.positions().items()
+                    if account_id is None or a == account_id
                 ],
                 "risk_budgets": [
                     self.risk.budget(r["account"], r["id"], r["symbol"])
-                    for r in self.store.rows("SELECT * FROM subscriptions")
+                    for r in subscriptions
                 ],
-                "orders": list(reversed(self.history("orders")["items"])),
-                "fills": list(reversed(self.history("fills")["items"])),
-                "counts": {
-                    "orders": self.history_count("orders"),
-                    "fills": self.history_count("fills"),
-                },
-                "candles": [_contract_dict(c) for c in list(self.closed_candles)[-20:]],
-                "signals": list(self.strategies.signals),
-                "strategy_errors": list(self.strategies.errors),
-                "market_data": self.candles.stats(),
-                "market_session": self.market_session.to_dict(self.clock()),
-                "audit": [
-                    dict(r)
+                "account_risk": [
+                    self.risk.account_budget(r["account"], r["symbol"])
                     for r in self.store.rows(
-                        "SELECT * FROM audit ORDER BY sequence DESC LIMIT 30"
+                        "SELECT DISTINCT account,symbol FROM subscriptions WHERE account=?"
+                        if account_id
+                        else "SELECT DISTINCT account,symbol FROM subscriptions",
+                        (account_id,) if account_id else (),
                     )
                 ],
+                "risk_decisions": decisions[-20:],
+                "orders": orders,
+                "fills": fills,
+                "counts": {
+                    "orders": self.history("orders", 1, account_id=account_id)["total"],
+                    "fills": self.history("fills", 1, account_id=account_id)["total"],
+                },
+                "candles": [_contract_dict(c) for c in list(self.closed_candles)[-20:]],
+                "signals": [
+                    signal
+                    for signal in self.strategies.signals
+                    if account_id is None or signal.get("strategy") in strategy_ids
+                ],
+                "strategy_errors": [
+                    error
+                    for error in self.strategies.errors
+                    if account_id is None or error.get("strategy") in strategy_ids
+                ],
+                "market_data": self.candles.stats(),
+                "market_session": self.market_session.to_dict(self.clock()),
+                "audit": [dict(r) for r in audit],
                 "kill": asdict(self.reliability.certificate)
                 if self.reliability.certificate
                 else None,
@@ -519,22 +622,31 @@ class Platform:
             raise ValueError("unsupported history")
         return self.store.rows(f"SELECT COUNT(*) AS n FROM {table}")[0]["n"]
 
-    def history(self, table, limit=200, offset=0):
+    def history(self, table, limit=200, offset=0, account_id=None):
         if table not in {"orders", "fills"} or not 1 <= limit <= 500 or offset < 0:
             raise ValueError("invalid history query")
         ordering = "created,id" if table == "orders" else "timestamp,id"
         # Fixed allowlist; parameters bind pagination, never table/order input.
         keys = ordering.replace(",", " DESC,") + " DESC"
+        where = " WHERE account=?" if account_id else ""
+        args = (account_id, limit, offset) if account_id else (limit, offset)
         with self.store.lock:
             return {
                 "items": [
                     dict(r)
                     for r in self.store.rows(
-                        f"SELECT * FROM {table} ORDER BY {keys} LIMIT ? OFFSET ?",
-                        (limit, offset),
+                        f"SELECT * FROM {table}{where} ORDER BY {keys} LIMIT ? OFFSET ?",
+                        args,
                     )
                 ],
-                "total": self.history_count(table),
+                "total": (
+                    self.store.rows(
+                        f"SELECT COUNT(*) AS n FROM {table} WHERE account=?",
+                        (account_id,),
+                    )[0]["n"]
+                    if account_id
+                    else self.history_count(table)
+                ),
                 "limit": limit,
                 "offset": offset,
             }

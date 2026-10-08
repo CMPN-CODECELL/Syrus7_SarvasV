@@ -6,6 +6,7 @@ from backend.api import create_app
 from backend.market_data.candles import CandleBuilder
 from backend.shared.contracts import Tick, OrderStatus
 from test_recovery import ready, intent
+from tests.usp_helpers import authenticate
 
 
 def test_response_filled_without_execution_closes_gate(monkeypatch):
@@ -84,6 +85,7 @@ def test_history_pagination_preserves_exact_economics_and_total():
             p.broker.execute("one", q, Decimal(price), p.clock(), Decimal("0.123456"))
         )
     with TestClient(create_app(p)) as client:
+        authenticate(client, p)
         first = client.get("/api/fills?limit=1").json()
         second = client.get("/api/fills?limit=1&offset=1").json()
         assert first["total"] == second["total"] == 2

@@ -13,6 +13,7 @@ from backend.shared.contracts import (
     Side,
 )
 from test_recovery import intent, ready
+from tests.usp_helpers import authenticate
 
 
 def test_open_update_from_unknown():
@@ -317,6 +318,7 @@ def test_sync_broker_updates_and_api():
 
     app = create_app(p)
     with TestClient(app) as client:
+        authenticate(client, p)
         resp = client.post("/api/broker/updates/sync")
         assert resp.status_code == 200
         data = resp.json()

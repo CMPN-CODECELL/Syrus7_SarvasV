@@ -47,6 +47,7 @@ class Reliability:
         self.last_broker_at = None
         self.max_broker_age = 5
         self.max_feed_age = 15
+        self.metrics = None
         self.report = {"verified": False, "reason": "STARTUP_RECONCILIATION_REQUIRED"}
         for mark in store.rows("SELECT * FROM risk_marks"):
             ledger.marks[mark["symbol"]] = Decimal(mark["price"])
@@ -68,6 +69,11 @@ class Reliability:
             self.runtime.enabled = False
             self._health(health)
             self.store.audit("SAFETY_RESTRICTED", {"reason": code})
+        if self.metrics is not None:
+            try:
+                self.metrics.counter("safety_restriction_count")
+            except Exception:
+                pass
 
     def observe_tick(self, tick, *, replay=False):
         self.safety.mark(tick, self.clock(), "REPLAY" if replay else "LIVE")
@@ -106,6 +112,9 @@ class Reliability:
         return ""
 
     def reconcile(self, *, timeout=None):
+        metric_started = time.perf_counter()
+        position_diff = []
+        recovered_fill_ids = []
         with self.operation_lock:
             previous_gate = self.risk.state
             self.runtime.enabled = False
@@ -114,7 +123,29 @@ class Reliability:
             )
             try:
                 snapshot = self.broker.snapshot(timeout=timeout)
+                local_positions = self.ledger.aggregate()
+                broker_positions = {
+                    key: qty for key, qty in snapshot.positions.items() if qty
+                }
+                position_diff = [
+                    {
+                        "account_id": account,
+                        "symbol": symbol,
+                        "local": local_positions.get((account, symbol), 0),
+                        "broker": broker_positions.get((account, symbol), 0),
+                        "delta": broker_positions.get((account, symbol), 0)
+                        - local_positions.get((account, symbol), 0),
+                    }
+                    for account, symbol in sorted(
+                        set(local_positions) | set(broker_positions)
+                    )
+                    if local_positions.get((account, symbol), 0)
+                    != broker_positions.get((account, symbol), 0)
+                ]
                 with self.store.transaction() as db:
+                    before_fills = {
+                        row["id"] for row in self.store.rows("SELECT id FROM fills")
+                    }
                     orders, fills, observed_at, duplicates = verify_snapshot(
                         self.store, snapshot, self.clock(), self.max_broker_age
                     )
@@ -133,6 +164,7 @@ class Reliability:
                         fills.values(), key=lambda f: (f.timestamp, f.fill_id)
                     ):
                         self.manager.ingest(fill)
+                    recovered_fill_ids = sorted(set(fills) - before_fills)
                     for oid, order in orders.items():
                         local = db.execute(
                             "SELECT filled FROM orders WHERE id=?", (oid,)
@@ -142,9 +174,28 @@ class Reliability:
                         db.execute(
                             "UPDATE orders SET status=? WHERE id=?", (order.status, oid)
                         )
-                    if self.ledger.aggregate() != {
-                        k: q for k, q in snapshot.positions.items() if q
-                    }:
+                    local_positions = self.ledger.aggregate()
+                    broker_positions = {
+                        key: quantity
+                        for key, quantity in snapshot.positions.items()
+                        if quantity
+                    }
+                    position_diff = [
+                        {
+                            "account_id": account,
+                            "symbol": symbol,
+                            "local": local_positions.get((account, symbol), 0),
+                            "broker": broker_positions.get((account, symbol), 0),
+                            "delta": broker_positions.get((account, symbol), 0)
+                            - local_positions.get((account, symbol), 0),
+                        }
+                        for account, symbol in sorted(
+                            set(local_positions) | set(broker_positions)
+                        )
+                        if local_positions.get((account, symbol), 0)
+                        != broker_positions.get((account, symbol), 0)
+                    ]
+                    if position_diff:
                         raise SnapshotError("VIRTUAL_POSITION_DRIFT")
                     self.report = {
                         "verified": True,
@@ -163,6 +214,9 @@ class Reliability:
                         ],
                         "unexplained_positions": [],
                         "unattributed_fills": 0,
+                        "position_diff": position_diff,
+                        "recovered_fill_ids": recovered_fill_ids,
+                        "recovered_fill_count": len(recovered_fill_ids),
                     }
                     self.safety.set("reconciliation_report", self.report)
                     self.store.audit("RECONCILED", self.report)
@@ -176,6 +230,7 @@ class Reliability:
                     if self.kill_latched
                     else Gate.STOPPED
                 )
+                self._record_reconcile_metric(metric_started, True)
                 return True
             except Exception as exc:
                 reason = (
@@ -187,11 +242,45 @@ class Reliability:
                     "verified": False,
                     "reason": reason,
                     "observed_at": self.clock(),
+                    "position_diff": position_diff,
+                    "recovered_fill_ids": recovered_fill_ids,
+                    "recovered_fill_count": len(recovered_fill_ids),
                 }
                 self.last_broker_at = None
                 self.safety.set("reconciliation_report", self.report)
                 self.fail_closed(reason)
+                self._record_reconcile_metric(metric_started, False)
                 return False
+
+    def _record_reconcile_metric(self, started, success):
+        if self.metrics is None:
+            return
+        try:
+            self.metrics.observe(
+                "reconciliation_latency_ms", (time.perf_counter() - started) * 1000
+            )
+            if not success:
+                self.metrics.counter("reconciliation_failure_count")
+        except Exception:
+            pass
+
+    def reconciliation_center(self):
+        evidence = self.evidence()
+        events = [
+            dict(row)
+            for row in self.store.rows(
+                "SELECT sequence,type,payload,recorded_at FROM audit "
+                "WHERE type IN ('RECONCILED','SAFETY_RESTRICTED','ABSENT_SUBMISSION_RESOLVED') "
+                "ORDER BY sequence DESC LIMIT 20"
+            )
+        ]
+        return {
+            "report": self.report,
+            "broker": evidence["broker"],
+            "position_comparison": evidence["position_comparison"],
+            "unknown_orders": evidence["unknown_orders"],
+            "events": events,
+        }
 
     def resume(self, *, reduce_only=False):
         with self.operation_lock:
@@ -206,6 +295,11 @@ class Reliability:
                     raise ValueError("kill is latched")
                 self.risk.state = Gate.REDUCE_ONLY if reduce_only else Gate.RUNNING
                 self.runtime.enabled = True
+                with self.store.transaction():
+                    self.store.audit(
+                        "TRADING_RESUMED",
+                        {"gate": self.risk.state, "reconciliation": "MATCHED"},
+                    )
 
     def reset_kill(self):
         with self.operation_lock:
@@ -310,13 +404,16 @@ class Reliability:
         max_rounds=64,
         deadline_clock=time.monotonic,
     ):
+        started_at = self.clock()
         deadline = Deadline(deadline_seconds, deadline_clock)
+        stages = {}
         self.risk.kill_requested.set()
         with self.store.transaction():
             self.safety.set("kill_latched", True)
             self.risk.state = Gate.KILLING
             self.runtime.enabled = False
             self.store.audit("KILL_GATE_CLOSED", {})
+        stages["gate_closed"] = deadline.elapsed * 1000
         acquired = self.operation_lock.acquire(timeout=deadline.remaining)
         reason, safe, open_count, positions = "", False, -1, {}
         try:
@@ -330,6 +427,7 @@ class Reliability:
                 self.risk.state = Gate.KILLING
                 if not self.reconcile(timeout=deadline.remaining):
                     raise SnapshotError(self.report["reason"])
+                stages.setdefault("initial_reconciliation", deadline.elapsed * 1000)
                 open_count = self.report["open_orders"]
                 positions = {
                     f"{r['account_id']}/{r['symbol']}": r["quantity"]
@@ -340,6 +438,10 @@ class Reliability:
                     for key, p in self.ledger.positions().items()
                     if p.net_quantity
                 ]
+                if not open_count:
+                    stages.setdefault("open_orders_cleared", deadline.elapsed * 1000)
+                if not virtual:
+                    stages.setdefault("virtual_positions_flat", deadline.elapsed * 1000)
                 current_evidence = (
                     open_count,
                     tuple(sorted(positions.items())),
@@ -356,6 +458,7 @@ class Reliability:
                     and not self.broker.unsettled
                 ):
                     safe = True
+                    stages.setdefault("final_broker_verified", deadline.elapsed * 1000)
                     break
                 # Only progress/cancel orders already proven by a complete snapshot.
                 snapshot = self.broker.snapshot(timeout=deadline.remaining)
@@ -419,8 +522,31 @@ class Reliability:
             "SUCCESS" if safe and elapsed < 10 else "SAFE_LATE" if safe else "FAILED"
         )
         self.certificate = KillCertificate(
-            status, elapsed, open_count, positions, virtual_flat, reason
+            status,
+            elapsed,
+            open_count,
+            positions,
+            virtual_flat,
+            reason,
+            10.0,
+            started_at,
+            self.clock(),
+            stages,
+            {
+                "open_orders": open_count,
+                "broker_positions": positions,
+                "virtual_positions_flat": virtual_flat,
+                "broker_unsettled": self.broker.unsettled,
+            },
         )
+        if self.metrics is not None:
+            try:
+                self.metrics.observe(
+                    "kill_gate_close_latency_ms", stages.get("gate_closed", 0)
+                )
+                self.metrics.observe("kill_verified_flat_latency_ms", elapsed * 1000)
+            except Exception:
+                pass
         with self.store.transaction():
             self.safety.set("kill_certificate", asdict(self.certificate))
             self.risk.state = Gate.KILLED if safe else Gate.UNCERTAIN
