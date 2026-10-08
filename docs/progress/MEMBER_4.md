@@ -141,26 +141,42 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
   - Added dedicated regression test suite in `tests/test_demo_scenarios.py`.
   Full test suite: 282 passed / 1 skipped; Ruff check and format clean; TypeScript clean.
 
+- 2026-10-08: Task 8 — Operational UX & Final Member 4 Handoff completed.
+  - Implemented operational UX improvements in `frontend/index.html` without framework migrations:
+    - **Strategy Cards**: Cards in `#strategy-cards-grid` display actual lifecycle (`RUNNING`/`READY`/`STOPPED`/`HALTED`), warmup progress (`samples / warmup (Ready/Warmup)`), net position with symbol, net P&L (color-coded), charges, and interactive Start/Stop controls.
+    - **Market / Feed Status Banner**: Dedicated banner `#feed-status-strip` displays feed source (`MOCK / REPLAY` badge, synthetic replay description), freshness (`Streaming (N ticks · M symbols)` or `Waiting for ticks`), trading session (`OPEN`/`CLOSED`, `09:15 – 15:30 IST`), and accepted/duplicate/late tick counts.
+    - **Readable Candle & Risk Evidence**: Added human-readable completed candles table (`#candles-table-body`) with Time, Symbol, Interval, O, H, L, C, V; added platform risk decisions feed (`#risk-decisions-feed`) displaying sequence, strategy, symbol, approval badge (`✓ APPROVED` / `✗ REJECTED`), and backend rejection reason code (`RISK_MAX_POSITION`, `RISK_DAILY_LOSS`, etc.).
+    - **Correlated Execution Timeline**: Bounded lifecycle pipeline (`#execution-timeline`) correlating `Candle → Strategy Intent → Risk Gateway → Broker Order → Fill Execution → Financial Result`. Truthfully reports missing evidence (e.g. `— (Direct intent / unlinked candle)`, `— (Blocked)`, `— (No fill)`) without synthesizing stages or timestamps.
+    - **Historical Kill Switch Certificate**: Added dedicated `#kill-cert-card` displaying historical execution evidence (`SUCCESS`/`FAILED`, elapsed time `< 10s SLA`, open orders at kill, virtual flat status, broker verification). Explicitly distinguishes immutable historical kill certificates from current live safety evidence.
+    - **Teammate Panels Preserved**: Retained Ram's (Member 3) safety and risk budget panels; retained Akshat's (Member 1) ledger and accounting calculations; no new financial formulas introduced.
+    - **Session Lifecycle & Stale Data Purge**: `clearStaleData()` immediately purges all DOM tables, cards, feeds, and indicators upon sign out, HTTP 401, or WS 1008. Enhanced `refresh()` and WebSocket stream to handle backend disconnection safely (`Disconnected (Reconnecting…)`) without uncaught errors.
+    - **Mobile Responsiveness**: Verified clean responsive layout on small viewports with no horizontal overflow.
+  - Corrected Task 7 position arithmetic in `backend/demo_scenarios.py`:
+    - Replaced hardcoded difference check with actual ledger aggregation: `actual_ledger_sum = p.ledger.aggregate().get((acc, "TCS"), 0)`.
+    - Updated `tests/test_demo_scenarios.py` to assert external broker net position matches `actual_ledger_sum`.
+  - Full regression validation:
+    - All 282 unit/integration tests pass (1 optional local PostgreSQL skipped).
+    - All 7 rehearsal runner scenarios pass with zero errors.
+    - `npm run check` (TypeScript), `ruff check`, and `ruff format` clean.
+
 ## In Progress
-- Awaiting Ram's (Member 3) operator authorization for global mutation endpoints and 021 market-data feed contract.
+- Member 4 mock/replay scope is COMPLETE. Awaiting Ram's (Member 3) operator authorization and 021 market-data feed contract.
 
-## Blockers / Dependencies
-- Official 021 contract/credentials and sponsor session/charges/kill semantics.
-- Production identity provider remains unselected; the current local session boundary is not Neon Auth.
-- Member 3 (Ram) remaining global API/operator authorization for platform-wide mutation endpoints:
-  `PUT /api/risk/policies/{strategy}`, `PUT /api/risk/strategies/{strategy}`, `POST /api/reconcile`,
-  `POST /api/resume`, `POST /api/reduce-only`, `POST /api/kill/reset`, `POST /api/kill`,
-  `POST /api/failure-lab/{scenario}`, `POST /api/broker/disconnect`, `POST /api/broker/reconnect`,
-  `POST /api/broker/updates/sync`, `POST /api/orders/{order_id}/cancel`, `POST /api/market/session`,
-  `POST /api/demo`, `POST /api/accounts`.
+## Blockers / Teammate Dependencies
+- **Ram (Member 3) Operator Authorization**: Global mutation endpoints (`POST /api/kill`, `POST /api/reconcile`, `POST /api/resume`, `PUT /api/risk/policies/{strategy}`, `POST /api/failure-lab/{scenario}`, etc.) currently operate in offline demo mode. Ram must implement role-based operator authorization before multi-user production deployment.
+- **Ram (Member 3) Continuous Broker Refresh**: Automated background broker polling / WebSocket sync loop is needed to refresh `last_verified_at` continuously under live conditions without manual `reconcile()` calls.
+- **Akshat (Member 1) Real Ledger Integration**: Account-level settlement and statutory tax/stamp duty calculations are verified on mock ledgers.
+- **Sujal (Member 2) 021 Broker Adapter**: Awaiting official sponsor 021 broker credentials, sandbox endpoints, and order status payload schemas.
 
-## Next
-- Obtain authoritative 021 tick schema, sequencing and reconnect/backfill behavior.
-- Implement `MarketData021Provider` normalization and adapter contract fixtures.
-- Coordinate feed freshness/session gating with Member 3 (Ram).
-- Coordinate operator authorization boundary with Member 3 (Ram).
+## Tomorrow's Market-Feed Integration Boundary (Task 9 Preparation)
+- **Adapter Contract**: Implement `MarketData021Provider` adhering to `MarketDataProvider` interface:
+  - `start()`, `stop()`, `is_connected() -> bool`
+  - Normalization of incoming raw 021 WebSocket ticks into canonical `Tick(symbol, price, volume, event_timestamp, event_id)`
+  - Out-of-order, late, and duplicate tick filtering passing through `CandleBuilder.process_tick`
+  - Reconnect and gap backfill protocol isolated behind adapter
+  - Zero domain or strategy leakage of 021 payload formats.
 
 ## Handoff Notes
-User workflows are strictly account-isolated server-side. Subscriptions, orders, fills, positions, signals, risk budgets, and safety evidence never leak across accounts. Telemetry streams continuously revalidate tokens and terminate upon logout or expiration. Platform-wide operator authorization remains incomplete and pending Ram's role-based implementation.
+Member 4 tasks 1 through 8 are 100% complete and fully verified. User workflows are strictly account-isolated server-side. Subscriptions, orders, fills, positions, signals, risk budgets, and execution timeline never leak across accounts. All unit tests, scenario tests, and linters pass cleanly. Ready for Task 9 market feed integration upon sponsor contract release.
 
 

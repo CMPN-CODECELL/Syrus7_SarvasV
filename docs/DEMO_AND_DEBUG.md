@@ -64,6 +64,41 @@ python -m pytest -q --basetemp=.pytest-tmp
 
 ---
 
+## Operational UX Dashboard Components (Task 8)
+
+When running `python scripts/rehearsal_runner.py --serve --port 8000`, the interactive dashboard showcases the reliability-first operational UX:
+
+1. **Market Data & Feed Status Banner**:
+   - Explicit `MOCK / REPLAY` badge and label indicating synthetic replay feeds (never claiming live 021 connectivity).
+   - Real-time trading session status (`OPEN` / `CLOSED`, `09:15 – 15:30 IST`).
+   - Feed freshness indicator reporting streaming status and accepted / duplicate / late tick counts.
+
+2. **Subscribed Strategy Cards**:
+   - Visual cards displaying actual lifecycle state (`RUNNING`, `READY`, `STOPPED`, `HALTED`).
+   - Indicator warmup counter (`samples / warmup (Ready/Warmup)`) confirming warmup requirements before entry.
+   - Independent virtual position, net P&L, and charges attributed strictly to each strategy instance.
+   - Interactive Start/Stop controls scoped strictly to the authenticated user's account.
+
+3. **Correlated Bounded Execution Timeline**:
+   - Bounded pipeline tracking the full execution lifecycle across 6 stages:
+     `1. Candle -> 2. Strategy Intent -> 3. Risk Gateway -> 4. Broker Order -> 5. Fill Execution -> 6. Financial Result`
+   - Bounded to the most recent execution flows.
+   - **Truthful evidence**: Missing stages are honestly reported (e.g., `— (Direct intent / unlinked candle)`, `— (Blocked)`, `— (No fill)`). Stages and timestamps are never synthesized or fabricated.
+
+4. **Platform Risk Decisions Feed**:
+   - Displays sequence-ordered risk admissions and rejections.
+   - Clearly highlights backend rejection reason codes (e.g. `RISK_MAX_POSITION`, `RISK_DAILY_LOSS`, `RISK_ORDER_RATE`).
+
+5. **Historical Kill Certificate Card**:
+   - Dedicated card displaying the immutable audit record captured upon emergency flattening: status (`SUCCESS` / `FAILED`), execution time (`< 10s SLA`), open orders count at kill, and virtual/broker flat verification.
+   - Visually and architecturally separated from current live safety indicators.
+
+6. **Session Lifecycle & Stale Data Purge**:
+   - On Sign out, HTTP 401, or WebSocket 1008, `clearStaleData()` purges all local tables, cards, feeds, and counters.
+   - Safe disconnection handling (`Disconnected (Reconnecting…)`) without crashing or exposing cross-account state.
+
+---
+
 ## Replay Dependencies & Constraints
 
 1. **Ram's Broker Freshness Constraint (`RISK_STALE_BROKER_STATE`)**:
@@ -71,10 +106,13 @@ python -m pytest -q --basetemp=.pytest-tmp
    - In accelerated replay where an injected simulated clock advances minutes at a time (skipping wall-clock time), calling `p.reliability.resume()` at simulated minute intervals is an explicit rehearsal step to simulate periodic health checks. It is NOT proof of uninterrupted trading or automatic broker refresh.
    - For sustained real-time replay streams, synthetic ticks advance at a 1:1 wall-clock cadence with continuous background heartbeat sync.
 
-2. **Operator Authorization Boundary**:
-   - Global mutation endpoints (`POST /api/kill`, `POST /api/reconcile`, `POST /api/resume`, `PUT /api/risk/policies/{strategy}`) currently operate in offline demo mode. Platform-wide operator role authorization is being implemented by Ram (Member 3).
+2. **Ram's Operator Authorization Boundary (Dependency)**:
+   - Global mutation endpoints (`POST /api/kill`, `POST /api/reconcile`, `POST /api/resume`, `PUT /api/risk/policies/{strategy}`, `POST /api/failure-lab/{scenario}`) currently operate in offline demo mode. Platform-wide operator role authorization is an active Ram (Member 3) dependency; do not claim it is complete.
 
-3. **External Drift Immutability**:
+3. **Ram's Continuous Broker Refresh Loop (Dependency)**:
+   - Continuous background broker health and position refresh is an active Ram (Member 3) dependency; do not claim it is complete.
+
+4. **External Drift Immutability**:
    - The platform strictly enforces that external position drift is never silently forgiven or synthesized away. A drifted platform can only resume after external broker truth aligns with local accounting.
 
 ---

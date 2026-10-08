@@ -806,6 +806,233 @@
         font-weight: 600;
         padding: 0.85rem 1.15rem;
       }
+      /* Operational UX: Strategy Cards */
+      .strategy-cards-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 0.85rem;
+        margin-bottom: 1.25rem;
+      }
+      .strat-card {
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        padding: 0.85rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+      }
+      .strat-card-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 0.5rem;
+      }
+      .strat-card-title {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+      }
+      .strat-card-title strong {
+        font-size: 0.9rem;
+        color: var(--ink);
+      }
+      .strat-card-title span {
+        font-size: 0.72rem;
+        color: var(--muted);
+      }
+      .strat-warmup-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        background: var(--surface);
+        padding: 0.45rem 0.6rem;
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+      }
+      .strat-warmup-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.68rem;
+        color: var(--muted);
+        font-weight: 550;
+      }
+      .strat-metrics-row {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.45rem;
+        text-align: center;
+      }
+      .strat-metric-item {
+        background: var(--surface);
+        padding: 0.4rem 0.25rem;
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+      }
+      .strat-metric-item span {
+        font-size: 0.64rem;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .strat-metric-item strong {
+        font-size: 0.8rem;
+        font-variant-numeric: tabular-nums;
+      }
+      /* Operational UX: Feed Status Banner */
+      .feed-status-strip {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.75rem 1.15rem;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+        margin-bottom: 1.5rem;
+      }
+      .feed-status-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.82rem;
+      }
+      .feed-status-label {
+        color: var(--muted);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 600;
+      }
+      /* Operational UX: Execution Timeline */
+      .timeline-feed {
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+        padding: 1.15rem;
+      }
+      .timeline-card {
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        padding: 0.85rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+      }
+      .timeline-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        font-size: 0.82rem;
+      }
+      .timeline-pipeline {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 0.5rem;
+      }
+      @media (max-width: 900px) {
+        .timeline-pipeline {
+          grid-template-columns: repeat(3, 1fr);
+        }
+      }
+      @media (max-width: 560px) {
+        .timeline-pipeline {
+          grid-template-columns: 1fr;
+        }
+      }
+      .timeline-stage {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        padding: 0.55rem 0.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        min-width: 0;
+      }
+      .timeline-stage.stage-pass {
+        border-color: #bee3d5;
+      }
+      .timeline-stage.stage-fail {
+        border-color: #f2c7ce;
+        background: var(--danger-wash);
+      }
+      .timeline-stage.stage-dimmed {
+        opacity: 0.6;
+        background: var(--soft);
+      }
+      .timeline-stage-title {
+        font-size: 0.66rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+        font-weight: 650;
+      }
+      .timeline-stage-val {
+        font-size: 0.76rem;
+        font-weight: 600;
+        color: var(--ink);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .timeline-stage-sub {
+        font-size: 0.68rem;
+        color: var(--muted);
+        word-break: break-word;
+      }
+      /* Operational UX: Historical Kill Certificate Card */
+      .kill-card {
+        padding: 1.15rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+      .kill-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      }
+      .kill-card-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.5rem;
+      }
+      @media (max-width: 680px) {
+        .kill-card-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      .kill-card-stat {
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        padding: 0.6rem 0.5rem;
+        text-align: center;
+      }
+      .kill-card-stat-val {
+        font-size: 1rem;
+        font-weight: 700;
+      }
+      .kill-card-stat-lbl {
+        font-size: 0.66rem;
+        color: var(--muted);
+        margin-top: 0.2rem;
+      }
+      .kill-card-notice {
+        font-size: 0.72rem;
+        color: var(--muted);
+        font-style: italic;
+      }
       footer {
         max-width: 1280px;
         margin: auto;
@@ -1011,6 +1238,23 @@
         ><span class="mode-label" id="mode">Loading mode…</span>
       </nav>
       <p class="message" id="message" role="status" aria-live="polite"></p>
+      <!-- Market Data & Feed Status Banner -->
+      <section class="feed-status-strip" aria-label="Market Data and Session Status">
+        <div class="feed-status-item">
+          <span class="feed-status-label">Feed Source:</span>
+          <span id="feed-source-badge" class="badge badge-warning"><i class="badge-dot" aria-hidden="true"></i> MOCK / REPLAY</span>
+          <span id="feed-source-desc" style="font-size: 0.76rem; color: var(--muted);">Synthetic Replay Feed</span>
+        </div>
+        <div class="feed-status-item">
+          <span class="feed-status-label">Data Freshness:</span>
+          <span id="feed-freshness-val" style="font-weight: 600; font-size: 0.8rem;">Waiting for ticks</span>
+        </div>
+        <div class="feed-status-item">
+          <span class="feed-status-label">Trading Session:</span>
+          <span id="feed-session-badge" class="badge badge-success"><i class="badge-dot" aria-hidden="true"></i> OPEN</span>
+          <span id="feed-session-desc" style="font-size: 0.76rem; color: var(--muted);">09:15 – 15:30 IST</span>
+        </div>
+      </section>
       <section class="metrics" aria-label="Platform status">
         <article class="metric">
           <span>Reconciliation</span
@@ -1065,6 +1309,7 @@
               <h3>Subscribed strategies</h3>
               <span id="strategy-count">0 configured</span>
             </div>
+            <div id="strategy-cards-grid" class="strategy-cards-grid" style="padding: 1rem 1rem 0;"></div>
             <div class="table-wrap">
               <table>
                 <thead>
@@ -1200,13 +1445,29 @@
           </div>
         </details>
       </section>
+      <!-- Correlated Bounded Execution Timeline -->
+      <section class="panel" aria-labelledby="timeline-title" style="margin-bottom: 2.8rem;">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Execution lifecycle</p>
+            <h2 id="timeline-title">Correlated execution timeline</h2>
+          </div>
+          <span id="timeline-count">0 cycles tracked</span>
+        </div>
+        <p style="padding: 0 1.15rem; margin: 0.5rem 0 0; font-size: 0.8rem; color: var(--muted);">
+          Correlated lifecycle: <strong>Candle → Strategy Intent → Risk Gateway → Broker Order → Fill Execution → Financial Result</strong>. Missing evidence is honestly reported; no stages or timestamps are synthesized.
+        </p>
+        <div id="execution-timeline" class="timeline-feed">
+          <div class="empty">No execution cycles recorded yet. Start strategies and run replay.</div>
+        </div>
+      </section>
       <section aria-labelledby="evidence-title">
         <div class="section-heading">
           <div>
             <p class="eyebrow">Evidence</p>
-            <h2 id="evidence-title">Signals and executions</h2>
+            <h2 id="evidence-title">Signals, risk decisions & executions</h2>
           </div>
-          <p>Signals are intent evidence; fills remain financial truth.</p>
+          <p>Signals are intent evidence; risk decides admission; fills create financial truth.</p>
         </div>
         <div class="evidence-grid">
           <article class="panel">
@@ -1218,6 +1479,15 @@
               <li class="empty">
                 No signals yet. Run replay or resume a configured account.
               </li>
+            </ul>
+          </article>
+          <article class="panel">
+            <div class="panel-head">
+              <h3>Platform risk decisions</h3>
+              <span id="risk-decision-count">0 decisions</span>
+            </div>
+            <ul class="feed" id="risk-decisions-feed">
+              <li class="empty">No risk decisions recorded yet.</li>
             </ul>
           </article>
           <article class="panel">
@@ -1236,9 +1506,44 @@
           <h2 id="audit-title">Reliability evidence</h2>
           <span id="candle-count">0 closed candles</span>
         </div>
-        <p id="certificate" class="kill-certificate">
-          No kill certificate issued.
-        </p>
+        <!-- Historical Kill Certificate Structured Card -->
+        <div class="kill-card" id="kill-cert-card" style="border-bottom: 1px solid var(--line);">
+          <div class="kill-card-header">
+            <div>
+              <strong style="font-size: 0.88rem;">Historical Kill Switch Certificate</strong>
+              <span style="display: block; font-size: 0.72rem; color: var(--muted); margin-top: 0.15rem;">
+                Historical evidence recorded upon emergency flattening · Immutable record (does not mutate with post-kill state)
+              </span>
+            </div>
+            <span id="kill-cert-badge" class="badge badge-muted"><i class="badge-dot" aria-hidden="true"></i> NOT ISSUED</span>
+          </div>
+          <div id="kill-cert-body">
+            <p class="kill-card-notice" id="certificate">No kill certificate issued in this session.</p>
+          </div>
+        </div>
+        <!-- Human-Readable Completed Candles -->
+        <details open style="border-top: 1px solid var(--line);">
+          <summary>Recent completed candles (Readable)</summary>
+          <div class="table-wrap" style="padding: 0 1.15rem 1.15rem;">
+            <table style="font-size: 0.8rem;">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Symbol</th>
+                  <th>Interval</th>
+                  <th>Open</th>
+                  <th>High</th>
+                  <th>Low</th>
+                  <th>Close</th>
+                  <th>Volume</th>
+                </tr>
+              </thead>
+              <tbody id="candles-table-body">
+                <tr><td colspan="8" class="empty">No completed candles recorded yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
         <details>
           <summary>Strategy callback errors</summary>
           <pre id="strategy-errors">No callback errors recorded.</pre>
@@ -1715,6 +2020,162 @@
 
         container.append(list);
       }
+      function renderFeedStatus(snapshot) {
+        const md = snapshot.market_data || {};
+        const ms = snapshot.market_session || {};
+        const mode = snapshot.mode || "MOCK / REPLAY";
+
+        const badge = $("feed-source-badge");
+        if (badge) {
+          badge.textContent = ` ${mode}`;
+          badge.className = `badge ${mode.includes("MOCK") || mode.includes("REPLAY") ? "badge-warning" : "badge-success"}`;
+          const dot = document.createElement("i");
+          dot.className = "badge-dot";
+          dot.setAttribute("aria-hidden", "true");
+          badge.prepend(dot);
+        }
+
+        const sourceDesc = $("feed-source-desc");
+        if (sourceDesc) {
+          sourceDesc.textContent = mode.includes("MOCK")
+            ? "Synthetic Replay Feed (Mock Broker Adapter)"
+            : "021 Sandbox Market Data (External Provider)";
+        }
+
+        const freshness = $("feed-freshness-val");
+        if (freshness) {
+          const accepted = Number(md.accepted_ticks || 0);
+          if (accepted === 0) {
+            freshness.textContent = "Waiting for ticks";
+            freshness.style.color = "var(--muted)";
+          } else {
+            const timestamps = md.last_event_timestamp || {};
+            const symbols = Object.keys(timestamps);
+            if (symbols.length > 0) {
+              const latest = timestamps[symbols[0]];
+              freshness.textContent = `Streaming (${accepted} ticks · ${symbols.length} symbols)`;
+            } else {
+              freshness.textContent = `Streaming (${accepted} ticks accepted)`;
+            }
+            freshness.style.color = "var(--success)";
+          }
+        }
+
+        const sessionBadge = $("feed-session-badge");
+        const sessionDesc = $("feed-session-desc");
+        if (sessionBadge) {
+          const isOpen = ms.is_open ?? (ms.status === "OPEN");
+          const sessText = isOpen ? "OPEN" : (ms.status || "CLOSED");
+          sessionBadge.textContent = ` ${sessText}`;
+          sessionBadge.className = `badge ${isOpen ? "badge-success" : "badge-muted"}`;
+          const dot = document.createElement("i");
+          dot.className = "badge-dot";
+          dot.setAttribute("aria-hidden", "true");
+          sessionBadge.prepend(dot);
+        }
+        if (sessionDesc) {
+          const ot = ms.open_time || "09:15";
+          const ct = ms.close_time || "15:30";
+          const tz = ms.timezone || "Asia/Kolkata";
+          sessionDesc.textContent = `${ot} – ${ct} IST (${tz})`;
+        }
+      }
+      function renderStrategyCards(snapshot) {
+        const grid = $("strategy-cards-grid");
+        if (!grid) return;
+        grid.replaceChildren();
+
+        const subs = snapshot.subscriptions || [];
+        if (!subs.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty";
+          empty.style.gridColumn = "1 / -1";
+          empty.textContent = "No strategies subscribed. Add a strategy below to start tracking.";
+          grid.append(empty);
+          return;
+        }
+
+        for (const sub of subs) {
+          const positions = (snapshot.positions || []).filter(
+            (p) =>
+              p.strategy_instance_id === sub.id &&
+              p.account_id === sub.account,
+          );
+          const quantity = positions.reduce((total, p) => total + (p.net_quantity || 0), 0);
+          const pnl = positions.reduce((total, p) => total + Number(p.net_pnl || 0), 0);
+          const charges = positions.reduce((total, p) => total + Number(p.charges || 0), 0);
+
+          const card = document.createElement("article");
+          card.className = "strat-card";
+
+          // Header
+          const header = document.createElement("div");
+          header.className = "strat-card-header";
+          const title = document.createElement("div");
+          title.className = "strat-card-title";
+          title.append(
+            textNode("span", sub.id),
+            textNode("small", `· ${sub.kind.replace(/_/g, " ")} (${sub.symbol})`),
+          );
+          header.append(title, createBadge(sub.state || "UNKNOWN"));
+
+          // Metric Grid
+          const metrics = document.createElement("div");
+          metrics.className = "strat-metric-grid";
+
+          // 1. Warmup / Readiness
+          const warmupBox = document.createElement("div");
+          warmupBox.className = "strat-metric";
+          warmupBox.append(textNode("span", "Warmup", "strat-metric-label"));
+          let warmupVal = "—";
+          if (sub.readiness) {
+            const r = sub.readiness;
+            warmupVal = `${r.samples} / ${r.warmup} ${r.ready ? "(Ready)" : "(Warmup)"}`;
+          }
+          warmupBox.append(textNode("strong", warmupVal, "strat-metric-val"));
+          metrics.append(warmupBox);
+
+          // 2. Net Position
+          const posBox = document.createElement("div");
+          posBox.className = "strat-metric";
+          posBox.append(textNode("span", "Position", "strat-metric-label"));
+          const posStr = quantity > 0 ? `+${quantity}` : String(quantity);
+          const posClass = `strat-metric-val ${quantity > 0 ? "positive" : quantity < 0 ? "negative" : ""}`;
+          posBox.append(textNode("strong", `${posStr} ${sub.symbol}`, posClass));
+          metrics.append(posBox);
+
+          // 3. Net P&L
+          const pnlBox = document.createElement("div");
+          pnlBox.className = "strat-metric";
+          pnlBox.append(textNode("span", "Net P&L", "strat-metric-label"));
+          const pnlClass = `strat-metric-val ${pnl > 0 ? "positive" : pnl < 0 ? "negative" : ""}`;
+          pnlBox.append(textNode("strong", money(pnl), pnlClass));
+          metrics.append(pnlBox);
+
+          // 4. Charges
+          const feeBox = document.createElement("div");
+          feeBox.className = "strat-metric";
+          feeBox.append(textNode("span", "Charges", "strat-metric-label"));
+          feeBox.append(textNode("strong", money(charges), "strat-metric-val"));
+          metrics.append(feeBox);
+
+          // Footer with Control Button
+          const footer = document.createElement("div");
+          footer.className = "strat-card-footer";
+          const action = sub.enabled ? "stop" : "start";
+          const btn = textNode(
+            "button",
+            action === "stop" ? "Stop strategy" : "Start strategy",
+            `button small${action === "stop" ? "" : " primary"}`,
+          );
+          btn.type = "button";
+          btn.onclick = () => controlSubscription(sub, action, btn);
+          footer.append(btn);
+
+          card.append(header, metrics, footer);
+          grid.append(card);
+        }
+      }
       function renderStrategies(snapshot) {
         const body = $("strategy-rows");
         body.replaceChildren();
@@ -1790,6 +2251,429 @@
           body.append(row);
         }
       }
+      function renderRiskDecisions(snapshot) {
+        const feed = $("risk-decisions-feed");
+        const countSpan = $("risk-decision-count");
+        if (!feed) return;
+        feed.replaceChildren();
+
+        const auditList = snapshot.audit || [];
+        const riskDecisions = [];
+        for (const item of auditList) {
+          if (item.type === "RISK_DECISION") {
+            let p = item.payload;
+            if (typeof p === "string") {
+              try { p = JSON.parse(p); } catch (_) {}
+            }
+            if (p && typeof p === "object") {
+              riskDecisions.push({
+                sequence: item.sequence,
+                created: item.created,
+                ...p,
+              });
+            }
+          }
+        }
+
+        if (countSpan) {
+          countSpan.textContent = `${riskDecisions.length} decisions`;
+        }
+
+        if (!riskDecisions.length) {
+          feed.append(textNode("li", "No risk decisions recorded yet. Replay strategies to generate events.", "empty"));
+          return;
+        }
+
+        for (const d of riskDecisions.slice(0, 8)) {
+          const item = document.createElement("li");
+          const heading = document.createElement("strong");
+          const strat = d.strategy || d.strategy_instance_id || "risk";
+          const sym = d.symbol ? ` · ${d.symbol}` : "";
+          const allowed = Boolean(d.allowed);
+
+          heading.append(
+            textNode("span", `${strat}${sym}`),
+            textNode(
+              "span",
+              allowed ? "✓ APPROVED" : "✗ REJECTED",
+              allowed ? "side-buy" : "side-sell",
+            ),
+          );
+
+          const reasonText = d.reason || (allowed ? "ALLOWED" : "REJECTED_UNKNOWN");
+          const seqText = d.sequence ? `#${d.sequence} · ` : "";
+          const intentText = d.intent_id ? ` · intent ${d.intent_id.slice(0, 8)}…` : "";
+          const p = textNode("p", `${seqText}Reason: ${reasonText}${intentText}`);
+          item.append(heading, p);
+          feed.append(item);
+        }
+      }
+      function renderCandlesTable(snapshot) {
+        const body = $("candles-table-body");
+        if (!body) return;
+        body.replaceChildren();
+
+        const candles = snapshot.candles || [];
+        if (!candles.length) {
+          const row = document.createElement("tr");
+          const cell = textNode("td", "No completed candles recorded yet.", "empty");
+          cell.colSpan = 8;
+          row.append(cell);
+          body.append(row);
+          return;
+        }
+
+        for (const c of candles.slice().reverse().slice(0, 10)) {
+          const row = document.createElement("tr");
+          const intervalM = c.interval ? `${c.interval / 60}m` : "1m";
+          const timeStr = c.start_time ? String(c.start_time).split("T")[1]?.slice(0, 8) || String(c.start_time) : "—";
+
+          row.append(
+            textNode("td", timeStr),
+            textNode("td", c.symbol || "—", "primary-cell"),
+            textNode("td", intervalM),
+            textNode("td", Number(c.open).toFixed(2)),
+            textNode("td", Number(c.high).toFixed(2)),
+            textNode("td", Number(c.low).toFixed(2)),
+            textNode("td", Number(c.close).toFixed(2)),
+            textNode("td", String(c.volume || 0)),
+          );
+          body.append(row);
+        }
+      }
+      function renderHistoricalKill(snapshot) {
+        const cardBody = $("kill-cert-body");
+        const badge = $("kill-cert-badge");
+        if (!cardBody) return;
+
+        const kill = snapshot.kill;
+        if (!kill) {
+          if (badge) {
+            badge.textContent = " NOT ISSUED";
+            badge.className = "badge badge-muted";
+            const dot = document.createElement("i");
+            dot.className = "badge-dot";
+            dot.setAttribute("aria-hidden", "true");
+            badge.prepend(dot);
+          }
+          cardBody.replaceChildren();
+          const p = document.createElement("p");
+          p.className = "kill-card-notice";
+          p.id = "certificate";
+          p.textContent = "No kill switch certificate issued for this account session.";
+          cardBody.append(p);
+          return;
+        }
+
+        const isSuccess = kill.status === "SUCCESS";
+        if (badge) {
+          badge.textContent = ` ${kill.status}`;
+          badge.className = `badge ${isSuccess ? "badge-success" : "badge-danger"}`;
+          const dot = document.createElement("i");
+          dot.className = "badge-dot";
+          dot.setAttribute("aria-hidden", "true");
+          badge.prepend(dot);
+        }
+
+        cardBody.replaceChildren();
+
+        const grid = document.createElement("div");
+        grid.className = "kill-card-grid";
+
+        const s1 = document.createElement("div");
+        s1.className = "kill-card-stat";
+        s1.append(
+          textNode("div", `${Number(kill.elapsed_seconds || 0).toFixed(3)}s`, "kill-card-stat-val"),
+          textNode("div", "Execution Time (< 10s SLA)", "kill-card-stat-lbl"),
+        );
+
+        const s2 = document.createElement("div");
+        s2.className = "kill-card-stat";
+        s2.append(
+          textNode("div", String(kill.open_orders ?? 0), "kill-card-stat-val"),
+          textNode("div", "Open Orders at Kill", "kill-card-stat-lbl"),
+        );
+
+        const s3 = document.createElement("div");
+        s3.className = "kill-card-stat";
+        s3.append(
+          textNode("div", kill.virtual_positions_flat ? "FLAT" : "NOT FLAT", `kill-card-stat-val ${kill.virtual_positions_flat ? "positive" : "negative"}`),
+          textNode("div", "Virtual Position State", "kill-card-stat-lbl"),
+        );
+
+        const brokerFlat = kill.broker_positions ? Object.values(kill.broker_positions).every((v) => v === 0) : true;
+        const s4 = document.createElement("div");
+        s4.className = "kill-card-stat";
+        s4.append(
+          textNode("div", brokerFlat ? "FLAT" : "REMAINING", `kill-card-stat-val ${brokerFlat ? "positive" : "negative"}`),
+          textNode("div", "Broker Verification", "kill-card-stat-lbl"),
+        );
+
+        grid.append(s1, s2, s3, s4);
+
+        const notice = document.createElement("p");
+        notice.className = "kill-card-notice";
+        notice.style.marginTop = "0.5rem";
+        notice.id = "certificate";
+        notice.textContent = `Historical record captured at ${kill.observed_at || "execution time"}. Local and broker states are frozen and require operator reset to resume.`;
+
+        cardBody.append(grid, notice);
+      }
+      function renderExecutionTimeline(snapshot) {
+        const container = $("execution-timeline");
+        const countSpan = $("timeline-count");
+        if (!container) return;
+        container.replaceChildren();
+
+        const signals = snapshot.signals || [];
+        const orders = snapshot.orders || [];
+        const fills = snapshot.fills || [];
+        const auditList = snapshot.audit || [];
+        const candles = snapshot.candles || [];
+        const positions = snapshot.positions || [];
+
+        const riskDecisionsByIntent = new Map();
+        for (const ev of auditList) {
+          if (ev.type === "RISK_DECISION") {
+            let p = ev.payload;
+            if (typeof p === "string") {
+              try { p = JSON.parse(p); } catch (_) {}
+            }
+            if (p && typeof p === "object" && p.intent_id) {
+              if (!riskDecisionsByIntent.has(p.intent_id)) {
+                riskDecisionsByIntent.set(p.intent_id, p);
+              }
+            }
+          }
+        }
+
+        const flows = [];
+        const seenIntents = new Set();
+        const seenOrderIds = new Set();
+
+        for (const sig of signals.slice().reverse()) {
+          const intentId = sig.intent_id;
+          if (!intentId || seenIntents.has(intentId)) continue;
+          seenIntents.add(intentId);
+
+          const matchingOrder = orders.find((o) => o.intent_id === intentId);
+          if (matchingOrder) seenOrderIds.add(matchingOrder.id);
+
+          flows.push({
+            intent_id: intentId,
+            strategy: sig.strategy,
+            symbol: sig.symbol,
+            signal: sig,
+            order: matchingOrder || null,
+          });
+        }
+
+        for (const ord of orders.slice().reverse()) {
+          if (seenOrderIds.has(ord.id)) continue;
+          seenOrderIds.add(ord.id);
+          flows.push({
+            intent_id: ord.intent_id || ord.id,
+            strategy: ord.strategy || ord.strategy_instance_id || "strategy",
+            symbol: ord.symbol,
+            signal: null,
+            order: ord,
+          });
+        }
+
+        if (countSpan) {
+          countSpan.textContent = `${flows.length} tracked`;
+        }
+
+        if (!flows.length) {
+          container.append(
+            textNode(
+              "div",
+              "No execution cycles recorded yet. Start strategies and run replay.",
+              "empty",
+            ),
+          );
+          return;
+        }
+
+        for (const flow of flows.slice(0, 8)) {
+          const item = document.createElement("article");
+          item.className = "timeline-item";
+
+          const header = document.createElement("div");
+          header.className = "timeline-item-header";
+          const title = document.createElement("span");
+          title.className = "timeline-item-title";
+          title.textContent = `${flow.strategy} · ${flow.symbol}`;
+          const flowId = document.createElement("span");
+          flowId.style.fontSize = "0.74rem";
+          flowId.style.color = "var(--muted)";
+          flowId.textContent = `Intent: ${flow.intent_id.slice(0, 8)}…`;
+          header.append(title, flowId);
+
+          const pipeline = document.createElement("div");
+          pipeline.className = "timeline-pipeline";
+
+          // Stage 1: Candle
+          let candleMatch = null;
+          if (flow.signal && flow.signal.candle_start) {
+            candleMatch = candles.find(
+              (c) =>
+                c.symbol === flow.symbol &&
+                c.interval === flow.signal.interval &&
+                c.start_time === flow.signal.candle_start,
+            );
+          }
+          const s1 = document.createElement("div");
+          s1.className = `timeline-stage ${candleMatch ? "stage-pass" : "stage-dimmed"}`;
+          s1.append(
+            textNode("span", "1. Candle", "timeline-stage-title"),
+            textNode(
+              "div",
+              candleMatch
+                ? `[${candleMatch.interval / 60}m] C: ₹${candleMatch.close}`
+                : "—",
+              "timeline-stage-val",
+            ),
+            textNode(
+              "div",
+              candleMatch
+                ? `O:${candleMatch.open} H:${candleMatch.high} L:${candleMatch.low}`
+                : flow.signal?.candle_start
+                  ? `Start ${flow.signal.candle_start.split("T")[1]?.slice(0, 5) || ""}`
+                  : "Direct intent (unlinked candle)",
+              "timeline-stage-sub",
+            ),
+          );
+
+          // Stage 2: Intent
+          const s2 = document.createElement("div");
+          s2.className = "timeline-stage stage-pass";
+          const side = flow.signal ? flow.signal.side : (flow.order ? flow.order.side : "INTENT");
+          const reason = flow.signal?.reason || "Strategy entry signal";
+          s2.append(
+            textNode("span", "2. Intent", "timeline-stage-title"),
+            textNode("div", `[${side}] ${reason}`, "timeline-stage-val"),
+            textNode(
+              "div",
+              flow.signal?.timestamp
+                ? String(flow.signal.timestamp).split("T")[1]?.slice(0, 8) || String(flow.signal.timestamp)
+                : "Timestamp recorded",
+              "timeline-stage-sub",
+            ),
+          );
+
+          // Stage 3: Risk
+          const riskDecision = riskDecisionsByIntent.get(flow.intent_id);
+          const s3 = document.createElement("div");
+          let riskPassed = false;
+          let riskText = "—";
+          let riskSub = "No risk decision logged";
+          if (riskDecision) {
+            riskPassed = Boolean(riskDecision.allowed);
+            s3.className = `timeline-stage ${riskPassed ? "stage-pass" : "stage-fail"}`;
+            riskText = riskPassed ? "✓ APPROVED" : "✗ REJECTED";
+            riskSub = riskDecision.reason || (riskPassed ? "Allowed" : "Risk limit violated");
+          } else if (flow.order) {
+            s3.className = "timeline-stage stage-pass";
+            riskText = "✓ PASSED";
+            riskSub = "Dispatched to order manager";
+          } else {
+            s3.className = "timeline-stage stage-dimmed";
+          }
+          s3.append(
+            textNode("span", "3. Risk Gateway", "timeline-stage-title"),
+            textNode("div", riskText, "timeline-stage-val"),
+            textNode("div", riskSub, "timeline-stage-sub"),
+          );
+
+          // Stage 4: Broker Order
+          const s4 = document.createElement("div");
+          const ord = flow.order;
+          if (riskDecision && !riskDecision.allowed) {
+            s4.className = "timeline-stage stage-dimmed";
+            s4.append(
+              textNode("span", "4. Broker Order", "timeline-stage-title"),
+              textNode("div", "— (Blocked)", "timeline-stage-val"),
+              textNode("div", "Not dispatched to broker", "timeline-stage-sub"),
+            );
+          } else if (ord) {
+            const isOrdRejected = ord.status === "REJECTED";
+            s4.className = `timeline-stage ${isOrdRejected ? "stage-fail" : "stage-pass"}`;
+            s4.append(
+              textNode("span", "4. Broker Order", "timeline-stage-title"),
+              textNode("div", `#${ord.id.slice(0, 8)} ${ord.status}`, "timeline-stage-val"),
+              textNode("div", `Qty: ${ord.filled_quantity ?? 0} / ${ord.quantity}`, "timeline-stage-sub"),
+            );
+          } else {
+            s4.className = "timeline-stage stage-dimmed";
+            s4.append(
+              textNode("span", "4. Broker Order", "timeline-stage-title"),
+              textNode("div", "—", "timeline-stage-val"),
+              textNode("div", "No broker order created", "timeline-stage-sub"),
+            );
+          }
+
+          // Stage 5: Fill Execution
+          const ordFills = ord ? fills.filter((f) => f.order_id === ord.id) : [];
+          const s5 = document.createElement("div");
+          if (ordFills.length > 0) {
+            const totQty = ordFills.reduce((sum, f) => sum + (f.quantity || 0), 0);
+            const avgPx = (
+              ordFills.reduce((sum, f) => sum + ((f.quantity || 0) * (f.price || 0)), 0) / totQty
+            ).toFixed(2);
+            const totCharges = ordFills.reduce((sum, f) => sum + Number(f.charges || 0), 0);
+            s5.className = "timeline-stage stage-pass";
+            s5.append(
+              textNode("span", "5. Fill Execution", "timeline-stage-title"),
+              textNode("div", `${totQty} filled @ ₹${avgPx}`, "timeline-stage-val"),
+              textNode("div", `Fees: ${money(totCharges)} (${ordFills.length} fill${ordFills.length > 1 ? "s" : ""})`, "timeline-stage-sub"),
+            );
+          } else if (ord && ord.status === "REJECTED") {
+            s5.className = "timeline-stage stage-fail";
+            s5.append(
+              textNode("span", "5. Fill Execution", "timeline-stage-title"),
+              textNode("div", "— (Rejected)", "timeline-stage-val"),
+              textNode("div", ord.reason || "Broker rejected order", "timeline-stage-sub"),
+            );
+          } else {
+            s5.className = "timeline-stage stage-dimmed";
+            s5.append(
+              textNode("span", "5. Fill Execution", "timeline-stage-title"),
+              textNode("div", "—", "timeline-stage-val"),
+              textNode("div", "No execution fill", "timeline-stage-sub"),
+            );
+          }
+
+          // Stage 6: Financial Result
+          const s6 = document.createElement("div");
+          if (ordFills.length > 0) {
+            const pos = positions.find(
+              (p) =>
+                p.strategy_instance_id === flow.strategy &&
+                p.symbol === flow.symbol,
+            );
+            const netQty = pos ? pos.net_quantity : "—";
+            const netPnl = pos ? Number(pos.net_pnl || 0) : 0;
+            s6.className = `timeline-stage ${netPnl >= 0 ? "stage-pass" : "stage-fail"}`;
+            s6.append(
+              textNode("span", "6. Financial Result", "timeline-stage-title"),
+              textNode("div", `Pos: ${netQty > 0 ? "+" + netQty : netQty}`, "timeline-stage-val"),
+              textNode("div", `Net P&L: ${money(netPnl)}`, "timeline-stage-sub"),
+            );
+          } else {
+            s6.className = "timeline-stage stage-dimmed";
+            s6.append(
+              textNode("span", "6. Financial Result", "timeline-stage-title"),
+              textNode("div", "Pos unchanged", "timeline-stage-val"),
+              textNode("div", "₹0.00 financial impact", "timeline-stage-sub"),
+            );
+          }
+
+          pipeline.append(s1, s2, s3, s4, s5, s6);
+          item.append(header, pipeline);
+          container.append(item);
+        }
+      }
       function renderFeed(list, items, renderer, emptyText) {
         list.replaceChildren();
         if (!items.length) {
@@ -1823,9 +2707,17 @@
         $("tick-count").className = "";
         $("tick-note").textContent =
           `${snapshot.market_data.duplicate_ticks} duplicate · ${snapshot.market_data.late_ticks} late`;
+
+        renderFeedStatus(snapshot);
         renderStrategies(snapshot);
+        renderStrategyCards(snapshot);
         renderSafety(snapshot);
         renderRiskBudgets(snapshot);
+        renderExecutionTimeline(snapshot);
+        renderRiskDecisions(snapshot);
+        renderCandlesTable(snapshot);
+        renderHistoricalKill(snapshot);
+
         if ($("safety-state-raw")) {
           $("safety-state-raw").textContent = JSON.stringify(
             snapshot.safety || { status: "UNKNOWN" },
@@ -1907,18 +2799,46 @@
               )
               .join("\n")
           : "No audit events recorded.";
-        if (snapshot.kill) {
-          $("certificate").textContent =
-            `Kill ${snapshot.kill.status} · ${Number(snapshot.kill.elapsed_seconds).toFixed(3)}s · open orders ${snapshot.kill.open_orders} · virtual flat ${snapshot.kill.virtual_positions_flat}`;
-          $("certificate").className =
-            `kill-certificate${snapshot.kill.status === "FAILED" ? " failed" : ""}`;
-        } else {
-          $("certificate").textContent = "No kill certificate issued.";
-          $("certificate").className = "kill-certificate";
-        }
       }
       function clearStaleData() {
         $("strategy-rows").replaceChildren();
+        if ($("strategy-cards-grid")) $("strategy-cards-grid").replaceChildren();
+        if ($("execution-timeline")) {
+          $("execution-timeline").replaceChildren();
+          $("execution-timeline").append(
+            textNode(
+              "div",
+              "No execution cycles recorded yet. Start strategies and run replay.",
+              "empty",
+            ),
+          );
+        }
+        if ($("risk-decisions-feed")) {
+          $("risk-decisions-feed").replaceChildren();
+          $("risk-decisions-feed").append(
+            textNode("li", "No risk decisions recorded yet.", "empty"),
+          );
+        }
+        if ($("candles-table-body")) {
+          $("candles-table-body").replaceChildren();
+          const tr = document.createElement("tr");
+          const td = textNode("td", "No completed candles recorded yet.", "empty");
+          td.colSpan = 8;
+          tr.append(td);
+          $("candles-table-body").append(tr);
+        }
+        if ($("kill-cert-body")) {
+          $("kill-cert-body").replaceChildren();
+          const p = document.createElement("p");
+          p.className = "kill-card-notice";
+          p.id = "certificate";
+          p.textContent = "No kill switch certificate issued for this account session.";
+          $("kill-cert-body").append(p);
+        }
+        if ($("kill-cert-badge")) {
+          $("kill-cert-badge").textContent = " NOT ISSUED";
+          $("kill-cert-badge").className = "badge badge-muted";
+        }
         $("fills").replaceChildren();
         $("signals").replaceChildren();
         $("audit").textContent = "No audit events recorded.";
@@ -1928,6 +2848,8 @@
         $("execution-count").textContent = "0 · 0";
         $("fill-count").textContent = "0 unique";
         $("signal-count").textContent = "0 emitted";
+        if ($("timeline-count")) $("timeline-count").textContent = "0 cycles tracked";
+        if ($("risk-decision-count")) $("risk-decision-count").textContent = "0 decisions";
       }
       async function request(url, options = {}) {
         const response = await fetch(url, options);
@@ -1951,7 +2873,7 @@
           $("connection").textContent = "Connected";
           $("connection-dot").className = "connection-dot ok";
         } catch (error) {
-          $("connection").textContent = "Disconnected";
+          $("connection").textContent = "Disconnected (Reconnecting…)";
           $("connection-dot").className = "connection-dot";
           setMessage(error.message);
         }
@@ -2071,6 +2993,7 @@
           const button = textNode("button", "Sign out");
           button.type = "button";
           button.addEventListener("click", async () => {
+            clearStaleData();
             await fetch("/api/auth/logout", { method: "POST" });
             window.location.replace("/login");
           });

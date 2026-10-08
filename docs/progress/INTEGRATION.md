@@ -134,3 +134,16 @@ Neon CLI 8.0.11 installed. Requested project/branch not yet authenticated/linked
   Verified partial fills (via `broker.execute`), duplicate fill deduplication (`DUPLICATE_FILL_IGNORED`), broker rejections (`broker.reject_next`), risk position limits (`RISK_MAX_POSITION`), missed fill reconciliation recovery, restart recovery invariants (`Gate.RECOVERING` -> durable history preserved -> reconciled against broker truth -> `Gate.RUNNING`), emergency kill switch via `Platform.kill()` (verified `KillCertificate` with `status="SUCCESS"`, `elapsed_seconds < 10`, 0 open orders, 0 broker positions, all virtual positions flat), and unexplained drift fail-closed blocking without auto-fix.
   Documented replay dependencies (explicit periodic rehearsal step during accelerated replay to respect Ram's 5s broker freshness limit) and 4–5 minute demo walkthrough in `docs/DEMO_AND_DEBUG.md`. Full test suite: 282 passed / 1 skipped; Ruff check and format clean; TypeScript clean.
 
+- Member 4 Task 8 — Operational UX & Final Member 4 Handoff:
+  Completed operational UX incremental enhancements in `frontend/index.html` preserving existing vanilla architecture:
+  - Subscribed strategy cards (`#strategy-cards-grid`) with real lifecycle states (`RUNNING`/`READY`/`STOPPED`/`HALTED`), warmup progress (`samples / warmup`), position quantities, net P&L, charges, and interactive Start/Stop controls.
+  - Market data & feed status strip (`#feed-status-strip`) with explicit `MOCK / REPLAY` badges, synthetic replay descriptions, session status (`OPEN`/`CLOSED`, `09:15 – 15:30 IST`), freshness, and tick counters.
+  - Human-readable closed candles table (`#candles-table-body`) and platform risk decisions feed (`#risk-decisions-feed`) displaying sequence numbers and backend rejection reason codes (`RISK_MAX_POSITION`, etc.).
+  - Bounded correlated execution timeline (`#execution-timeline`) correlating `Candle → Intent → Risk → Order → Fill → Financial Result` with truthful reporting of unlinked or missing evidence (no invented timestamps or synthesized stages).
+  - Historical kill switch certificate record (`#kill-cert-card`) kept strictly immutable and visually distinct from current live safety evidence.
+  - Preserved Ram's (Member 3) safety and risk budget panels and Akshat's (Member 1) accounting ledger sums.
+  - Immediate client-side data purging on logout or token expiration (`clearStaleData()`); resilient reconnection indicators on backend failure.
+  - Corrected Task 7 position arithmetic in `backend/demo_scenarios.py` using actual ledger aggregate sums (`p.ledger.aggregate().get((acc, "TCS"), 0)`).
+  - Validated across all 282 regression tests, 7 rehearsal runner scenarios, and linters. Full Member 4 scope (Tasks 1–8) complete.
+
+

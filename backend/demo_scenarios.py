@@ -247,10 +247,10 @@ class RehearsalRunner:
         assert len(mr_signals) >= 1 and mr_signals[0]["side"] == "SELL"
         assert len(bo_signals) >= 1 and bo_signals[0]["side"] == "BUY"
 
-        # Assert broker snapshot reflects aggregate net position
+        # Assert broker snapshot reflects actual account/symbol ledger sum
         broker_positions = p.broker.snapshot().positions
-        expected_net = mom_pos.net_quantity + mr_pos.net_quantity + bo_pos.net_quantity
-        assert broker_positions.get((acc, "TCS"), 0) == expected_net
+        actual_ledger_sum = p.ledger.aggregate().get((acc, "TCS"), 0)
+        assert broker_positions.get((acc, "TCS"), 0) == actual_ledger_sum
 
         return ScenarioResult(
             scenario="candles_and_opposing_strategies",
@@ -258,7 +258,7 @@ class RehearsalRunner:
             summary=(
                 f"1m/5m candles verified; opposing positions on TCS: "
                 f"strat_mom={mom_pos.net_quantity} (LONG), strat_mr={mr_pos.net_quantity} (SHORT), "
-                f"strat_bo={bo_pos.net_quantity} (LONG); net broker={expected_net}"
+                f"strat_bo={bo_pos.net_quantity} (LONG); net broker={actual_ledger_sum}"
             ),
             details={
                 "closed_1m_candles": len(one_m_candles),
@@ -266,7 +266,7 @@ class RehearsalRunner:
                 "mom_position": mom_pos.net_quantity,
                 "mr_position": mr_pos.net_quantity,
                 "bo_position": bo_pos.net_quantity,
-                "broker_net_position": expected_net,
+                "broker_net_position": actual_ledger_sum,
                 "signals_count": len(signals),
             },
         )

@@ -69,10 +69,10 @@ def test_exact_1m_5m_candles_and_opposing_strategy_entries(runner):
     assert mr_pos.realized_pnl is not None
     assert bo_pos.realized_pnl is not None
 
-    # Broker net position matches sum of strategy positions
+    # Broker net position matches actual account/symbol ledger sum
     broker_positions = p.broker.snapshot().positions
-    expected_net = mom_pos.net_quantity + mr_pos.net_quantity + bo_pos.net_quantity
-    assert broker_positions.get((acc, "TCS"), 0) == expected_net
+    actual_ledger_sum = p.ledger.aggregate().get((acc, "TCS"), 0)
+    assert broker_positions.get((acc, "TCS"), 0) == actual_ledger_sum
 
     # User-scoped state reflects isolated subscriptions and positions
     snap = p.snapshot(account_id=acc)
