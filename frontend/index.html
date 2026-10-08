@@ -973,6 +973,50 @@
         color: var(--danger);
         border: 1px solid #f2c7ce;
       }
+      .operations-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1rem;
+        padding: 1.15rem;
+      }
+      .operations-card {
+        min-width: 0;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-small);
+        padding: 1rem;
+        background: var(--surface);
+      }
+      .operations-card.wide { grid-column: span 2; }
+      .operations-card h3 { margin: 0; font-size: 0.95rem; }
+      .operations-card > p { color: var(--muted); font-size: 0.78rem; }
+      .proof-row, .data-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.8rem;
+        padding: 0.55rem 0;
+        border-top: 1px solid var(--line);
+        font-size: 0.78rem;
+      }
+      .proof-row:first-child, .data-row:first-child { border-top: 0; }
+      .data-row span:last-child { text-align: right; font-weight: 700; }
+      .trace-button {
+        width: 100%;
+        text-align: left;
+        border: 0;
+        border-top: 1px solid var(--line);
+        background: transparent;
+        padding: 0.6rem 0;
+        cursor: pointer;
+      }
+      .trace-button:first-child { border-top: 0; }
+      .trace-events { margin-top: 0.75rem; color: var(--muted); font-size: 0.75rem; }
+      @media (max-width: 980px) {
+        .operations-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      }
+      @media (max-width: 680px) {
+        .operations-grid { grid-template-columns: 1fr; padding: 0.8rem; }
+        .operations-card.wide { grid-column: auto; }
+      }
       .dev-details {
         border-top: 1px solid var(--line);
       }
@@ -1370,6 +1414,41 @@
             </div>
           </div>
         </div>
+        <div class="operations-grid" aria-label="Safety operations">
+          <article class="operations-card wide">
+            <div class="subpanel-head"><h3>Safety Proof</h3><span id="proof-verdict" class="badge badge-warning">UNKNOWN</span></div>
+            <div id="proof-invariants"><p class="empty">Waiting for invariant evidence.</p></div>
+          </article>
+          <article class="operations-card">
+            <div class="subpanel-head"><h3>Latest Risk Decision</h3><span id="risk-decision-badge" class="badge badge-muted">NONE</span></div>
+            <div id="latest-risk-decision"><p class="empty">No decision recorded.</p></div>
+          </article>
+          <article class="operations-card">
+            <div class="subpanel-head"><h3>Account Risk</h3><span>Worst-case pending</span></div>
+            <div id="account-risk"><p class="empty">No configured exposure.</p></div>
+          </article>
+          <article class="operations-card wide">
+            <div class="subpanel-head"><h3>Reconciliation Center</h3><span id="reconciliation-badge" class="badge badge-warning">UNKNOWN</span></div>
+            <div id="reconciliation-center"><p class="empty">Waiting for broker evidence.</p></div>
+          </article>
+          <article class="operations-card">
+            <div class="subpanel-head"><h3>Execution Trace</h3><span>Durable correlation</span></div>
+            <div id="execution-traces"><p class="empty">No correlated orders yet.</p></div>
+            <div id="trace-events" class="trace-events"></div>
+          </article>
+          <article class="operations-card">
+            <div class="subpanel-head"><h3>Kill Certificate</h3><span id="kill-certificate-badge" class="badge badge-muted">N/A</span></div>
+            <div id="kill-certificate-v2"><p class="empty">No kill requested.</p></div>
+          </article>
+          <article class="operations-card">
+            <div class="subpanel-head"><h3>SafetyBench</h3><button id="run-safety-bench" class="button small" type="button">Run 1x</button></div>
+            <div id="safety-bench"><p class="empty">No completed run.</p></div>
+          </article>
+          <article class="operations-card">
+            <div class="subpanel-head"><h3>Metrics</h3><span>Bounded samples</span></div>
+            <div id="metrics-registry"><p class="empty">No measurements yet.</p></div>
+          </article>
+        </div>
         <details class="failure-lab" id="failure-lab-panel" style="margin-top: 1.15rem;">
           <summary>
             <span>Failure Lab (Interactive Safety Proofs)</span>
@@ -1429,6 +1508,11 @@
                 </div>
                 <button class="button small" data-scenario="reconnect" type="button">Reconnect Broker</button>
               </div>
+              <div class="failure-btn-card"><div><strong>Account Risk</strong><p>Exceeds current-account net capacity and proves atomic rejection.</p></div><button class="button small" data-scenario="account_risk" type="button">Test Account Limit</button></div>
+              <div class="failure-btn-card"><div><strong>Concurrent Race</strong><p>Races reservations for the last safe position capacity.</p></div><button class="button small" data-scenario="concurrent_position_race" type="button">Run Race</button></div>
+              <div class="failure-btn-card"><div><strong>Fat-finger Price</strong><p>Submits an unreasonable LIMIT price against a fresh mark.</p></div><button class="button small" data-scenario="invalid_price" type="button">Test Price Guard</button></div>
+              <div class="failure-btn-card"><div><strong>Restart Fail-closed</strong><p>Reopens durable state and verifies RECOVERING with callbacks disabled.</p></div><button class="button small" data-scenario="restart_fail_closed" type="button">Test Restart</button></div>
+              <div class="failure-btn-card"><div><strong>Late Fill During Kill</strong><p>Verifies kill keeps converging as execution evidence changes.</p></div><button class="button small danger" data-scenario="kill_late_fill" type="button">Test Kill Race</button></div>
               <div class="failure-btn-card">
                 <div>
                   <strong>Position Drift</strong>
@@ -1982,6 +2066,116 @@
 
         container.append(list);
       }
+      function appendDataRow(container, label, value) {
+        const row = document.createElement("div");
+        row.className = "data-row";
+        row.append(textNode("span", label), textNode("span", String(value ?? "—")));
+        container.append(row);
+      }
+      function renderOperations(snapshot) {
+        const proof = snapshot.safety_proof || {};
+        const proofBadge = $("proof-verdict");
+        proofBadge.textContent = String(proof.verdict || "UNKNOWN").replaceAll("_", " ");
+        proofBadge.className = `badge ${badgeClass(proof.verdict === "VERIFIED_SAFE" ? "VERIFIED" : proof.verdict)}`;
+        const proofList = $("proof-invariants");
+        proofList.replaceChildren();
+        for (const invariant of proof.invariants || []) {
+          const item = document.createElement("details");
+          item.className = "proof-row";
+          const summary = document.createElement("summary");
+          summary.append(
+            document.createTextNode(`${invariant.id} · ${invariant.name} `),
+            createBadge(invariant.status === "NOT_APPLICABLE" ? "N/A" : invariant.status),
+          );
+          item.append(summary, textNode("p", invariant.summary || "No summary."));
+          const evidence = invariant.evidence || {};
+          for (const [key, value] of Object.entries(evidence))
+            appendDataRow(item, key.replaceAll("_", " "), typeof value === "object" ? JSON.stringify(value) : value);
+          proofList.append(item);
+        }
+        if (!proofList.children.length) proofList.append(textNode("p", "No proof evidence.", "empty"));
+
+        const decisions = snapshot.risk_decisions || [];
+        const decision = decisions.at(-1);
+        const decisionBox = $("latest-risk-decision");
+        decisionBox.replaceChildren();
+        $("risk-decision-badge").textContent = decision ? (decision.allowed ? "ALLOWED" : "REJECTED") : "NONE";
+        $("risk-decision-badge").className = `badge ${badgeClass(decision ? (decision.allowed ? "VERIFIED" : "FAILED") : "UNKNOWN")}`;
+        if (decision) {
+          appendDataRow(decisionBox, "Reason", decision.reason_code);
+          appendDataRow(decisionBox, "Explanation", decision.reason_text);
+          for (const [key, value] of Object.entries(decision.details || {}))
+            if (!["account_id", "strategy_instance_id", "symbol", "strategy", "account"].includes(key))
+              appendDataRow(decisionBox, key.replaceAll("_", " "), typeof value === "object" ? JSON.stringify(value) : value);
+        } else decisionBox.append(textNode("p", "No risk decision recorded.", "empty"));
+
+        const accountBox = $("account-risk");
+        accountBox.replaceChildren();
+        for (const budget of snapshot.account_risk || []) {
+          appendDataRow(accountBox, `${budget.symbol} net`, `${budget.net_projected} / ${budget.net_limit ?? "not set"}`);
+          appendDataRow(accountBox, `${budget.symbol} gross`, `${budget.gross_projected} / ${budget.gross_limit ?? "not set"}`);
+        }
+        if (!accountBox.children.length) accountBox.append(textNode("p", "No configured exposure.", "empty"));
+
+        const center = snapshot.reconciliation_center || {};
+        const report = center.report || {};
+        $("reconciliation-badge").textContent = report.verified ? "VERIFIED" : "NOT VERIFIED";
+        $("reconciliation-badge").className = `badge ${badgeClass(report.verified ? "VERIFIED" : "NOT VERIFIED")}`;
+        const reconBox = $("reconciliation-center");
+        reconBox.replaceChildren();
+        appendDataRow(reconBox, "Reason", report.reason || "No report");
+        appendDataRow(reconBox, "Broker evidence", center.broker?.fresh ? "Fresh" : "Stale / unavailable");
+        appendDataRow(reconBox, "Unknown orders", (center.unknown_orders || []).length);
+        appendDataRow(reconBox, "Position differences", (report.position_diff || []).length);
+        appendDataRow(reconBox, "Recovered fills", report.recovered_fill_count || 0);
+
+        const tracesBox = $("execution-traces");
+        tracesBox.replaceChildren();
+        for (const trace of snapshot.traces || []) {
+          const button = textNode("button", `${trace.trace_id} · ${(trace.events || []).length} events`, "trace-button");
+          button.type = "button";
+          button.onclick = () => {
+            const eventsBox = $("trace-events");
+            eventsBox.replaceChildren();
+            for (const event of trace.events || [])
+              appendDataRow(eventsBox, `#${event.sequence}`, event.type);
+          };
+          tracesBox.append(button);
+        }
+        if (!tracesBox.children.length) tracesBox.append(textNode("p", "No correlated orders yet.", "empty"));
+
+        const certificate = snapshot.kill;
+        const killBox = $("kill-certificate-v2");
+        killBox.replaceChildren();
+        $("kill-certificate-badge").textContent = certificate?.status || "N/A";
+        $("kill-certificate-badge").className = `badge ${badgeClass(certificate?.status || "UNKNOWN")}`;
+        if (certificate) {
+          for (const [stage, duration] of Object.entries(certificate.stage_durations_ms || {}))
+            appendDataRow(killBox, stage.replaceAll("_", " "), `${Number(duration).toFixed(1)} ms`);
+          appendDataRow(killBox, "Verified elapsed", `${Number(certificate.elapsed_seconds).toFixed(3)}s / ${certificate.target_seconds}s`);
+          appendDataRow(killBox, "Open orders", certificate.final_evidence?.open_orders);
+          appendDataRow(killBox, "Virtual positions flat", certificate.final_evidence?.virtual_positions_flat);
+        } else killBox.append(textNode("p", "No kill requested.", "empty"));
+
+        const bench = snapshot.safety_bench;
+        const benchBox = $("safety-bench");
+        benchBox.replaceChildren();
+        if (bench) {
+          appendDataRow(benchBox, "Scenarios", bench.summary?.scenario_count);
+          appendDataRow(benchBox, "Passed", bench.summary?.passed);
+          appendDataRow(benchBox, "Failed", bench.summary?.failed);
+          appendDataRow(benchBox, "Measured duration", `${Number(bench.summary?.duration_ms || 0).toFixed(1)} ms`);
+        } else benchBox.append(textNode("p", "No completed run.", "empty"));
+
+        const metricsBox = $("metrics-registry");
+        metricsBox.replaceChildren();
+        const metrics = snapshot.metrics || {};
+        for (const [name, value] of Object.entries(metrics.counters || {}).slice(0, 5))
+          appendDataRow(metricsBox, name.replaceAll("_", " "), value);
+        for (const [name, value] of Object.entries(metrics.latencies || {}).slice(0, 5))
+          appendDataRow(metricsBox, `${name.replaceAll("_", " ")} p95`, `${Number(value.p95 || 0).toFixed(2)} ms`);
+        if (!metricsBox.children.length) metricsBox.append(textNode("p", "No measurements yet.", "empty"));
+      }
       function renderStrategies(snapshot) {
         const body = $("strategy-rows");
         body.replaceChildren();
@@ -2093,6 +2287,7 @@
         renderStrategies(snapshot);
         renderSafety(snapshot);
         renderRiskBudgets(snapshot);
+        renderOperations(snapshot);
         $("signal-count").textContent = `${snapshot.signals.length} emitted`;
         renderFeed(
           $("signals"),
@@ -2371,6 +2566,23 @@
         btn.addEventListener("click", () => {
           runFailureLabScenario(btn.getAttribute("data-scenario"), btn);
         });
+      });
+      $("run-safety-bench").addEventListener("click", async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        try {
+          await request("/api/safety-bench/run", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ iterations: 1 }),
+          });
+          await refresh();
+          setMessage("SafetyBench completed with measured results.", true);
+        } catch (error) {
+          setMessage(error.message);
+        } finally {
+          button.disabled = false;
+        }
       });
       function setupTelemetryStream() {
         if (!window.WebSocket) return;
