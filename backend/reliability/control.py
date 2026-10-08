@@ -63,12 +63,15 @@ class Reliability:
         self.health = Health(value)
         self.safety.set("health", self.health)
 
-    def fail_closed(self, code, health=Health.DRIFTED):
+    def fail_closed(self, code, health=Health.DRIFTED, account_id=None):
         with self.store.transaction():
             self.risk.state = Gate.UNCERTAIN
             self.runtime.enabled = False
             self._health(health)
-            self.store.audit("SAFETY_RESTRICTED", {"reason": code})
+            payload = {"reason": code}
+            if account_id:
+                payload["account_id"] = account_id
+            self.store.audit("SAFETY_RESTRICTED", payload)
         if self.metrics is not None:
             try:
                 self.metrics.counter("safety_restriction_count")
@@ -92,7 +95,7 @@ class Reliability:
             self.fail_closed("RISK_STALE_BROKER_STATE", Health.DEGRADED)
             return "RISK_STALE_BROKER_STATE"
         if self.market_session is not None:
-            if self.market_session.status == "HALTED":
+            if self.market_session.status_at(now) == "HALTED":
                 return "RISK_MARKET_HALTED"
             if not self.market_session.is_open(now):
                 return "RISK_MARKET_CLOSED"
@@ -197,6 +200,38 @@ class Reliability:
                     ]
                     if position_diff:
                         raise SnapshotError("VIRTUAL_POSITION_DRIFT")
+                    accounts = {}
+                    for order in orders.values():
+                        account = getattr(
+                            getattr(order, "intent", None), "account_id", None
+                        )
+                        if account:
+                            item = accounts.setdefault(
+                                account,
+                                {
+                                    "orders": 0,
+                                    "unique_fills": 0,
+                                    "open_orders": 0,
+                                    "duplicate_snapshot_fills": 0,
+                                    "unattributed_fills": 0,
+                                },
+                            )
+                            item["orders"] += 1
+                            item["open_orders"] += order.status not in TERMINAL
+                    for fill in fills.values():
+                        account = getattr(fill, "account_id", None)
+                        if account:
+                            item = accounts.setdefault(
+                                account,
+                                {
+                                    "orders": 0,
+                                    "unique_fills": 0,
+                                    "open_orders": 0,
+                                    "duplicate_snapshot_fills": 0,
+                                    "unattributed_fills": 0,
+                                },
+                            )
+                            item["unique_fills"] += 1
                     self.report = {
                         "verified": True,
                         "reason": "MATCHED",
@@ -217,6 +252,7 @@ class Reliability:
                         "position_diff": position_diff,
                         "recovered_fill_ids": recovered_fill_ids,
                         "recovered_fill_count": len(recovered_fill_ids),
+                        "accounts": accounts,
                     }
                     self.safety.set("reconciliation_report", self.report)
                     self.store.audit("RECONCILED", self.report)
@@ -403,9 +439,16 @@ class Reliability:
         deadline_seconds=9,
         max_rounds=64,
         deadline_clock=time.monotonic,
+        deadline=None,
     ):
         started_at = self.clock()
-        deadline = Deadline(deadline_seconds, deadline_clock)
+        if deadline is None:
+            if isinstance(deadline_seconds, Deadline):
+                deadline = deadline_seconds
+            elif isinstance(deadline_seconds, (int, float)) and deadline_seconds <= 0:
+                deadline = None
+            else:
+                deadline = Deadline(deadline_seconds, deadline_clock)
         stages = {}
         self.risk.kill_requested.set()
         with self.store.transaction():
@@ -413,7 +456,35 @@ class Reliability:
             self.risk.state = Gate.KILLING
             self.runtime.enabled = False
             self.store.audit("KILL_GATE_CLOSED", {})
-        stages["gate_closed"] = deadline.elapsed * 1000
+        stages["gate_closed"] = deadline.elapsed * 1000 if deadline else 0
+        if deadline is None or not deadline.remaining:
+            elapsed = (
+                deadline.elapsed if deadline else max(0.0, float(-deadline_seconds))
+            )
+            self.certificate = KillCertificate(
+                "FAILED",
+                elapsed,
+                -1,
+                {},
+                False,
+                "KILL_DEADLINE_EXPIRED",
+                10.0,
+                started_at,
+                self.clock(),
+                stages,
+                {
+                    "open_orders": -1,
+                    "broker_positions": {},
+                    "virtual_positions_flat": False,
+                    "broker_unsettled": self.broker.unsettled,
+                },
+            )
+            with self.store.transaction():
+                self.safety.set("kill_certificate", asdict(self.certificate))
+                self.risk.state = Gate.UNCERTAIN
+                self._health(Health.DRIFTED)
+                self.store.audit("KILL_VERIFIED", asdict(self.certificate))
+            return self.certificate
         acquired = self.operation_lock.acquire(timeout=deadline.remaining)
         reason, safe, open_count, positions = "", False, -1, {}
         try:

@@ -8,7 +8,6 @@ from backend.market_data.candles import CandleBuilder
 from backend.market_data.session import MarketSession
 from backend.platform import Platform
 from backend.shared.contracts import Candle, OrderIntent, Side, Tick
-from tests.usp_helpers import authenticate
 
 
 def closed_candle(interval=60, start=0, open_price="100", close_price="101"):
@@ -269,17 +268,30 @@ def test_subscription_api_normalizes_inputs_and_controls_state():
 def test_demo_is_forbidden_when_persistent_mode_disables_it():
     platform = Platform(demo_enabled=False)
     with TestClient(create_app(platform)) as client:
-        authenticate(client, platform, "persistent-test", "persistent-user")
+        assert (
+            client.post(
+                "/api/auth/register",
+                json={"username": "persistent", "password": "password123"},
+            ).status_code
+            == 201
+        )
         response = client.post("/api/demo")
         assert response.status_code == 403
         assert not platform.store.rows("SELECT id FROM subscriptions")
+        assert not platform.store.rows("SELECT id FROM orders")
     platform.store.close()
 
 
 def test_api_preserves_money_and_prices_as_decimal_strings():
     platform = Platform()
     with TestClient(create_app(platform)) as client:
-        authenticate(client, platform, "demo-money", "money-user")
+        assert (
+            client.post(
+                "/api/auth/register",
+                json={"username": "decimal", "password": "password123"},
+            ).status_code
+            == 201
+        )
         response = client.post("/api/demo")
         assert response.status_code == 200
         state = response.json()
@@ -454,35 +466,45 @@ def test_dynamic_strategy_registration_and_api():
 
 
 def test_market_session_hours_and_halt_logic():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    ist = ZoneInfo("Asia/Kolkata")
+    base_ts = int(datetime(2026, 10, 8, 0, 0, 0, tzinfo=ist).timestamp())
+
     session = MarketSession(
         open_time_seconds=9 * 3600,
         close_time_seconds=15 * 3600,
         enforce_hours=True,
+        clock=lambda: base_ts + 36000,
     )
-    # Outside hours (e.g. 08:00 = 28800s)
-    assert not session.is_open(28800)
-    # Inside hours (e.g. 10:00 = 36000s)
-    assert session.is_open(36000)
-    # At exact open & close
-    assert session.is_open(9 * 3600)
-    assert session.is_open(15 * 3600)
-    # Outside hours (e.g. 16:00 = 57600s)
-    assert not session.is_open(57600)
+    # Outside hours (e.g. 08:00 IST)
+    assert not session.is_open(base_ts + 28800)
+    # Inside hours (e.g. 10:00 IST)
+    assert session.is_open(base_ts + 36000)
+    # At exact open (09:00 IST)
+    assert session.is_open(base_ts + 9 * 3600)
+    # At exact close (15:00 IST) - half-open boundary [09:00, 15:00) is closed
+    assert not session.is_open(base_ts + 15 * 3600)
+    # Just before close (14:59:59 IST)
+    assert session.is_open(base_ts + 15 * 3600 - 1)
+    # Outside hours (e.g. 16:00 IST)
+    assert not session.is_open(base_ts + 57600)
 
     # Halt overrides hours
     session.halt("circuit breaker")
     assert session.status == "HALTED"
-    assert not session.is_open(36000)
+    assert not session.is_open(base_ts + 36000)
     session.resume()
     assert session.status == "OPEN"
-    assert session.is_open(36000)
+    assert session.is_open(base_ts + 36000)
 
     # Manual override status
     session.set_status("CLOSED")
     assert session.status == "CLOSED"
-    assert not session.is_open(36000)
+    assert not session.is_open(base_ts + 36000)
     session.set_status("OPEN")
-    assert session.is_open(57600)
+    assert session.is_open(base_ts + 57600)
 
     # Invalid status
     try:
@@ -535,7 +557,10 @@ def test_market_session_api_and_snapshot():
     platform = Platform()
     try:
         with TestClient(create_app(platform)) as client:
-            authenticate(client, platform, "market-test", "market-user")
+            client.post(
+                "/api/auth/register",
+                json={"username": "session_user", "password": "password4"},
+            )
             snap = client.get("/api/state").json()
             assert "market_session" in snap
             assert snap["market_session"]["status"] == "OPEN"
@@ -562,7 +587,10 @@ def test_telemetry_stream_endpoint():
     platform = Platform()
     try:
         with TestClient(create_app(platform)) as client:
-            authenticate(client, platform, "telemetry-test", "telemetry-user")
+            client.post(
+                "/api/auth/register",
+                json={"username": "telemetry_user", "password": "password4"},
+            )
             with client.stream("GET", "/api/stream/telemetry?max_events=1") as response:
                 assert response.status_code == 200
                 assert "text/event-stream" in response.headers["content-type"]
@@ -586,8 +614,10 @@ def test_telemetry_stream_endpoint():
 def test_websocket_stream_pushes_backend_snapshot():
     platform = Platform()
     try:
-        with TestClient(create_app(platform)) as client:
-            authenticate(client, platform, "websocket-test", "websocket-user")
+        user = platform.auth.register("ws_user", "password4")
+        with TestClient(
+            create_app(platform), cookies={"algoshield_session": user["token"]}
+        ) as client:
             with client.websocket_connect("/api/stream/ws") as websocket:
                 payload = websocket.receive_json()
                 assert payload["mode"] == "MOCK / REPLAY"

@@ -2456,9 +2456,22 @@
           $("certificate").className = "kill-certificate";
         }
       }
+      function clearStaleData() {
+        $("strategy-rows").replaceChildren();
+        $("fills").replaceChildren();
+        $("signals").replaceChildren();
+        $("audit").textContent = "No audit events recorded.";
+        $("strategy-errors").textContent = "No callback errors recorded.";
+        $("candles").textContent = "No completed candles recorded.";
+        $("strategy-count").textContent = "0 configured";
+        $("execution-count").textContent = "0 · 0";
+        $("fill-count").textContent = "0 unique";
+        $("signal-count").textContent = "0 emitted";
+      }
       async function request(url, options = {}) {
         const response = await fetch(url, options);
         if (response.status === 401) {
+          clearStaleData();
           window.location.replace("/login");
           throw new Error("Your session has expired.");
         }
@@ -2610,7 +2623,12 @@
             } catch (_) {}
           };
           socket.onerror = fallback;
-          socket.onclose = () => {
+          socket.onclose = (event) => {
+            if (event && event.code === 1008) {
+              clearStaleData();
+              window.location.replace("/login");
+              return;
+            }
             fallback();
             window.setTimeout(setupTelemetryStream, 3000);
           };

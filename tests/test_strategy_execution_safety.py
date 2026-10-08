@@ -1,6 +1,9 @@
 from decimal import Decimal as D
+import sqlite3
 import threading
 import time
+
+import pytest
 
 from backend.platform import Platform
 from backend.shared.contracts import Candle, Side, Tick
@@ -275,4 +278,181 @@ def test_repeated_hangs_cannot_create_unlimited_workers():
     finally:
         for ev in hang_events:
             ev.set()
+        platform.close()
+
+
+def test_callback_remains_blocked_while_close_returns_boundedly():
+    platform = Platform()
+    hang_event = threading.Event()
+    callback_started = threading.Event()
+    try:
+        platform.account("acc_test")
+        platform.strategies.callback_timeout = 0.05
+
+        def blocked_handler(_sub, _candle, state=None):
+            callback_started.set()
+            hang_event.wait(timeout=5.0)
+            if state is not None:
+                state["leaked_key"] = "leaked_val"
+            return Side.BUY, "late signal"
+
+        platform.strategies.register_strategy("blocked_strat", blocked_handler)
+        platform.strategies.subscribe("acc_test", "sub_block", "blocked_strat", "TEST")
+        platform.reliability.resume()
+
+        # Ingest a candle; callback times out and strategy is quarantined
+        candle = make_closed_candle(start=0)
+        intents = platform.strategies.on_candle(candle, platform.clock())
+        assert len(intents) == 0
+        assert callback_started.wait(timeout=1.0)
+        assert not platform.strategies.is_subscription_enabled("sub_block")
+
+        # Worker is STILL blocked on hang_event
+        assert not hang_event.is_set()
+
+        # close() must return in bounded time without waiting for the callback to release
+        t0 = time.monotonic()
+        platform.close()
+        elapsed = time.monotonic() - t0
+
+        # Bounded close returns immediately (well within 0.25s, not waiting for 5s)
+        assert elapsed < 0.25, f"close() took too long: {elapsed}s"
+        # Callback remained blocked during close()
+        assert not hang_event.is_set()
+    finally:
+        # Always release test workers in finally blocks
+        hang_event.set()
+        platform.close()
+
+
+def test_late_release_after_store_closure_causes_no_db_access_or_state_mutation():
+    platform = Platform()
+    hang_event = threading.Event()
+    callback_started = threading.Event()
+    callback_finished = threading.Event()
+    worker_error = []
+    try:
+        platform.account("acc_test")
+        platform.strategies.callback_timeout = 0.05
+
+        def delayed_handler(_sub, _candle, state=None):
+            try:
+                callback_started.set()
+                hang_event.wait(timeout=5.0)
+                if state is not None:
+                    state["illegal_mutation"] = True
+                return Side.BUY, "delayed signal"
+            except Exception as e:
+                worker_error.append(e)
+                raise
+            finally:
+                callback_finished.set()
+
+        platform.strategies.register_strategy("delayed_strat", delayed_handler)
+        platform.strategies.subscribe(
+            "acc_test", "sub_delayed", "delayed_strat", "TEST"
+        )
+        platform.reliability.resume()
+
+        candle = make_closed_candle(start=0)
+        intents = platform.strategies.on_candle(candle, platform.clock())
+        assert len(intents) == 0
+        assert callback_started.wait(timeout=1.0)
+
+        # Close the platform and storage while the worker is still blocked
+        platform.close()
+
+        # Storage (SQLite connection) is closed
+        assert platform.store.db is not None
+        with pytest.raises(sqlite3.ProgrammingError):
+            platform.store.db.execute("SELECT 1")
+
+        # Now release the worker after store closure!
+        hang_event.set()
+        assert callback_finished.wait(timeout=2.0)
+
+        # Worker thread must encounter no DB access exceptions or sqlite access violations
+        assert len(worker_error) == 0
+        # No mutations leaked into indicator state or signals
+        assert "sub_delayed" not in platform.strategies.indicators
+        assert len(platform.strategies.signals) == 0
+    finally:
+        # Always release test workers in finally blocks
+        hang_event.set()
+        platform.close()
+
+
+def test_same_instance_timeout_does_not_block_controls_or_other_strategies():
+    platform = Platform()
+    hang_event = threading.Event()
+    callback_started = threading.Event()
+    try:
+        platform.account("acc_test")
+        platform.strategies.callback_timeout = 0.05
+
+        def hung_handler(_sub, _candle, state=None):
+            callback_started.set()
+            hang_event.wait(timeout=5.0)
+            return Side.BUY, "hung"
+
+        def healthy_handler(_sub, _candle, state=None):
+            if state is not None:
+                state["count"] = state.get("count", 0) + 1
+            return Side.BUY, "healthy signal"
+
+        platform.strategies.register_strategy("hung_strat", hung_handler)
+        platform.strategies.register_strategy("healthy_strat", healthy_handler)
+
+        platform.strategies.subscribe("acc_test", "sub_hung", "hung_strat", "TEST")
+        platform.strategies.subscribe(
+            "acc_test", "sub_healthy", "healthy_strat", "TEST"
+        )
+        platform.reliability.resume()
+
+        # Ingest candle: sub_hung times out, sub_healthy succeeds
+        candle_0 = make_closed_candle(start=0)
+        intents_0 = platform.strategies.on_candle(candle_0, platform.clock())
+        assert len(intents_0) == 1
+        assert intents_0[0].strategy_instance_id == "sub_healthy"
+        assert callback_started.wait(timeout=1.0)
+        assert not platform.strategies.is_subscription_enabled("sub_hung")
+
+        # While sub_hung worker is STILL blocked on hang_event:
+        assert not hang_event.is_set()
+
+        # Control 1: stop/re-enable same instance does not block or deadlock
+        t_ctrl0 = time.monotonic()
+        platform.strategies.set_enabled("acc_test", "sub_hung", False)
+        platform.strategies.set_enabled("acc_test", "sub_hung", True)
+        assert time.monotonic() - t_ctrl0 < 0.2, (
+            "set_enabled was blocked by hung worker"
+        )
+
+        # Control 2: invalidate_in_flight does not block
+        platform.strategies.invalidate_in_flight()
+
+        # Control 3: healthy strategy processes next candle without any blocking from hung worker
+        candle_60 = make_closed_candle(start=60)
+        t_healthy = time.monotonic()
+        intents_60 = platform.strategies.on_candle(candle_60, platform.clock())
+        assert time.monotonic() - t_healthy < 0.2, "healthy strategy was blocked"
+        assert len(intents_60) == 1
+        assert intents_60[0].strategy_instance_id == "sub_healthy"
+        assert platform.strategies.indicators["sub_healthy"]["count"] == 2
+
+        # Control 4: kill switch converges quickly within SLA and is not blocked
+        t_kill = time.monotonic()
+        cert = platform.kill()
+        assert time.monotonic() - t_kill < 1.0, "kill was blocked by hung worker"
+        assert cert.status in {"SUCCESS", "SAFE_LATE"}
+
+        # Control 5: platform shutdown completes promptly while worker is still hanging
+        t_close = time.monotonic()
+        platform.close()
+        assert time.monotonic() - t_close < 0.2, (
+            "platform.close() was blocked by hung worker"
+        )
+    finally:
+        # Always release test workers in finally blocks
+        hang_event.set()
         platform.close()

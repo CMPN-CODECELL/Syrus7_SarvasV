@@ -83,23 +83,72 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
   Exposed backend-derived sample count, required warmup, and readiness via `StrategyRuntime.readiness_for` and `Platform.snapshot()['subscriptions']`.
   Aligned RSI reversal registry warmup to 15 (requiring 15 closes for 14 price differences).
   Addressed Task 3 follow-up: included replay stream join time in the total kill deadline calculation and ensured execution admission closure is idempotent.
-  Added comprehensive tests in `tests/test_strategy_lifecycle.py`. Full test suite: 255 passed / 1 skipped; Ruff check and format clean.
+- 2026-10-08: Task 5 Correct Market-Session Handling and Task 4 Follow-ups completed.
+  Converted session timestamps to Asia/Kolkata (`ZoneInfo("Asia/Kolkata")`) before checking configured continuous hours (`[09:15:00, 15:30:00)` IST).
+  Preserved default unenforced hours (`enforce_hours=False`) for mock replay compatibility.
+  Strictly fail closed when hours are enforced and timestamp is missing/None without a clock.
+  Kept state consistency between `is_open()`, `status_at()`, `to_dict()`, and `Reliability.check_evidence()` (`HALTED`, manual `OPEN`/`CLOSED`, and `AUTO`).
+  Task 4 Follow-up 1: Serialized same-strategy callback execution per instance under `inst_lock` prior to state copying and committing, guaranteeing intermediate candle updates are never lost or computed concurrently from stale indicator states.
+  Task 4 Follow-up 2: Verified kill certificate elapsed time includes admission closure and replay join; exhausted deadline budgets return a truthful failure certificate (`status="FAILED", reason="KILL_DEADLINE_EXPIRED"`) without throwing `ValueError` from `Deadline`.
+- 2026-10-08: Task 5 Follow-up Callback Isolation and Bounded Shutdown completed.
+  Addressed StrategyRuntime.close unbounded executor shutdown: eliminated `shutdown(wait=True)` in favor of bounded `shutdown(wait=False, cancel_futures=True)` with pre-shutdown epoch invalidation.
+  Completely isolated strategy callback workers from SQLite, `Store`, broker authority, and runtime mutation. Workers now execute pure candidate calculations over working state copies and return candidate results to the control plane.
+  The control plane validates and commits candidate results (`_enabled`, `_global_epoch`, `_subscription_generations`, `is_subscription_enabled`, `may_run`, candle start time monotonicity); timed-out and invalidated runs cannot mutate state.
+  Ensured same-instance serialization (`inst_lock`) is acquired and released boundedly on timeout, never retaining locks needed by `kill`, `set_enabled`, `close`, or healthy strategies. Stopping or halting a subscription provisions a fresh instance lock.
+  Added regression coverage in `tests/test_strategy_execution_safety.py` verifying: callback remains blocked while close returns in bounded time; late release after store closure triggers zero DB queries or state mutations; same-instance timeout does not block controls or other strategies; test workers released in `finally` blocks. Full test suite: 265 passed / 1 skipped; Ruff check and format clean.
 
+
+- 2026-10-08: Task 6 Authenticated, Account-Scoped Member 4 User Workflow and Follow-Up completed.
+  Completed end-to-end user workflow: register/login -> subscribe -> start -> observe readiness/signals/P&L -> stop.
+  Account identity is derived exclusively from verified server-side sessions (`engine.auth.verify_token`), never from client input.
+  Removed anonymous risk-budget fallback: `GET /api/risk/budgets` strictly requires session authentication and returns only the verified account's budgets (anonymous returns 401).
+  Audited account-scoped snapshot output and eliminated all nested leaks:
+    - Reconciliation reports: `broker_positions` and `unexplained_positions` filtered to `account_id`; `orders`, `unique_fills`, `open_orders`, and `duplicate_snapshot_fills` scoped to caller's counts; `unattributed_fills` reported as 0. Honest global verification flags (`verified`, `reason`, `observed_at`) are preserved.
+    - Kill certificates: `broker_positions` dictionary filtered to only keys starting with `f"{account_id}/"`; `virtual_positions_flat` evaluated for caller's positions; `open_orders` scoped to caller's open count; honest global status (`status`, `elapsed_seconds`, `reason`) preserved.
+    - Fill counters: `unique_applied`, `duplicates_ignored`, and `rejected_events` scoped strictly to the caller's account; `unattributed_in_last_verified_snapshot` sourced from verified snapshot accounts (null if unattributed fills exist or unverified).
+- 2026-10-08: Task 6 Final Follow-Up — Truthful Scoped Safety Evidence completed.
+  Fixed projection issues in account-scoped safety evidence:
+  - Eliminated hardcoding of `unattributed_fills` and `unattributed_in_last_verified_snapshot` to 0. Sourced from verified account breakdown (`accounts[account_id]`) at `observed_at`. If unattributed fills exist, snapshot is unverified, or account breakdown is missing, reports `null`/UNKNOWN.
+  - Preserved historical kill certificate evidence: `open_orders`, `virtual_positions_flat`, `status`, and `reason` are never rewritten using current account state. Sensitive `broker_positions` are filtered strictly to `f"{account_id}/"`. Later trades do not mutate historical certificates, and failed kills retain uncertainty (`open_orders=-1`, `status="FAILED"`).
+  - Reconciliation counts describe the verified snapshot at `observed_at` sourced from `accounts[account_id]`, never substituting current local counts or unrelated audit counters.
+  - Position comparison preserves raw `UNKNOWN` or `FAILED` states; filtering never converts uncertainty into a pass.
+  - Added regression tests in `tests/test_member4_workflow.py` verifying unknown attribution stays unknown, failed kill retains uncertainty, later trades do not alter historical certificates, and scoped historical reports remain accurate and leak-free across accounts.
+  Full test suite: 273 passed / 1 skipped; Ruff check and format clean; TypeScript clean.
+    - Unknown orders: filtered strictly by `account == user.account_id`.
+    - Audit payloads: only events where `account == user.account_id` or `strategy` belongs to the user's subscriptions are returned; nested payloads with `broker_positions` are sanitized to strip other accounts.
+  WebSocket (`/api/stream/ws`) and SSE (`/api/stream/telemetry`) require valid authentication prior to transmitting any data.
+  Streaming loops revalidate session tokens before pushing each snapshot; on logout or session expiration, SSE terminates and WebSocket closes immediately with close code 1008 (`WS_1008_POLICY_VIOLATION`).
+  Cross-account start/stop actions are denied with HTTP 403 Forbidden without mutating state or leaking details.
+  Preserved backend-derived `READY`, `RUNNING`, `STOPPED`, `HALTED`, and warmup indicator readiness states.
+  Frontend handles HTTP 401 and WS 1008 by invoking `clearStaleData()` to reset table records and redirect to `/login` without leaving stale cross-account data visible.
+  Ownership corrected: Ram is Member 3 (risk, security, reliability); Akshat is Member 1 (accounting, ledgers, fills, positions).
+  Platform-wide authorization is NOT complete. Explicitly documented the 15 remaining unprotected global mutation endpoints for Ram (Member 3).
+  Full test suite: 272 passed / 1 skipped; Ruff check and format clean; TypeScript clean.
 
 ## In Progress
-- No further 021 implementation is safe without an authoritative tick/reconnect/backfill contract. Existing adapter remains intentionally unavailable.
+- Awaiting Ram's (Member 3) operator authorization for global mutation endpoints and 021 market-data feed contract.
 
 ## Blockers / Dependencies
 - Official 021 contract/credentials and sponsor session/charges/kill semantics.
 - Production identity provider remains unselected; the current local session boundary is not Neon Auth.
+- Member 3 (Ram) remaining global API/operator authorization for platform-wide mutation endpoints:
+  `PUT /api/risk/policies/{strategy}`, `PUT /api/risk/strategies/{strategy}`, `POST /api/reconcile`,
+  `POST /api/resume`, `POST /api/reduce-only`, `POST /api/kill/reset`, `POST /api/kill`,
+  `POST /api/failure-lab/{scenario}`, `POST /api/broker/disconnect`, `POST /api/broker/reconnect`,
+  `POST /api/broker/updates/sync`, `POST /api/orders/{order_id}/cancel`, `POST /api/market/session`,
+  `POST /api/demo`, `POST /api/accounts`.
 
 ## Next
 - Obtain authoritative 021 tick schema, sequencing and reconnect/backfill behavior.
 - Implement `MarketData021Provider` normalization and adapter contract fixtures.
-- Coordinate feed freshness/session gating with Member 3.
-- Replace the local bootstrap identity boundary with the selected production identity provider without changing session-derived account ownership.
+- Coordinate feed freshness/session gating with Member 3 (Ram).
+- Coordinate operator authorization boundary with Member 3 (Ram).
 
 ## Handoff Notes
-Demo replay ends STOPPED; enabled subscriptions show READY and stopped/faulted subscriptions show STOPPED. Indicator state requires a fresh complete warm-up after restart, while subscription state and signal/error evidence are durable. Neon PostgreSQL schema is initialized and verified.
+User workflows are strictly account-isolated server-side. Subscriptions, orders, fills, positions, signals, risk budgets, and safety evidence never leak across accounts. Telemetry streams continuously revalidate tokens and terminate upon logout or expiration. Platform-wide operator authorization remains incomplete and pending Ram's role-based implementation.
 
-- 2026-10-08 USP delivery: implemented authenticated/account-owned controls, structured risk evidence, durable account net/gross policy, LIMIT-price guard, Safety Proof I1-I10, Reconciliation Center, durable traces, Failure Lab V2, Kill Certificate V2, bounded metrics, isolated 19-case SafetyBench and responsive operational dashboard panels. Added SQLite migrations 008-011 and PostgreSQL migrations 007-010. Full suite: 280 passed / 1 environment-gated PostgreSQL skipped; Ruff and frontend JavaScript syntax pass. No remote Neon mutation or live 021 claim.
+## 2026-10-08 — Integration baseline
+
+- Merged the latest `origin/main` account-isolation, callback-shutdown, market-session, and kill-deadline work with the evidence/telemetry layer.
+- Restored authenticated account-scoped WebSocket/SSE snapshots, direct subscription reads, reconciliation recovery evidence, and mock replay fill execution.
+- Real 021 provider details remain blocked behind adapters; this remains mock/replay evidence only.

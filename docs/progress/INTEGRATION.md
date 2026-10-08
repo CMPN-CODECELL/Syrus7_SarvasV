@@ -89,6 +89,47 @@ Neon CLI 8.0.11 installed. Requested project/branch not yet authenticated/linked
   warmup, and readiness (`samples >= warmup`), with RSI reversal configured for 15 closed candles (14 price diffs).
   Kill deadline deduction verified: replay stream join time is deducted from the total kill deadline,
   and admission gate closure is strictly idempotent.
+- Market session and execution hours correctness (Task 5):
+  `MarketSession` converts timestamps to `Asia/Kolkata` (`ZoneInfo("Asia/Kolkata")`) before evaluating configured hours.
+  Continuous trading hours use half-open interval `[09:15:00, 15:30:00)` IST (`09:15:00` is OPEN, `15:30:00` is CLOSED).
+  Default `enforce_hours=False` is preserved for mock replay compatibility.
+  When hours are enforced, missing timestamps (`None` without a clock) fail closed (`is_open() -> False`, `status_at() -> "CLOSED"`).
+  State consistency preserved across `is_open()`, `status_at()`, `to_dict()`, and `Reliability.check_evidence()` (`HALTED`, manual `OPEN`/`CLOSED`, `AUTO`).
+  Task 4 follow-up 1: Same-strategy callbacks serialize execution under `inst_lock` prior to copying working state, ensuring intermediate candle updates are never lost or computed concurrently from stale indicator states.
+  Task 4 follow-up 2: Kill certificate elapsed time includes admission closure and replay join; exhausted deadline budgets return a truthful failure certificate (`status="FAILED", reason="KILL_DEADLINE_EXPIRED"`) without throwing `ValueError` from `Deadline`.
+- Callback isolation and bounded shutdown (Task 5 Follow-up):
+  Eliminated unbounded `executor.shutdown(wait=True)` in `StrategyRuntime.close()`, replacing it with pre-shutdown epoch invalidation and bounded non-blocking cancellation (`shutdown(wait=False, cancel_futures=True)`).
+  Callback worker tasks are strictly isolated from SQLite, `Store`, broker authority, and runtime state mutation. Workers calculate candidate signals on working state copies and return candidate results to the control plane.
+  The control plane validates and commits candidate results (`_enabled`, `_global_epoch`, `_subscription_generations`, `is_subscription_enabled`, `may_run`, candle start time monotonicity); timed-out and invalidated candidate results cannot mutate state.
+  Same-instance serialization locks (`inst_lock`) are released boundedly upon callback timeout, preventing timed-out workers from retaining locks needed by `kill`, `set_enabled`, `close`, or healthy strategies. Stopping or halting a subscription provisions a fresh instance lock.
+  Added regression coverage in `tests/test_strategy_execution_safety.py` confirming callback remains blocked while close returns in bounded time, late releases after store closure cause zero DB queries or state mutations, same-instance timeouts do not block controls or other strategies, and test workers are always released in `finally` blocks. Full test suite: 265 passed / 1 skipped; Ruff check and format clean.
+- Member 4 Task 6 — Authenticated, Account-Scoped User Workflow & Telemetry Isolation:
+  User workflow (`register/login -> subscribe -> start -> observe readiness/signals/P&L -> stop`) is fully authenticated and account-scoped server-side.
+  Account identity is derived exclusively from verified server-side sessions (`engine.auth.verify_token`); client query params or payload account overrides are never trusted.
+  Removed anonymous risk-budget fallback: `GET /api/risk/budgets` strictly requires session authentication and returns only the verified account's budgets (anonymous returns 401).
+  Audited account-scoped snapshot output and eliminated all nested leaks:
+    - Reconciliation reports: `broker_positions` and `unexplained_positions` filtered to `account_id`; `orders`, `unique_fills`, `open_orders`, and `duplicate_snapshot_fills` scoped to caller's counts; `unattributed_fills` reported as 0. Honest global verification flags (`verified`, `reason`, `observed_at`) are preserved.
+    - Kill certificates: `broker_positions` dictionary filtered to only keys starting with `f"{account_id}/"`; `virtual_positions_flat` evaluated for caller's positions; `open_orders` scoped to caller's open count; honest global status (`status`, `elapsed_seconds`, `reason`) preserved.
+    - Fill counters: `unique_applied`, `duplicates_ignored`, and `rejected_events` scoped strictly to the caller's account; `unattributed_in_last_verified_snapshot` sourced from verified snapshot accounts (null if unattributed fills exist or unverified).
+- Member 4 Task 6 Final Follow-Up — Truthful Scoped Safety Evidence:
+  Eliminated hardcoding of unattributed fills and historical kill rewrites. Sourced reconciliation counts from verified `accounts[account_id]` at `observed_at`; preserved historical kill certificate evidence without current-state substitution; preserved UNKNOWN/FAILED states; added tests for unknown attribution, failed kill uncertainty, immutable historical certificates, and leak-free scoped reporting. Full test suite: 273 passed / 1 skipped; Ruff check and format clean; TypeScript clean.
+    - Unknown orders: filtered strictly by `account == user.account_id`.
+    - Audit payloads: only events where `account == user.account_id` or `strategy` belongs to the user's subscriptions are returned; nested payloads with `broker_positions` are sanitized to strip other accounts.
+  Subscription mutations (`POST /api/subscriptions/{id}/start` and `/stop`) enforce ownership: non-existent subscriptions return 404; attempts to mutate another account's subscription return 403 Forbidden without mutating state or exposing strategy details.
+  Streaming telemetry endpoints (`GET /api/stream/telemetry` and `WebSocket /api/stream/ws`) require valid authentication before transmitting data.
+  Streaming loops continuously revalidate tokens; on logout or session expiration, SSE streams terminate and WebSockets close immediately with code 1008 (`WS_1008_POLICY_VIOLATION`).
+  Frontend UI invokes `clearStaleData()` on 401 or WS 1008 to clear tables, counters, feeds, and indicators, redirecting cleanly to `/login`.
+  Team Ownership Alignment: Ram is Member 3 (risk, security, reliability, trading gates, kill switch). Akshat is Member 1 (accounting, ledgers, fills, positions). Member 4 owns market data, strategy runtimes, and user-scoped workflow.
+  Platform-Wide Authorization Status: Platform-wide authorization is NOT complete. Ram (Member 3) must implement role-based operator authorization for remaining unprotected global mutation endpoints:
+    `PUT /api/risk/policies/{strategy}`, `PUT /api/risk/strategies/{strategy}`, `POST /api/reconcile`,
+    `POST /api/resume`, `POST /api/reduce-only`, `POST /api/kill/reset`, `POST /api/kill`,
+    `POST /api/failure-lab/{scenario}`, `POST /api/broker/disconnect`, `POST /api/broker/reconnect`,
+    `POST /api/broker/updates/sync`, `POST /api/orders/{order_id}/cancel`, `POST /api/market/session`,
+    `POST /api/demo`, `POST /api/accounts`.
+  Test suite: 272 passed / 1 skipped; Ruff check and format clean; TypeScript clean.
+
+
+
 
 - 2026-10-08 USP integration: added authenticated account-scoped control-plane boundaries, explainable risk evidence, durable account net/gross and LIMIT-price policy, conservative Safety Proof, reconciliation delta/recovery projection, trace correlation, Failure Lab V2, Kill Certificate V2, bounded metrics, isolated 19-case SafetyBench and responsive operational UI. Additive SQLite migrations 008-011 and PostgreSQL migrations 007-010 are packaged. Regression: 280 passed / 1 PostgreSQL integration skipped; Ruff and frontend syntax clean. Live 021 and remote Neon remain blocked/unclaimed.
 

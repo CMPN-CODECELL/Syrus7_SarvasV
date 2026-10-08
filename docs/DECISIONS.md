@@ -452,25 +452,124 @@ Deriving simulation time directly from wall-clock sleep intervals was rejected b
 ### Reversal
 Live market data connections (e.g., 021 WebSocket feeds) will replace synthetic simulation batches entirely with the external broker/exchange feed adapter; the simulation cursor remains strictly within the mock/replay harness.
 
-## DEC-021 — Evidence-first USP layer with conservative proof and isolated benchmarking
-
+## DEC-021 — Asia/Kolkata market session boundaries and kill deadline budget exhaustion
+Date: 2026-10-08
 Status: ACCEPTED
 
 ### Context
-The prototype needed judge-visible differentiation without weakening fill/reconciliation/kill safety or inventing unavailable 021 behavior.
+`MarketSession` previously evaluated raw UTC epoch modulo 86400, ignoring local exchange timezone (`Asia/Kolkata`, UTC+05:30) and failing closed or open incorrectly depending on UTC date alignment. Boundaries were not clearly documented, missing timestamps risked ambiguity, and exhausted kill budgets caused an unhandled `ValueError` when passing non-positive time to `Deadline`. Additionally, same-strategy concurrent callbacks risked computing on uncommitted indicator states if not serialized prior to copying.
 
 ### Decision
-Add account-wide risk and LIMIT-price checks inside the serialized gateway; additive audit correlation and policy/benchmark tables; a read-only conservative Safety Proof; server-built traces; bounded non-critical metrics; Failure Lab V2; Kill Certificate V2; and isolated SQLite/mock SafetyBench. Protect critical APIs with local sessions, enforce strategy/order ownership and scope user financial snapshots to the authenticated account.
+1. **Asia/Kolkata Session Handling**:
+   - `MarketSession` converts timestamps to `Asia/Kolkata` (`ZoneInfo("Asia/Kolkata")`) before computing seconds into the day.
+   - Continuous hours defined as half-open interval `[09:15:00, 15:30:00)` IST (`open_time_seconds <= sec < close_time_seconds`). Exactly 09:15:00 is `OPEN`; 15:30:00 and after is `CLOSED`.
+   - Preserve default `enforce_hours=False` for mock replay compatibility.
+   - When hours are enforced, missing timestamp (`None` with no clock) fails closed (`is_open() -> False`, `status_at() -> "CLOSED"`).
+   - Consistent state precedence: `HALTED` overrides all; manual `OPEN`/`CLOSED` override schedule; `AUTO` adheres to schedule. Sourced identically by `is_open()`, `status_at()`, `to_dict()` snapshot, and `Reliability.check_evidence()`.
+2. **Kill Deadline Budget Exhaustion**:
+   - `Platform.kill` and `Reliability.kill` accept pre-configured `deadline` objects and gracefully handle non-positive remaining budget (`<= 0`). If deadline budget is exhausted, a truthful failure certificate (`status="FAILED", reason="KILL_DEADLINE_EXPIRED"`) is returned rather than raising an unhandled `ValueError` from `Deadline`. Total elapsed time includes admission closure and replay join.
+3. **Same-Strategy Callback Serialization**:
+   - In `StrategyRuntime.worker_task`, acquire a per-instance lock (`inst_lock`) *before* copying working state and release only *after* committing updated indicator state, ensuring intermediate candle updates are never lost or computed concurrently from stale indicator states.
 
 ### Reason
-This makes actual backend evidence explainable and demonstrable while preserving one modular monolith, canonical contracts and fail-closed uncertainty.
+Trading exchange operations must respect exact local exchange operating hours and fail closed safely on missing context. Risk and kill mechanisms must provide truthful audit certificates rather than throwing unhandled exceptions on budget exhaustion.
 
 ### Impact
-SQLite schema advances to version 11 and PostgreSQL gains migrations 007-010. SafetyBench is disabled for PostgreSQL/non-mock modes. Metrics reset on process restart. Historical risk-policy reconstruction stays explicitly unknown.
+`MarketSession`, `Reliability`, `Platform.kill`, `StrategyRuntime`, `CONTRACTS.md`, `tests/test_market_session.py`, `tests/test_strategy_lifecycle.py`. Full test suite passes (262 passed, 1 skipped).
 
 ### Alternatives
-Static UI proof, synthetic reconciliation fills, Prometheus/Redis infrastructure, client-built timelines and live fault injection were rejected as unsafe, misleading or unnecessary.
+Using raw UTC day offsets rejected due to day boundary errors across UTC midnight (03:45 UTC is 09:15 IST). Silent OPEN on missing timestamps rejected due to fail-closed principles.
 
 ### Reversal
-Production identity and telemetry may replace bootstrap implementations behind the same boundaries. Preserve reason codes, invariant statuses, correlation IDs and completed benchmark summaries.
+Any future multi-exchange support or exchange holiday calendar will be introduced via clean pluggable session provider adapters without altering risk layer contracts.
 
+## DEC-022 — Worker callback storage isolation, control-plane commit, and bounded shutdown
+Date: 2026-10-08
+Status: ACCEPTED
+
+### Context
+`StrategyRuntime.close` previously used `shutdown(wait=True)` to avoid SQLite teardown access violations under the assumption that waiting for workers prevented teardown errors. However, if a callback hung or blocked indefinitely, `close()` would block forever, violating bounded platform shutdown SLAs. Inspection of the worker path revealed that workers called `may_run` and `is_subscription_enabled` (executing SQL on SQLite) and committed indicator state directly from worker threads while holding instance locks across untrusted callbacks. If a worker timed out, it retained instance locks, blocking controls or future candles, and if SQLite was closed, delayed worker threads triggered SQLite access violations.
+
+### Decision
+Amends DEC-021 item 3:
+1. **Worker Storage Isolation**: Callback worker tasks run purely isolated calculations on copies of working indicator state and immutable candle inputs. Workers never hold SQLite connections, never call `Store`, never access broker authority, and never commit runtime state.
+2. **Control-Plane Validation and Commit**: The control plane thread in `on_candle` dispatches candidate work, bounds wait time by `callback_timeout`, and validates candidate outputs (`_enabled`, `_global_epoch`, `_subscription_generations`, `is_subscription_enabled`, `may_run`, and candle monotonic start time). Only valid, timely outputs have their indicator state and order intents committed to platform state. Timed-out or invalidated candidate results cannot mutate any platform or indicator state.
+3. **Bounded Non-Blocking Shutdown**: `StrategyRuntime.close()` invalidates pending results (`_global_epoch += 1`, `_enabled = False`) and immediately cancels queued work via `self._executor.shutdown(wait=False, cancel_futures=True)`. Because daemon worker threads have zero DB handles and commit no state, storage can close immediately; late worker thread completions execute zero database queries and trigger no access violations.
+4. **Lock Non-Retention on Timeout**: Instance-level locks (`inst_lock`) serialize same-instance callbacks in the control plane to preserve sequential indicator updates without letting a timed-out worker retain locks needed by `kill`, `set_enabled` (stop/re-enable), `close`, or healthy strategies. Stopping or halting a subscription provisions a fresh instance lock.
+
+### Reason
+Strategies are untrusted workloads. Workers must never have database or mutation authority, and process shutdown must never hang on slow or infinite callbacks. Pure computation in workers and control-plane state commits completely eliminate SQLite teardown race conditions and lock contention.
+
+### Impact
+`backend/strategies/runtime.py`, `docs/CONTRACTS.md`, `tests/test_strategy_execution_safety.py`. Full test suite passes (265 passed, 1 skipped).
+
+### Alternatives
+Using unbounded `shutdown(wait=True)` was rejected because it violates shutdown SLAs when callbacks hang. Allowing workers to query SQLite or commit state directly was rejected because it causes teardown access violations and state corruptions.
+
+## DEC-023 — Authenticated, account-scoped user workflow and telemetry isolation
+Date: 2026-10-08
+Status: ACCEPTED
+
+### Context
+Task 6 requires a complete authenticated Member 4 user workflow (`register/login -> subscribe -> start -> observe readiness/signals/P&L -> stop`) with strictly server-side account-scoped isolation. Account identity must be derived exclusively from verified server-side sessions, never from client requests or frontend filtering. Subscription responses, state projections, positions, orders, fills, signals, errors, risk budgets, and audit evidence must never leak other accounts. WebSocket and SSE telemetry streams must be authenticated before sending data, revalidate sessions during streaming, and terminate immediately on logout or token expiration. When sessions expire or backend becomes unavailable, frontend UI must clear stale state rather than retaining cached cross-account or out-of-date records.
+
+### Decision
+1. **Server-Side Account Derivation & Scoping**:
+   - Authentication tokens (cookie or Authorization header) are verified via `engine.auth.verify_token`. Anonymous reads to `/api/state`, `/api/orders`, `/api/fills`, `/api/subscriptions`, `/api/risk/budgets`, `/api/stream/ws`, and `/api/stream/telemetry` return HTTP 401 Unauthorized (or WS close code 1008). No anonymous fallback is permitted on risk budgets; global inspection is denied until formal roles are implemented.
+   - In `backend/platform.py`, `Platform.snapshot(account_id=...)` strictly scopes subscriptions, positions, orders, fills, counts, signals, strategy errors, and audit events to the verified account. Safety payloads (`virtual`, `broker`, `unknown_orders`, `fills.unique_applied`) and counts are isolated so no cross-account exposure exists.
+   - Deep nested safety audit:
+     - Position comparison: preserves raw `UNKNOWN` or `FAILED` status; filtering never converts uncertainty into a safety pass.
+     - Reconciliation reports: `broker_positions` and `unexplained_positions` filtered to `account_id`; `orders`, `unique_fills`, `open_orders`, `duplicate_snapshot_fills`, and `unattributed_fills` describe the verified snapshot at `observed_at` sourced from `accounts[account_id]`. If verified account breakdown is absent or unverified, reconciliation counts report `null` rather than substituting live local counts. Honest global verification flags (`verified`, `reason`, `observed_at`) are preserved.
+     - Kill certificates: historical evidence is strictly preserved. `open_orders`, `virtual_positions_flat`, `status`, and `reason` reflect the verified historical certificate at kill time and are never rewritten with current account state (later trades do not alter historical certificates, and failed kills retain uncertainty). `broker_positions` dictionary is filtered strictly to keys starting with `f"{account_id}/"`.
+     - Fill counters: `unique_applied`, `duplicates_ignored`, and `rejected_events` scoped strictly to the caller's account; `unattributed_in_last_verified_snapshot` is sourced from verified account breakdown at `observed_at` (returns 0 only when verified to be 0; returns `null`/unknown if unattributed fills exist, snapshot is unverified, or account evidence is missing). Never hardcoded to 0.
+     - Unknown orders: filtered strictly by `account == user.account_id`.
+     - Audit payloads: only events where `account == user.account_id` or `strategy` belongs to the user's subscriptions are returned; nested payloads with `broker_positions` are sanitized to strip other accounts.
+   - History queries (`history` and `history_count`) accept an optional `account_id` parameter filtering `WHERE account = ?`.
+2. **Subscription Mutation Authorization**:
+   - `POST /api/subscriptions` creates subscriptions for the authenticated session's `account_id` and returns user-scoped subscriptions.
+   - `POST /api/subscriptions/{strategy_instance_id}/start` and `/stop` look up the subscription by ID: if not found, return 404; if owned by another account, return 403 Forbidden without mutating state or leaking details. Responses return user-scoped subscriptions.
+3. **Telemetry Streaming Authentication & Eviction**:
+   - SSE (`GET /api/stream/telemetry`) and WebSocket (`/api/stream/ws`) require verified authentication before sending any data.
+   - Streaming loops revalidate the session token before emitting snapshots (`engine.auth.verify_token(token)`). If the session expires or the user logs out, SSE returns/terminates and WebSocket closes immediately with close code 1008 (`WS_1008_POLICY_VIOLATION`).
+4. **Stale UI Cleared on Session Termination & Disconnection**:
+   - In `frontend/index.html`, upon HTTP 401 or WebSocket 1008 close code, `clearStaleData()` resets subscriptions, positions, orders, fills, signals, errors, budgets, and safety indicators to prevent stale account data from remaining visible.
+5. **Team Ownership & Remaining Unprotected Global Mutation Endpoints**:
+   - Ownership alignment: Ram is Member 3 (risk, security, reliability, trading gates, kill switch). Akshat is Member 1 (accounting, ledgers, fills, positions). Member 4 owns market data, strategy runtimes, and user-scoped workflow.
+   - Platform-wide operator authorization is NOT complete. Ram (Member 3) must implement role-based operator authorization for remaining unprotected global mutation endpoints:
+     - `PUT /api/risk/policies/{strategy}`
+     - `PUT /api/risk/strategies/{strategy}`
+     - `POST /api/reconcile`
+     - `POST /api/resume`
+     - `POST /api/reduce-only`
+     - `POST /api/kill/reset`
+     - `POST /api/kill`
+     - `POST /api/failure-lab/{scenario}`
+     - `POST /api/broker/disconnect`
+     - `POST /api/broker/reconnect`
+     - `POST /api/broker/updates/sync`
+     - `POST /api/orders/{order_id}/cancel`
+     - `POST /api/market/session`
+     - `POST /api/demo`
+     - `POST /api/accounts`
+
+### Reason
+Multi-tenant security requires defense-in-depth where server-side boundaries enforce strict data isolation. Client-side filtering is inherently insecure. Streaming connections must enforce authentication continuously to prevent unauthorized data exposure following logout or token revocation. Global mutations must be explicitly guarded by operator roles rather than left open.
+
+### Impact
+`backend/platform.py`, `backend/api.py`, `backend/strategies/runtime.py`, `backend/execution/orders.py`, `backend/reliability/control.py`, `frontend/index.html`, `tests/test_member4_workflow.py`. Full test suite passes (272 passed, 1 skipped). Ruff check/format and TypeScript pass.
+
+### Alternatives
+Preserving anonymous risk budgets was rejected because it leaks strategy budgets without authentication. Client-side filtering was rejected as it exposes private order and position data in network payloads. Passing client-provided `account_id` was rejected because users could forge accounts. Revalidating auth only upon initial WebSocket handshake was rejected because logged-out users would continue receiving live account updates.
+
+## DEC-024 — Evidence-first operational layer
+Date: 2026-10-08
+Status: ACCEPTED
+
+### Decision
+Keep account-wide risk and LIMIT-price validation inside the gateway; expose conservative Safety Proof, server-built traces, reconciliation recovery evidence, bounded process metrics, Failure Lab V2, and Kill Certificate V2. Run SafetyBench only on an isolated in-memory SQLite/mock platform. Protect evidence APIs with local sessions and scope user financial projections to the authenticated account.
+
+### Reason
+The platform needs judge-visible proof without weakening fill, reconciliation, or kill invariants and without inventing unknown 021 behavior.
+
+### Impact
+SQLite schema v11 and PostgreSQL migrations 007-010 add correlation, policy, and benchmark records. Metrics reset on process restart; historical policy reconstruction remains explicitly unknown.

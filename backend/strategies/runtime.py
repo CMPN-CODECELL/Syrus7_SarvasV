@@ -76,6 +76,7 @@ class StrategyRuntime:
         self._global_epoch = 1
         self._epoch_lock = threading.Lock()
         self._state_lock = threading.Lock()
+        self._instance_locks: dict[str, threading.Lock] = {}
         self._last_processed_candle: dict[tuple[str, int], int] = {}
         self._last_committed_candle: dict[tuple[str, int], int] = {}
         self.on_interval_registered = None
@@ -153,8 +154,17 @@ class StrategyRuntime:
         with self._epoch_lock:
             self._global_epoch += 1
 
+    def _get_instance_lock(self, strategy_id: str) -> threading.Lock:
+        with self._state_lock:
+            if strategy_id not in self._instance_locks:
+                self._instance_locks[strategy_id] = threading.Lock()
+            return self._instance_locks[strategy_id]
+
     def close(self):
-        """Shut down the bounded executor pool."""
+        """Shut down the bounded executor pool cleanly without unbounded wait."""
+        with self._epoch_lock:
+            self._enabled = False
+            self._global_epoch += 1
         self._executor.shutdown(wait=False, cancel_futures=True)
 
     def register_strategy(
@@ -266,10 +276,12 @@ class StrategyRuntime:
                 "SUBSCRIPTION_STARTED" if enabled else "SUBSCRIPTION_STOPPED",
                 {"strategy": strategy, "account": account},
             )
-        self._subscription_generations[strategy] = (
-            self._subscription_generations.get(strategy, 0) + 1
-        )
-        self.indicators.pop(strategy, None)
+        with self._state_lock:
+            self._subscription_generations[strategy] = (
+                self._subscription_generations.get(strategy, 0) + 1
+            )
+            self.indicators.pop(strategy, None)
+            self._instance_locks[strategy] = threading.Lock()
 
     def is_subscription_enabled(self, strategy_id: str) -> bool:
         rows = self.store.rows(
@@ -414,22 +426,32 @@ class StrategyRuntime:
         return None
 
     def _halt_failed_subscription(self, subscription, exc):
+        strat_id = subscription["id"]
+        account = subscription["account"]
+        with self._epoch_lock:
+            if not self._enabled:
+                return
         error = {
-            "strategy": subscription["id"],
-            "account": subscription["account"],
+            "strategy": strat_id,
+            "account": account,
             "error_type": type(exc).__name__,
         }
         self.errors.append(error)
-        self._subscription_generations[subscription["id"]] = (
-            self._subscription_generations.get(subscription["id"], 0) + 1
-        )
-        self.indicators.pop(subscription["id"], None)
-        with self.store.transaction() as db:
-            db.execute(
-                "UPDATE subscriptions SET enabled=0 WHERE id=?",
-                (subscription["id"],),
+        with self._state_lock:
+            self._subscription_generations[strat_id] = (
+                self._subscription_generations.get(strat_id, 0) + 1
             )
-            self.store.audit("STRATEGY_CALLBACK_FAILED", error)
+            self.indicators.pop(strat_id, None)
+            self._instance_locks[strat_id] = threading.Lock()
+        try:
+            with self.store.transaction() as db:
+                db.execute(
+                    "UPDATE subscriptions SET enabled=0 WHERE id=?",
+                    (strat_id,),
+                )
+                self.store.audit("STRATEGY_CALLBACK_FAILED", error)
+        except Exception:
+            pass
 
     def on_candle(self, candle, now):
         with self._epoch_lock:
@@ -445,7 +467,7 @@ class StrategyRuntime:
         if not active_subs:
             return []
 
-        runs = []
+        intents = []
         for sub in active_subs:
             strat_id = sub["id"]
             handler = self.handlers.get(sub["kind"])
@@ -460,102 +482,137 @@ class StrategyRuntime:
             expected_gen = self._subscription_generations.get(strat_id, 1)
             key = (strat_id, expected_gen)
 
-            with self._state_lock:
-                last_proc = self._last_processed_candle.get(key, -1)
-                if candle.start_time <= last_proc:
-                    continue
-                self._last_processed_candle[key] = candle.start_time
-                working_state = self._copy_indicator_state(
-                    self.indicators.get(strat_id, {})
-                )
-
-            # Bounded outstanding work via semaphore
-            acquired = self._work_semaphore.acquire(
-                timeout=min(0.05, self.callback_timeout)
-            )
-            if not acquired:
+            inst_lock = self._get_instance_lock(strat_id)
+            acquired_lock = inst_lock.acquire(timeout=self.callback_timeout)
+            if not acquired_lock:
                 self._halt_failed_subscription(
-                    sub, TimeoutError("strategy worker pool saturated")
+                    sub, TimeoutError("instance lock contention timeout")
                 )
                 continue
-
-            def worker_task(h=handler, s=dict(sub), c=candle, ws=working_state):
-                try:
-                    return _call_handler(h, s, c, ws)
-                finally:
-                    self._work_semaphore.release()
 
             try:
-                future = self._executor.submit(worker_task)
-                runs.append((sub, expected_gen, working_state, future))
-            except Exception as exc:
-                self._work_semaphore.release()
-                self._halt_failed_subscription(sub, exc)
-
-        intents = []
-        for sub, expected_gen, working_state, future in runs:
-            strat_id = sub["id"]
-            key = (strat_id, expected_gen)
-            try:
-                signal = future.result(timeout=self.callback_timeout)
-            except FutureTimeoutError:
-                self._halt_failed_subscription(
-                    sub,
-                    TimeoutError(f"callback exceeded {self.callback_timeout}s timeout"),
-                )
-                continue
-            except Exception as exc:
-                self._halt_failed_subscription(sub, exc)
-                continue
-
-            # Validate originating run and serialize state commits
-            with self._state_lock:
                 with self._epoch_lock:
                     if not self._enabled or self._global_epoch != expected_epoch:
                         continue
-                if not self.may_run(strat_id):
+
+                if not self.may_run(strat_id) or not self.is_subscription_enabled(
+                    strat_id
+                ):
                     continue
+
                 if self._subscription_generations.get(strat_id, 1) != expected_gen:
                     continue
-                if not self.is_subscription_enabled(strat_id):
+
+                with self._state_lock:
+                    last_proc = self._last_processed_candle.get(key, -1)
+                    if candle.start_time <= last_proc:
+                        continue
+                    last_comm = self._last_committed_candle.get(key, -1)
+                    if candle.start_time <= last_comm:
+                        continue
+                    self._last_processed_candle[key] = candle.start_time
+                    working_state = self._copy_indicator_state(
+                        self.indicators.get(strat_id, {})
+                    )
+
+                # Bounded outstanding work via semaphore
+                acquired_sem = self._work_semaphore.acquire(
+                    timeout=min(0.05, self.callback_timeout)
+                )
+                if not acquired_sem:
+                    self._halt_failed_subscription(
+                        sub, TimeoutError("strategy worker pool saturated")
+                    )
                     continue
 
-                last_comm = self._last_committed_candle.get(key, -1)
-                if candle.start_time <= last_comm:
-                    # Newer or equal candle was already committed for this run
+                sem = self._work_semaphore
+
+                def worker_task(
+                    h=handler,
+                    s=dict(sub),
+                    c=candle,
+                    ws=working_state,
+                    s_sem=sem,
+                ):
+                    try:
+                        sig = _call_handler(h, s, c, ws)
+                        return sig, ws
+                    finally:
+                        s_sem.release()
+
+                try:
+                    future = self._executor.submit(worker_task)
+                except Exception as exc:
+                    sem.release()
+                    self._halt_failed_subscription(sub, exc)
                     continue
 
-                # Valid run: commit candidate indicator state
-                self.indicators[strat_id] = working_state
-                self._last_committed_candle[key] = candle.start_time
+                try:
+                    result = future.result(timeout=self.callback_timeout)
+                except FutureTimeoutError:
+                    self._halt_failed_subscription(
+                        sub,
+                        TimeoutError(
+                            f"callback exceeded {self.callback_timeout}s timeout"
+                        ),
+                    )
+                    continue
+                except Exception as exc:
+                    self._halt_failed_subscription(sub, exc)
+                    continue
 
-            if signal is None:
-                continue
+                if result is None:
+                    continue
 
-            side, reason = signal
-            intent = OrderIntent(
-                f"{strat_id}:{candle.interval}:{candle.start_time}",
-                strat_id,
-                sub["account"],
-                candle.symbol,
-                side,
-                1,
-                now,
-                reason=reason,
-            )
-            event = {
-                "intent_id": intent.intent_id,
-                "strategy": strat_id,
-                "kind": sub["kind"],
-                "symbol": candle.symbol,
-                "interval": candle.interval,
-                "side": side.value,
-                "reason": reason,
-                "candle_start": candle.start_time,
-            }
-            self.signals.append(event)
-            with self.store.transaction():
-                self.store.audit("STRATEGY_SIGNAL", event)
-            intents.append(intent)
+                signal, candidate_state = result
+
+                with self._state_lock:
+                    with self._epoch_lock:
+                        if not self._enabled or self._global_epoch != expected_epoch:
+                            continue
+                    if not self.may_run(strat_id):
+                        continue
+                    if self._subscription_generations.get(strat_id, 1) != expected_gen:
+                        continue
+                    if not self.is_subscription_enabled(strat_id):
+                        continue
+                    last_comm = self._last_committed_candle.get(key, -1)
+                    if candle.start_time <= last_comm:
+                        continue
+
+                    self.indicators[strat_id] = candidate_state
+                    self._last_committed_candle[key] = candle.start_time
+
+                if signal is None:
+                    continue
+
+                side, reason = signal
+                intent = OrderIntent(
+                    f"{strat_id}:{candle.interval}:{candle.start_time}",
+                    strat_id,
+                    sub["account"],
+                    candle.symbol,
+                    side,
+                    1,
+                    now,
+                    reason=reason,
+                )
+                event = {
+                    "intent_id": intent.intent_id,
+                    "strategy": strat_id,
+                    "account": sub["account"],
+                    "kind": sub["kind"],
+                    "symbol": candle.symbol,
+                    "interval": candle.interval,
+                    "side": side.value,
+                    "reason": reason,
+                    "candle_start": candle.start_time,
+                }
+                self.signals.append(event)
+                with self.store.transaction():
+                    self.store.audit("STRATEGY_SIGNAL", event)
+                intents.append(intent)
+            finally:
+                inst_lock.release()
 
         return intents
