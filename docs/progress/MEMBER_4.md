@@ -182,3 +182,9 @@ User workflows are strictly account-isolated server-side. Subscriptions, orders,
 - Added centralized rejection of non-JSON API success responses and defensive validation for discovered Failure Lab scenarios and strategy capabilities.
 - Failure Lab now renders an inline error instead of crashing when an older/stale backend lacks the discovery endpoint.
 - Validation: 299 Python tests passed, 1 PostgreSQL integration skipped; 11 React tests, ESLint, Ruff, and Vite production build passed.
+
+## 2026-10-08 — Compact Risk Center budgets
+
+- Replaced expanded nested evidence cards inside Strategy Budgets with dense labeled metrics sourced from the complete backend policy, position, daily-loss, and order-rate objects.
+- Reduced cell padding and vertical rhythm while preserving table-local horizontal scrolling and a two-column metric fallback on narrow mobile screens.
+- Validation: 12 React tests, ESLint, Vite production build, 13 focused backend tests, and Ruff passed.
