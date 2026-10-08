@@ -50,6 +50,18 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
   untrusted bytecode. Workers receive no store locks or broker authority. Added comprehensive
   suite in `tests/test_strategy_execution_safety.py`. Full test suite: 226 passed / 1 skipped;
   Ruff check and format passed.
+- 2026-10-08: Fixed `Platform.start_replay_stream` generating overlapping/backwards tick batches.
+  Introduced a monotonic simulation cursor (`_simulation_cursor`) on `Platform` that strictly
+  advances beyond previously emitted ticks across repeated replay actions, stream restarts, and
+  batches. Implemented `generate_simulation_batch` to schedule multi-symbol ticks synchronized
+  per timestamp. Separated simulated event timestamps (`tick.event_timestamp`) from receive time
+  (`self.clock()` recorded in `risk_marks.received_at`). Generated globally unique event IDs
+  (`sim:{sym}:{ts}:{seq}`) for newly simulated ticks while allowing intentional duplicate
+  replays to retain identical IDs for clean deduplication. Prevented duplicate stream threads via
+  `_replay_lock`. Enforced clean stop, kill, and shutdown lifecycle; guaranteed replay stream
+  never automatically restarts after recovery or reconciliation. Kept replay explicitly mock-only
+  and preserved broker freshness fail-closed checks. Added comprehensive tests in
+  `tests/test_replay_stream.py`. Full test suite: 237 passed / 1 skipped; Ruff check and format passed.
 
 
 ## In Progress

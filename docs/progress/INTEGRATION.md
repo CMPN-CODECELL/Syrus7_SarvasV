@@ -65,5 +65,9 @@ Neon CLI 8.0.11 installed. Requested project/branch not yet authenticated/linked
   polling fallback. The transport reports backend changes but does not invent market
   activity when no ticks or fills are arriving.
 - An explicit Run replay action can now start a bounded local HTTP-mock tick loop;
-  kill and shutdown stop it. This remains simulator-only and does not auto-resume
-  after a process restart.
+  kill, stop, and shutdown terminate it cleanly with thread joining. Ticks advance
+  monotonically via `_simulation_cursor` across repeated batches, restarts, and symbols
+  without overlapping or backwards timestamps. New ticks generate unique event IDs, while
+  intentional repeat ticks retain IDs for idempotent deduplication. The stream is
+  mock-only and never automatically restarts following recovery or reconciliation.
+

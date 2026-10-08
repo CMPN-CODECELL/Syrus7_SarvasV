@@ -1,7 +1,7 @@
 import time
 from collections import deque
-from itertools import chain
-from threading import Event, Thread
+from collections.abc import Iterable
+from threading import Event, Lock, Thread, current_thread
 from dataclasses import asdict
 from decimal import Decimal
 
@@ -10,13 +10,13 @@ from backend.accounting.ledger import Ledger
 from backend.broker.adapters import MockBrokerAdapter
 from backend.broker.http_adapter import HTTPMockBrokerAdapter
 from backend.execution.orders import OrderManager
-from backend.market_data.candles import CandleBuilder, ReplayMarketDataProvider
+from backend.market_data.candles import CandleBuilder
 from backend.market_data.session import MarketSession
 from backend.reliability.control import Reliability
 from backend.reliability.broker_calls import BrokerSession
 from backend.risk.gateway import RiskGateway
 from backend.shared.auth import AuthService
-from backend.shared.contracts import Side
+from backend.shared.contracts import GlobalTradingState as Gate, Side, Tick
 from backend.shared.store import Store
 from backend.strategies.runtime import StrategyRuntime
 
@@ -73,6 +73,9 @@ class Platform:
         self.closed_candles = deque(maxlen=128)
         self.auth = AuthService(self.store)
         self.demo_count = 0
+        self._simulation_cursor = {}
+        self._simulation_seq = 0
+        self._replay_lock = Lock()
         self._replay_stop = Event()
         self._replay_thread = None
 
@@ -171,6 +174,10 @@ class Platform:
                 raise
             if not accepted:
                 return
+            self._simulation_cursor[tick.symbol] = max(
+                self._simulation_cursor.get(tick.symbol, 0),
+                getattr(tick, "event_timestamp", 0),
+            )
             self.ledger.marks[tick.symbol] = tick.price
             self.reliability.observe_tick(tick, replay=replay)
             for candle in closed:
@@ -210,6 +217,70 @@ class Platform:
                         )
                     )
 
+    def get_simulation_cursor(self, symbol: str | None = None) -> int:
+        """Return the highest simulation timestamp seen for symbol or globally."""
+        candidates = [0]
+        with self.store.lock:
+            if symbol:
+                if symbol in self._simulation_cursor:
+                    candidates.append(self._simulation_cursor[symbol])
+                if symbol in self.candles.last:
+                    candidates.append(self.candles.last[symbol])
+                rows = self.store.rows(
+                    "SELECT event_timestamp FROM risk_marks WHERE symbol=?", (symbol,)
+                )
+                if rows and rows[0]["event_timestamp"] is not None:
+                    candidates.append(int(rows[0]["event_timestamp"]))
+            else:
+                candidates.extend(self._simulation_cursor.values())
+                candidates.extend(self.candles.last.values())
+                for row in self.store.rows("SELECT event_timestamp FROM risk_marks"):
+                    if row["event_timestamp"] is not None:
+                        candidates.append(int(row["event_timestamp"]))
+
+            for row in self.store.rows("SELECT id FROM orders"):
+                parts = row["id"].rsplit(":", 1)
+                if len(parts) > 1 and parts[1].isdigit():
+                    candidates.append(int(parts[1]))
+
+        return max(candidates)
+
+    def generate_simulation_batch(
+        self,
+        symbols: Iterable[str],
+        minutes: int = 1,
+        offsets: tuple[int, ...] = (0, 20, 40),
+        align: int = 60,
+    ) -> list[Tick]:
+        """Generate a deterministic, strictly advancing chronological batch of ticks."""
+        sym_list = sorted(set(symbols))
+        if not sym_list:
+            return []
+
+        with self._replay_lock:
+            latest = max(self.get_simulation_cursor(s) for s in sym_list)
+            if latest == 0:
+                start_ts = 1_700_000_900 if align >= 300 else 1_700_000_000
+            else:
+                start_ts = (latest // align + 1) * align
+
+            batch: list[Tick] = []
+            for minute in range(minutes):
+                minute_base = start_ts + minute * 60
+                for offset in offsets:
+                    ts = minute_base + offset
+                    for sym in sym_list:
+                        self._simulation_seq += 1
+                        eid = f"sim:{sym}:{ts}:{self._simulation_seq}"
+                        elapsed_min = (ts - 1_700_000_000) // 60
+                        step = offset // 20
+                        price = Decimal(100 + elapsed_min + step)
+                        batch.append(Tick(sym, ts, price, 5, eid))
+                        self._simulation_cursor[sym] = max(
+                            self._simulation_cursor.get(sym, 0), ts
+                        )
+            return batch
+
     def demo(self):
         with self.store.lock:
             if not self.demo_enabled:
@@ -222,15 +293,6 @@ class Platform:
                     "SELECT id FROM subscriptions WHERE id=?", (kind,)
                 ):
                     self.strategies.subscribe("demo", kind, kind, "DEMO")
-            previous = self.store.rows(
-                "SELECT id FROM orders WHERE strategy IN ('momentum','mean_reversion','breakout')"
-            )
-            starts = [
-                int(r["id"].rsplit(":", 1)[1])
-                for r in previous
-                if r["id"].rsplit(":", 1)[1].isdigit()
-            ]
-            start = max(starts, default=1_700_000_100) + 900
             self.demo_count += 1
             symbols = {"DEMO"}
             symbols.update(
@@ -239,15 +301,13 @@ class Platform:
                     "SELECT symbol FROM subscriptions WHERE enabled=1"
                 )
             )
-            events = iter(
-                chain.from_iterable(
-                    ReplayMarketDataProvider.demo(start, symbol).ticks()
-                    for symbol in sorted(symbols)
-                )
+            events = self.generate_simulation_batch(
+                sorted(symbols), minutes=11, align=300
             )
-        self.tick(next(events), replay=True)
+        events_iter = iter(events)
+        self.tick(next(events_iter), replay=True)
         self.reliability.resume()
-        for tick in events:
+        for tick in events_iter:
             self.tick(tick, replay=True)
         self.reliability.reconcile()
         return self.snapshot()
@@ -260,43 +320,72 @@ class Platform:
         """
         if not isinstance(self.broker, HTTPMockBrokerAdapter):
             return False
-        if self._replay_thread and self._replay_thread.is_alive():
-            return True
-        self._replay_stop.clear()
+        if not self.demo_enabled:
+            return False
 
-        def run():
-            self.reliability.resume()
-            while not self._replay_stop.is_set():
-                start = int(self.clock()) + 60
-                with self.store.lock:
-                    symbols = {"DEMO"}
-                    symbols.update(
-                        row["symbol"]
-                        for row in self.store.rows(
-                            "SELECT symbol FROM subscriptions WHERE enabled=1"
+        with self._replay_lock:
+            if (
+                self.risk.kill_requested.is_set()
+                or self.reliability.kill_latched
+                or self.risk.state in {Gate.KILLING, Gate.KILLED}
+            ):
+                return False
+            if self._replay_thread and self._replay_thread.is_alive():
+                return True
+            self._replay_stop.clear()
+
+            def run():
+                try:
+                    if self.risk.state in {Gate.RECOVERING, Gate.STOPPED}:
+                        self.reliability.resume()
+                except Exception:
+                    self.reliability.fail_closed("REPLAY_STREAM_FAILED")
+                    return
+
+                while not self._replay_stop.is_set():
+                    if (
+                        self.risk.kill_requested.is_set()
+                        or self.reliability.kill_latched
+                        or self.risk.state in {Gate.KILLING, Gate.KILLED}
+                    ):
+                        return
+
+                    with self.store.lock:
+                        symbols = {"DEMO"}
+                        symbols.update(
+                            row["symbol"]
+                            for row in self.store.rows(
+                                "SELECT symbol FROM subscriptions WHERE enabled=1"
+                            )
                         )
-                    )
-                events = chain.from_iterable(
-                    ReplayMarketDataProvider.demo(start, symbol).ticks()
-                    for symbol in sorted(symbols)
-                )
-                for replay_tick in events:
-                    if self._replay_stop.wait(interval):
-                        return
-                    try:
-                        self.tick(replay_tick, replay=True)
-                    except (ConnectionError, TimeoutError, ValueError):
-                        self.reliability.fail_closed("REPLAY_STREAM_FAILED")
-                        return
 
-        self._replay_thread = Thread(
-            target=run, daemon=True, name="algoshield-replay-stream"
-        )
-        self._replay_thread.start()
-        return True
+                    batch = self.generate_simulation_batch(sorted(symbols), minutes=1)
+                    for replay_tick in batch:
+                        if self._replay_stop.wait(interval):
+                            return
+                        if (
+                            self.risk.kill_requested.is_set()
+                            or self.reliability.kill_latched
+                            or self.risk.state in {Gate.KILLING, Gate.KILLED}
+                        ):
+                            return
+                        try:
+                            self.tick(replay_tick, replay=True)
+                        except (ConnectionError, TimeoutError, ValueError):
+                            self.reliability.fail_closed("REPLAY_STREAM_FAILED")
+                            return
 
-    def stop_replay_stream(self):
+            self._replay_thread = Thread(
+                target=run, daemon=True, name="algoshield-replay-stream"
+            )
+            self._replay_thread.start()
+            return True
+
+    def stop_replay_stream(self, timeout=1.0):
         self._replay_stop.set()
+        thread = self._replay_thread
+        if thread and thread.is_alive() and thread is not current_thread():
+            thread.join(timeout=timeout)
 
     def require_offline_demo(self):
         from backend.shared.postgres import PostgresStore

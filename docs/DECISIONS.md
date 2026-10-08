@@ -425,3 +425,31 @@ Running synchronous sequential callbacks with in-band timeouts or killing thread
 ### Reversal
 Arbitrary untrusted user strategy upload requires process-level sandboxing (e.g. WASM or container isolation) rather than thread-level latency bounding.
 
+## DEC-020 — Monotonic simulation cursor and bounded replay stream lifecycle
+Date: 2026-10-08
+Status: ACCEPTED
+
+### Context
+`Platform.start_replay_stream` previously calculated tick start timestamps using wall-clock time (`int(self.clock()) + 60`) on every batch loop iteration. Because simulation batches spanned 11 minutes (660 seconds) while real wall-clock time advanced only seconds between iterations, subsequent batches jumped backwards in simulated time, triggering `ValueError("late tick: replay must be ordered before ingestion")` and failing closed with `REPLAY_STREAM_FAILED`. Repeated replay actions, multiple symbols, and stream restarts also suffered from clumping and duplicate event IDs.
+
+### Decision
+Introduce a monotonic simulation cursor (`_simulation_cursor`) on `Platform` that strictly advances beyond previously emitted ticks across repeated replay actions, stream restarts, and batches.
+1. `generate_simulation_batch` queries the latest simulation timestamp across active symbols (from cursor, `candles.last`, `risk_marks`, and order IDs) and schedules subsequent batches strictly after the latest timestamp (`start_ts = (latest // align + 1) * align`).
+2. Separate simulated event timestamps from receive time: ticks carry simulated timestamps (`tick.event_timestamp`), while receive time is independently recorded via `self.clock()` during ingestion (`self.reliability.observe_tick`).
+3. Generate globally unique event IDs (`sim:{sym}:{ts}:{seq}`) for newly simulated ticks, while intentional duplicate replays retain identical IDs and attributes, allowing `CandleBuilder` to deduplicate idempotently without raising conflicting-duplicate errors.
+4. Synchronize multi-symbol batches: at each simulated second, all enabled symbols emit synchronized ticks, avoiding inter-symbol lag.
+5. Thread-safe stream lifecycle: `start_replay_stream` uses `_replay_lock` to prevent duplicate threads; returns `False` if kill is active or latched; terminates promptly upon stop, kill, or platform shutdown; and never automatically restarts following recovery or reconciliation. Replay remains strictly mock-only.
+
+### Reason
+Trading simulations must never violate causality or emit backward/overlapping timestamps. Ingestion pipelines and candle builders require deterministic ordering and unique event IDs while preserving broker freshness and safety invariants.
+
+### Impact
+`Platform` (`get_simulation_cursor`, `generate_simulation_batch`, `start_replay_stream`, `stop_replay_stream`, `demo`, `tick`), `tests/test_replay_stream.py`. Full suite passes (237 passed, 1 skipped).
+
+### Alternatives
+Deriving simulation time directly from wall-clock sleep intervals was rejected because it creates clock drift, breaks fast-forward testing, and produces backward jumps across restarts. Auto-restarting streams after recovery was rejected as it violates AGENTS.md rule 13.
+
+### Reversal
+Live market data connections (e.g., 021 WebSocket feeds) will replace synthetic simulation batches entirely with the external broker/exchange feed adapter; the simulation cursor remains strictly within the mock/replay harness.
+
+
