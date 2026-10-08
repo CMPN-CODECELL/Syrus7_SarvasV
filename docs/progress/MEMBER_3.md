@@ -10,6 +10,7 @@ Risk & Reliability; canonical responsibilities: ../TEAM_OWNERSHIP.md, Member 3.
 - Last updated: 2026-10-07 16:25 Asia/Kolkata
 
 ## Completed
+- 2026-10-08: Visual UI overhaul: eliminated raw JSON dumps and developer pre elements. Replaced raw telemetry, closed candles, strategy errors, and audit events with visual OHLC candle cards, error alerts, and structured chronological timeline event cards. All 256 tests passing.
 - 2026-10-08: Added Interactive Failure Lab UI and Safety Proof Panel counters (Risk Bypass: 0, Duplicate Fills Ignored, Unattributed Fills: 0) directly on the dashboard (frontend/index.html). Wired to POST /api/failure-lab/{scenario}. All 256 tests passing.
 - 2026-10-08: Structured Risk Decision Reason Codes implemented in backend/risk/gateway.py per AlgoShield.md. Human-readable math breakdowns for position limits, rate limits, daily loss limits, global gates, and safety evidence gates. Added unit test in tests/test_risk_policies.py. Full suite 256 passed.
 - 2026-10-07: P4 Failure Lab expanded to duplicate/conflicting/missed fills, UNKNOWN acceptance, disconnect/reconnect, spam, stale feed, injected drift recovery and partial-fill kill. Dashboard exposes fresh evidence, unknown calls/orders, budgets, policy/strategy controls, reduce-only and verified reset. Proof expires across time/restart; no universal PASS badge. Tests: 67 passed / 1 PostgreSQL skipped; lint/format, npm check and frontend JS syntax passed. P3 `34b4444` pushed.

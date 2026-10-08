@@ -567,6 +567,110 @@
           Consolas,
           monospace;
       }
+      .visual-details-content {
+        padding: 0 1.15rem 1.15rem;
+      }
+      .visual-candle-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 0.65rem;
+      }
+      .candle-card {
+        padding: 0.75rem 0.85rem;
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+      }
+      .candle-card-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+      }
+      .candle-card-sym {
+        font-weight: 700;
+        font-size: 0.82rem;
+        color: var(--ink);
+      }
+      .candle-card-time {
+        font-size: 0.7rem;
+        color: var(--muted);
+      }
+      .candle-card-metrics {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.35rem 0.5rem;
+        font-size: 0.74rem;
+      }
+      .candle-metric-label {
+        color: var(--muted);
+        font-size: 0.68rem;
+      }
+      .candle-metric-val {
+        font-weight: 600;
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+      }
+      .candle-card.candle-bullish {
+        border-left: 3px solid var(--success);
+      }
+      .candle-card.candle-bearish {
+        border-left: 3px solid var(--danger);
+      }
+      .visual-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        max-height: 22rem;
+        overflow-y: auto;
+      }
+      .timeline-item {
+        padding: 0.65rem 0.85rem;
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+      }
+      .timeline-seq {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: var(--muted);
+        background: #eeeae2;
+        padding: 0.15rem 0.4rem;
+        border-radius: 4px;
+        flex: 0 0 auto;
+      }
+      .timeline-body {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .timeline-type {
+        font-weight: 650;
+        font-size: 0.78rem;
+        color: var(--ink);
+      }
+      .timeline-payload {
+        margin: 0.2rem 0 0;
+        font-size: 0.72rem;
+        color: var(--muted);
+        word-break: break-word;
+      }
+      .error-card {
+        padding: 0.75rem 0.85rem;
+        background: var(--danger-wash);
+        border: 1px solid #f2c7ce;
+        border-radius: var(--r-sm);
+        font-size: 0.76rem;
+      }
+      .error-card strong {
+        color: var(--danger);
+        display: block;
+        margin-bottom: 0.25rem;
+      }
       .kill-certificate {
         margin: 0.9rem 1.1rem 1.1rem;
         padding: 0.85rem;
@@ -1343,19 +1447,6 @@
             <div id="failure-lab-feedback" class="failure-lab-feedback"></div>
           </div>
         </details>
-        <details class="dev-details" style="margin-top: 0.5rem;">
-          <summary>Developer details (raw telemetry)</summary>
-          <div class="evidence-grid" style="margin-bottom: 0; padding: 0 1.15rem 1.15rem;">
-            <div>
-              <p class="eyebrow" style="margin: 0.5rem 0 0.35rem;">Raw Safety State</p>
-              <pre id="safety-state-raw">Loading safety state…</pre>
-            </div>
-            <div>
-              <p class="eyebrow" style="margin: 0.5rem 0 0.35rem;">Raw Risk Budgets</p>
-              <pre id="risk-budgets-raw">Loading risk budgets…</pre>
-            </div>
-          </div>
-        </details>
       </section>
       <section aria-labelledby="evidence-title">
         <div class="section-heading">
@@ -1398,15 +1489,27 @@
         </p>
         <details>
           <summary>Strategy callback errors</summary>
-          <pre id="strategy-errors">No callback errors recorded.</pre>
+          <div class="visual-details-content">
+            <div id="strategy-errors" class="visual-list">
+              <p class="empty" style="padding: 1rem 0;">No callback errors recorded.</p>
+            </div>
+          </div>
         </details>
         <details>
           <summary>Recent closed candles</summary>
-          <pre id="candles">No completed candles recorded.</pre>
+          <div class="visual-details-content">
+            <div id="candles" class="visual-candle-grid">
+              <p class="empty" style="grid-column: 1 / -1; padding: 1.5rem 0;">No completed candles recorded.</p>
+            </div>
+          </div>
         </details>
         <details>
           <summary>Audit timeline</summary>
-          <pre id="audit">No audit events recorded.</pre>
+          <div class="visual-details-content">
+            <div id="audit" class="visual-list">
+              <p class="empty" style="padding: 1rem 0;">No audit events recorded.</p>
+            </div>
+          </div>
         </details>
       </section>
     </main>
@@ -1990,20 +2093,6 @@
         renderStrategies(snapshot);
         renderSafety(snapshot);
         renderRiskBudgets(snapshot);
-        if ($("safety-state-raw")) {
-          $("safety-state-raw").textContent = JSON.stringify(
-            snapshot.safety || { status: "UNKNOWN" },
-            null,
-            2,
-          );
-        }
-        if ($("risk-budgets-raw")) {
-          $("risk-budgets-raw").textContent = JSON.stringify(
-            snapshot.risk_budgets || {},
-            null,
-            2,
-          );
-        }
         $("signal-count").textContent = `${snapshot.signals.length} emitted`;
         renderFeed(
           $("signals"),
@@ -2058,19 +2147,110 @@
         );
         $("candle-count").textContent =
           `${snapshot.candles.length} recent closed candles`;
-        $("candles").textContent = snapshot.candles.length
-          ? JSON.stringify(snapshot.candles, null, 2)
-          : "No completed candles recorded.";
-        $("strategy-errors").textContent = snapshot.strategy_errors.length
-          ? JSON.stringify(snapshot.strategy_errors, null, 2)
-          : "No callback errors recorded.";
-        $("audit").textContent = snapshot.audit.length
-          ? snapshot.audit
-              .map(
-                (event) => `${event.sequence}  ${event.type}  ${event.payload}`,
-              )
-              .join("\n")
-          : "No audit events recorded.";
+        const candleGrid = $("candles");
+        if (candleGrid) {
+          candleGrid.replaceChildren();
+          if (snapshot.candles.length) {
+            for (const c of snapshot.candles) {
+              const card = document.createElement("div");
+              const isBull = Number(c.close) >= Number(c.open);
+              card.className = `candle-card ${isBull ? "candle-bullish" : "candle-bearish"}`;
+
+              const head = document.createElement("div");
+              head.className = "candle-card-head";
+              head.append(
+                textNode("span", `${c.symbol} · ${Math.round(c.interval / 60)}m`, "candle-card-sym"),
+                textNode("span", isBull ? "▲ Bull" : "▼ Bear", `badge ${isBull ? "badge-success" : "badge-danger"}`),
+              );
+
+              const metrics = document.createElement("div");
+              metrics.className = "candle-card-metrics";
+              metrics.innerHTML = `
+                <div><span class="candle-metric-label">O:</span> <span class="candle-metric-val">₹${c.open}</span></div>
+                <div><span class="candle-metric-label">H:</span> <span class="candle-metric-val">₹${c.high}</span></div>
+                <div><span class="candle-metric-label">L:</span> <span class="candle-metric-val">₹${c.low}</span></div>
+                <div><span class="candle-metric-label">C:</span> <span class="candle-metric-val">₹${c.close}</span></div>
+              `;
+
+              card.append(head, metrics);
+              candleGrid.append(card);
+            }
+          } else {
+            const emptyP = document.createElement("p");
+            emptyP.className = "empty";
+            emptyP.style.cssText = "grid-column: 1 / -1; padding: 1.5rem 0;";
+            emptyP.textContent = "No completed candles recorded.";
+            candleGrid.append(emptyP);
+          }
+        }
+
+        const errorsList = $("strategy-errors");
+        if (errorsList) {
+          errorsList.replaceChildren();
+          if (snapshot.strategy_errors.length) {
+            for (const err of snapshot.strategy_errors) {
+              const errCard = document.createElement("div");
+              errCard.className = "error-card";
+              const title = document.createElement("strong");
+              title.textContent = `Strategy error: ${err.strategy || "Unknown"}`;
+              const desc = document.createElement("p");
+              desc.style.margin = "0";
+              desc.textContent = typeof err === "string" ? err : (err.message || err.error || JSON.stringify(err));
+              errCard.append(title, desc);
+              errorsList.append(errCard);
+            }
+          } else {
+            const emptyP = document.createElement("p");
+            emptyP.className = "empty";
+            emptyP.style.cssText = "padding: 1rem 0;";
+            emptyP.textContent = "No callback errors recorded.";
+            errorsList.append(emptyP);
+          }
+        }
+
+        const auditList = $("audit");
+        if (auditList) {
+          auditList.replaceChildren();
+          if (snapshot.audit.length) {
+            for (const ev of snapshot.audit) {
+              const item = document.createElement("div");
+              item.className = "timeline-item";
+
+              const seq = document.createElement("span");
+              seq.className = "timeline-seq";
+              seq.textContent = `#${ev.sequence}`;
+
+              const body = document.createElement("div");
+              body.className = "timeline-body";
+
+              const typeBadge = document.createElement("span");
+              typeBadge.className = "timeline-type";
+              typeBadge.textContent = ev.type;
+
+              const payloadP = document.createElement("p");
+              payloadP.className = "timeline-payload";
+              let payloadStr = "";
+              if (typeof ev.payload === "object" && ev.payload !== null) {
+                payloadStr = Object.entries(ev.payload)
+                  .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`)
+                  .join(" · ");
+              } else {
+                payloadStr = String(ev.payload || "");
+              }
+              payloadP.textContent = payloadStr;
+
+              body.append(typeBadge, payloadP);
+              item.append(seq, body);
+              auditList.append(item);
+            }
+          } else {
+            const emptyP = document.createElement("p");
+            emptyP.className = "empty";
+            emptyP.style.cssText = "padding: 1rem 0;";
+            emptyP.textContent = "No audit events recorded.";
+            auditList.append(emptyP);
+          }
+        }
         if (snapshot.kill) {
           $("certificate").textContent =
             `Kill ${snapshot.kill.status} · ${Number(snapshot.kill.elapsed_seconds).toFixed(3)}s · open orders ${snapshot.kill.open_orders} · virtual flat ${snapshot.kill.virtual_positions_flat}`;
