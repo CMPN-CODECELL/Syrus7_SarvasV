@@ -99,6 +99,7 @@ def test_auth_api_endpoints():
     assert direct_route.status_code == 200
     assert 'id="root"' in direct_route.text
     assert client.get("/failure-lab").status_code == 200
+    assert client.get("/api/not-a-real-endpoint").status_code == 404
 
     # A caller cannot select a different trading account during registration.
     injected_account = client.post(

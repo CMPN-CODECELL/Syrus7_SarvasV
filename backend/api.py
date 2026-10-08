@@ -571,15 +571,15 @@ def create_app(platform=None):
             raise HTTPException(404, "no completed SafetyBench run")
         return financial_json(result)
 
-    @app.post("/api/failure-lab/{scenario}")
-    def failure_lab(scenario: str, request: Request):
-        require_user(request)
-        return financial_json(FailureLab(engine).run(scenario))
-
     @app.get("/api/failure-lab/scenarios")
     def failure_lab_scenarios(request: Request):
         require_user(request)
         return {"scenarios": sorted(SCENARIOS)}
+
+    @app.post("/api/failure-lab/{scenario}")
+    def failure_lab(scenario: str, request: Request):
+        require_user(request)
+        return financial_json(FailureLab(engine).run(scenario))
 
     @app.post("/api/reconcile")
     def reconcile(request: Request):
@@ -616,6 +616,8 @@ def create_app(platform=None):
 
     @app.get("/{spa_path:path}", include_in_schema=False)
     def spa_fallback(spa_path: str, request: Request):
+        if spa_path == "api" or spa_path.startswith("api/"):
+            raise HTTPException(404, "API endpoint not found")
         if not engine.auth.verify_token(request_token(request)):
             return RedirectResponse("/login", status_code=303)
         if not (frontend_dist / "index.html").is_file():

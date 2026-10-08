@@ -10,6 +10,9 @@ async function request(path, options={}) {
     const detail=typeof data==='object' ? data.detail : data
     throw new ApiError(detail||`Request failed (${response.status})`,response.status,detail)
   }
+  if (path.startsWith('/api/') && !type.includes('application/json')) {
+    throw new ApiError('Backend returned a non-JSON API response. Restart the FastAPI server and try again.',502,'INVALID_API_RESPONSE')
+  }
   return data
 }
 export const api={

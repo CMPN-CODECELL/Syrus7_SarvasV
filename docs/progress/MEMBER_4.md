@@ -175,3 +175,10 @@ User workflows are strictly account-isolated server-side. Subscriptions, orders,
 - Added overlay/Close/Escape dismissal, route-change auto-close, body scroll locking, internal overflow safety, and a persistently reachable kill control.
 - Added responsive compact-height rules so all navigation groups fit common mobile viewports while remaining scrollable on smaller displays.
 - Validation: 10 React tests, ESLint, Vite production build, 21 focused backend tests, and Ruff passed.
+
+## 2026-10-08 — Failure Lab response hardening
+
+- Prevented SPA fallback from returning HTML with HTTP 200 for unknown `/api/...` routes; unmatched APIs now return JSON 404 evidence.
+- Added centralized rejection of non-JSON API success responses and defensive validation for discovered Failure Lab scenarios and strategy capabilities.
+- Failure Lab now renders an inline error instead of crashing when an older/stale backend lacks the discovery endpoint.
+- Validation: 299 Python tests passed, 1 PostgreSQL integration skipped; 11 React tests, ESLint, Ruff, and Vite production build passed.
