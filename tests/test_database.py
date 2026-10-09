@@ -19,9 +19,28 @@ def test_environment_precedence_and_local_file(monkeypatch, tmp_path):
         "database_url": "local-test-value",
         "sqlite_path": "fallback.db",
         "021_enabled": False,
+        "market_data_provider": "replay",
     }
     monkeypatch.setenv("DATABASE_URL", "process-test-value")
     assert settings()["database_url"] == "process-test-value"
+
+
+def test_021_live_mode_requires_021_market_data(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ALGOSHIELD_021_ENABLED", "true")
+    monkeypatch.setenv("ALGOSHIELD_MARKET_DATA_PROVIDER", "yahoo")
+
+    with pytest.raises(ValueError, match="disable ALGOSHIELD_021_ENABLED"):
+        settings()
+
+
+def test_021_market_data_requires_live_mode(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ALGOSHIELD_021_ENABLED", "false")
+    monkeypatch.setenv("ALGOSHIELD_MARKET_DATA_PROVIDER", "021")
+
+    with pytest.raises(ValueError, match="ALGOSHIELD_021_ENABLED=true"):
+        settings()
 
 
 def test_additive_migration_constraints_and_checksum():
@@ -39,6 +58,7 @@ def test_additive_migration_constraints_and_checksum():
         "009_risk_price_guard.sql",
         "010_benchmark_runs.sql",
         "011_operator_grants.sql",
+        "012_021_order_mappings.sql",
     ]
     for name, checksum, sql in items:
         assert checksum == hashlib.sha256(sql.encode()).hexdigest()
@@ -106,6 +126,6 @@ def test_sqlite_v1_subscription_state_migrates_additively(tmp_path):
     try:
         row = store.rows("SELECT enabled FROM subscriptions WHERE id='s'")[0]
         assert row["enabled"] == 1
-        assert store.rows("PRAGMA user_version")[0][0] == 12
+        assert store.rows("PRAGMA user_version")[0][0] == 13
     finally:
         store.close()

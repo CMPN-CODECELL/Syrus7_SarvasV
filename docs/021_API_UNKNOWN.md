@@ -1,12 +1,21 @@
 # 021 Integration — Known Unknowns
 
-The official wire contract is now documented in [OFFICIAL_API_CONTRACT](021/OFFICIAL_API_CONTRACT.md), with implementation order in [INTEGRATION_BLUEPRINT](021/INTEGRATION_BLUEPRINT.md). Strict fixture parsers and a disabled `Broker021Adapter` shell exist; a bounded authenticated transport and composed `MarketData021Provider` do not. Mock/fixture evidence cannot resolve live trade identity scope, provider fees, history coverage or kill semantics.
+The official wire contract is documented in [OFFICIAL_API_CONTRACT](021/OFFICIAL_API_CONTRACT.md), with implementation order in [INTEGRATION_BLUEPRINT](021/INTEGRATION_BLUEPRINT.md). This branch now contains a bounded authenticated REST adapter, durable provider-order mapping, strict market-frame parsing, and a composed `MarketData021Provider`; all remain `IMPLEMENTED_UNVERIFIED` until a sandbox read-only smoke test is run. Mock/fixture evidence still cannot resolve provider fees, correction/bust semantics, complete history coverage, external/manual trade attribution, account mapping, or kill semantics.
+
+Implemented transport scope:
+
+- `Broker021Adapter` authenticates from process configuration, loads and validates the instrument catalogue, encodes paise/signed quantities, submits and asynchronously verifies cancellation, polls orders/trades/positions, and preserves `platform_order_id ↔ provider_order_id` in `broker_order_mappings`.
+- Canonical fills are created only from per-order REST trade evidence with a non-empty `tradeId`; order WebSocket events remain status evidence and never manufacture fills.
+- `MarketData021Provider` consumes the documented sampled market packets through the ephemeral-key WebSocket and converts cumulative volume conservatively. Feed failure is fail-closed.
+- No live order has been submitted by this implementation task. Enablement is explicit and off by default; credentials must stay in ignored environment/process configuration.
 
 Do not assume answers absent from the official contract or until harmless authorized sandbox evidence confirms them.
 
 DEC-027's [broker identity contract](CONTRACTS.md) requires provider/account-scoped
 mapping, durable restart/cancel translation and canonical snapshot normalization.
-Mock identity collision rejection is verified; real 021 mapping is not implemented.
+Mock identity collision rejection and fixture-backed 021 durable mapping are
+implemented. The 021 mapping remains live-unverified, and today's documented
+REST lists do not establish a complete cross-day reconciliation snapshot.
 Referenced corrections/busts and independent fee revisions remain unsupported
 until replacement/delta/ordering/identity/session semantics and fixtures arrive.
 No benchmark's FIX/IBKR/Kite fields establish 021 behavior.

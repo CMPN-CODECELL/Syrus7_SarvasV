@@ -28,7 +28,10 @@ export function OverviewPage(){
     finally{setPending('')}
   }
   const actionButton=(path,className='')=><button disabled={!!pending} onClick={()=>run(path)} className={className}>{pending===path?'Working…':actionLabels[path]}</button>
-  return <Page eyebrow="Control plane" title="Operational truth, at a glance." description="Live account state from fills, reconciliation, and the non-bypassable risk gateway." actions={<>{actionButton('/api/demo','primary')}{actionButton('/api/reconcile')}{isKillLatched&&actionButton('/api/kill/reset')}{actionButton('/api/resume')}</>}>
+  // Older/test snapshots may omit the capability field; only an explicit
+  // backend false disables replay. Persistent/live backends send false.
+  const replayAction=s.demo_enabled!==false?actionButton('/api/demo','primary'):null
+  return <Page eyebrow="Control plane" title="Operational truth, at a glance." description="Live account state from fills, reconciliation, and the non-bypassable risk gateway." actions={<>{replayAction}{actionButton('/api/reconcile')}{isKillLatched&&actionButton('/api/kill/reset')}{actionButton('/api/resume')}</>}>
     {error&&<div className="error" role="alert">{error}</div>}
     <div className="stat-grid">
       <Card title="Trading gate"><Status value={s.gate}/><p>{isKillLatched?'Kill switch is latched. Reconcile, then use the verified operator reset.':'New exposure follows the global gate.'}</p></Card>

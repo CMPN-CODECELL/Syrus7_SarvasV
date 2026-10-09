@@ -113,8 +113,10 @@ def test_websocket_strict_account_isolation():
             )
 
             # Both connect to WebSocket stream
-            with client_a.websocket_connect("/api/stream/ws") as ws_a, \
-                 client_b.websocket_connect("/api/stream/ws") as ws_b:
+            with (
+                client_a.websocket_connect("/api/stream/ws") as ws_a,
+                client_b.websocket_connect("/api/stream/ws") as ws_b,
+            ):
                 snap_a = ws_a.receive_json()
                 snap_b = ws_b.receive_json()
 

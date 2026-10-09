@@ -390,3 +390,21 @@ No candle algorithm, financial calculation or telemetry provider changed.
   alter provider-specific symbol suffixes.
 
 2026-10-09 documentation integration: current ownership, dependencies and acceptance gates are consolidated in [TEAM_EXECUTION_PLAN](../TEAM_EXECUTION_PLAN.md), DEC-028. Direct branch pushes are allowed; PRs optional. No new member feature is claimed implemented by this planning update. Fresh cross-module evidence is in [INTEGRATION](INTEGRATION.md).
+
+## 2026-10-09 — 021 market-data merge and Yahoo fallback boundary
+
+- Integrated the sampled 021 WebSocket provider into the existing single-source
+  `Platform.tick` path. 021 is primary only when explicitly enabled; Yahoo is an
+  explicit clean-restart fallback with 021 disabled, never automatic failover.
+- Exposed 021 configured symbols, sampled quote rows, connection state and last
+  receive/event timestamps through the existing dashboard contract.
+- Corrected cumulative-volume normalization: the first value is a baseline with
+  unavailable volume, monotonic deltas are incremental evidence, and regression
+  fails closed. No exchange trade-ID claim or missing-volume fabrication is made.
+- Fixture and UI coverage verifies quote display without subscriptions, source
+  labeling, volume semantics and provider configuration rejection. Full result:
+  421 backend passed / 1 optional PostgreSQL skipped; 42 frontend passed; Ruff,
+  ESLint, production build, docs links and diff whitespace checks passed.
+- No live provider smoke test, credential use, order placement or trading resume
+  was performed. 021 transport and reconciliation completeness remain
+  live-unverified.

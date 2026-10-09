@@ -54,11 +54,33 @@ def test_full_trace_chain_signal_to_risk_to_order_to_fill_to_position():
 
     # Generate signal via closed candles to produce Strategy signal -> OrderIntent
     for i in range(4):
-        c = Candle("TCS", 60, i * 60, (i + 1) * 60, Decimal(100 + i), Decimal(101 + i), Decimal(99 + i), Decimal(100 + i), 10, True)
+        c = Candle(
+            "TCS",
+            60,
+            i * 60,
+            (i + 1) * 60,
+            Decimal(100 + i),
+            Decimal(101 + i),
+            Decimal(99 + i),
+            Decimal(100 + i),
+            10,
+            True,
+        )
         platform.strategies.on_candle(c, platform.clock())
 
     # 5th candle triggers momentum entry signal and produces OrderIntent
-    c5 = Candle("TCS", 60, 240, 300, Decimal("104"), Decimal("110"), Decimal("103"), Decimal("110"), 20, True)
+    c5 = Candle(
+        "TCS",
+        60,
+        240,
+        300,
+        Decimal("104"),
+        Decimal("110"),
+        Decimal("103"),
+        Decimal("110"),
+        20,
+        True,
+    )
     intents = platform.strategies.on_candle(c5, platform.clock())
     assert len(intents) >= 1
     intent = intents[0]
@@ -69,7 +91,11 @@ def test_full_trace_chain_signal_to_risk_to_order_to_fill_to_position():
 
     # Broker executes fill
     fill = platform.broker.execute(
-        intent.intent_id, intent.quantity, Decimal("110.00"), platform.clock(), Decimal("0.25")
+        intent.intent_id,
+        intent.quantity,
+        Decimal("110.00"),
+        platform.clock(),
+        Decimal("0.25"),
     )
     assert platform.ingest(fill) is True
 
@@ -109,7 +135,9 @@ def test_full_trace_chain_signal_to_risk_to_order_to_fill_to_position():
     app = create_app(platform)
     with TestClient(app) as client:
         # Register user with matching account acc_trace
-        reg = client.post("/api/auth/register", json={"username": "trace", "password": "password123"})
+        reg = client.post(
+            "/api/auth/register", json={"username": "trace", "password": "password123"}
+        )
         assert reg.status_code == 201
         assert reg.json()["user"]["account_id"] == "acc_trace"
         # Query recent traces

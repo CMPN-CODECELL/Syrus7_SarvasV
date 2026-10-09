@@ -100,18 +100,26 @@ class Platform:
         """Attach one explicit source before any timeline has been ingested."""
         if self.candles.accepted_ticks or self._replay_thread:
             raise ValueError("market-data source cannot change after ingestion starts")
-        if not isinstance(self.broker, (MockBrokerAdapter, HTTPMockBrokerAdapter)):
-            raise ValueError("Yahoo quotes are restricted to mock execution")
+        if not isinstance(
+            self.broker, (MockBrokerAdapter, HTTPMockBrokerAdapter)
+        ) and not getattr(provider, "supports_live_broker", False):
+            raise ValueError(
+                "external market data source is not compatible with this broker"
+            )
         self.external_market_data = provider
 
     def start_external_market_data(self):
         if self.external_market_data is None:
             return False
         if self._replay_thread and self._replay_thread.is_alive():
-            raise ValueError("replay and Yahoo market data cannot run together")
+            raise ValueError("replay and external market data cannot run together")
         # Starting a network feed never reopens execution. An operator must
         # separately reconcile/resume after fresh evidence exists.
-        self.reliability.fail_closed("YAHOO_FEED_STARTING")
+        self.reliability.fail_closed(
+            "021_FEED_STARTING"
+            if getattr(self.external_market_data, "supports_live_broker", False)
+            else "YAHOO_FEED_STARTING"
+        )
         return self.external_market_data.start()
 
     def stop_external_market_data(self):
@@ -222,18 +230,26 @@ class Platform:
             self.require_replay_demo()
             if self.external_market_data is not None:
                 self.reliability.fail_closed("MARKET_DATA_SOURCE_MIXED")
-                raise ValueError("replay and Yahoo market data cannot share a timeline")
+                raise ValueError(
+                    "replay and external market data cannot share a timeline"
+                )
             if tick.data_source == "UNSPECIFIED":
                 tick = replace(tick, data_source="MOCK_REPLAY")
         elif self.external_market_data is not None:
-            if tick.data_source != "YAHOO_EXTERNAL_QUOTES":
+            provider_telemetry = self.external_market_data.telemetry()
+            expected_source = provider_telemetry.get("source")
+            if not expected_source or tick.data_source != expected_source:
                 self.reliability.fail_closed("MARKET_DATA_SOURCE_MIXED")
+                if provider_telemetry.get("provider") == "YAHOO_EXTERNAL_QUOTES":
+                    raise ValueError(
+                        "only configured Yahoo updates may enter this timeline"
+                    )
                 raise ValueError(
-                    "only configured Yahoo updates may enter this timeline"
+                    "market update source does not match configured provider"
                 )
-        elif tick.data_source == "YAHOO_EXTERNAL_QUOTES":
+        elif tick.data_source in {"YAHOO_EXTERNAL_QUOTES", "021_LIVE"}:
             self.reliability.fail_closed("MARKET_DATA_SOURCE_NOT_CONFIGURED")
-            raise ValueError("Yahoo market data requires explicit provider opt-in")
+            raise ValueError("external market data requires explicit provider opt-in")
         with self.store.lock:
             try:
                 accepted, closed = self.candles.ingest_event(tick)
@@ -867,8 +883,11 @@ class Platform:
                     }
                 )
             result = {
+                "demo_enabled": self.demo_enabled,
                 "mode": (
-                    "YAHOO EXTERNAL QUOTES / MOCK EXECUTION"
+                    self.external_market_data.telemetry().get(
+                        "label", "EXTERNAL MARKET DATA"
+                    )
                     if self.external_market_data is not None
                     else (
                         "MOCK / REPLAY"

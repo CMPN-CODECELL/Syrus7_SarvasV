@@ -54,6 +54,8 @@ WS rejection, bearer compatibility, operator authority, versioned password and
 concurrent legacy upgrades, malformed hashes, monotonic bounded limiter and
 secret-free audits. The TestClient fixture models a trusted browser Origin;
 security negatives explicitly override it. It changes transport only, not auth.
+
+021 integration tests use an in-process HTTP transport fixture containing the documented auth, gzipped instruments, order, per-order trade, and position envelopes. They verify exact paise/signed-quantity encoding, durable order mapping, fill identity requirements, and snapshot/drain behavior. They do not call the sandbox, submit live orders, or prove provider fees/corrections.
 test_broker_updates adds OPEN rejection/duplicate/reservation/restart fixtures;
 existing timeout/cancel/fill suites remain. Broker contract tests deny identity
 collision across accounts for both mocks. round2Evidence.test.jsx renders backend

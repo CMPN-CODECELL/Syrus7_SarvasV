@@ -38,9 +38,7 @@ class TraceService:
                     "payload": payload,
                 }
             )
-        order_rows = self.store.rows(
-            "SELECT * FROM orders WHERE id=?", (trace_id,)
-        )
+        order_rows = self.store.rows("SELECT * FROM orders WHERE id=?", (trace_id,))
         order_info = None
         if order_rows:
             o = order_rows[0]
