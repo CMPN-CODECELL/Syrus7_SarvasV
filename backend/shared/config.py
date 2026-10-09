@@ -15,4 +15,9 @@ def settings():
     mock_broker_url = os.getenv("MOCK_BROKER_URL", values.get("MOCK_BROKER_URL"))
     if mock_broker_url:
         result["mock_broker_url"] = mock_broker_url
+    trusted_origins = os.getenv(
+        "ALGOSHIELD_TRUSTED_ORIGINS", values.get("ALGOSHIELD_TRUSTED_ORIGINS")
+    )
+    if trusted_origins is not None:
+        result["trusted_origins"] = trusted_origins
     return result

@@ -34,6 +34,7 @@ LEGAL_TRANSITIONS: dict[OrderStatus, set[OrderStatus]] = {
     },
     OrderStatus.OPEN: {
         OrderStatus.OPEN,
+        OrderStatus.REJECTED,
         OrderStatus.PARTIALLY_FILLED,
         OrderStatus.FILLED,
         OrderStatus.CANCELLED,

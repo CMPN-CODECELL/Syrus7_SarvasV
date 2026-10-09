@@ -65,4 +65,10 @@ Failure Lab V2 and SafetyBench remain SQLite/mock-only; SafetyBench creates a fr
 
 ## Account presentation and operator authority (DEC-026)
 
+DEC-027 adds an explicit configured Origin boundary before unsafe HTTP/cookie
+WebSocket access, versioned PBKDF2 with safe legacy upgrade, bounded local login
+throttling and outcome-only audits. See SECURITY_OPERATIONS for transport/proxy
+policy. Broker normalized identity and unsupported correction/fee capabilities
+are specified in CONTRACTS. No ledger, candle or persistence schema was replaced.
+
 AuthService joins durable operator_grants during local session validation. Global controls require that grant before invoking platform operations; own-strategy/account/order controls retain ownership checks. AccountResponseScope projects copies after authoritative calculations and is applied to scoped snapshots (including SSE/WS), action responses, proof, reconciliation, traces and broker evidence. It removes foreign attributed records/references, scopes historical counts from verified account breakdowns, and handles nested JSON audit payloads. It preserves global verdicts and certificate timing/status. Internal ledger/reconciliation inputs remain global. Offline provisioning is documented in SECURITY_OPERATIONS.md; production identity and real PostgreSQL validation are still incomplete.

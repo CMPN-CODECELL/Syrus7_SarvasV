@@ -61,4 +61,10 @@ Do not bypass RiskGateway; invent fills; turn unknown into verified; trust clien
 
 ## 2026-10-09 accepted remediation
 
+Round 2 DEC-027 evidence is in [ROUND2_INTEGRATION_AUDIT.md](ROUND2_INTEGRATION_AUDIT.md)
+and [integration](progress/INTEGRATION.md). Targeted rejection, browser Origin,
+password, bounded login and execution-display changes preserve DEC-026 and the
+existing architecture. Member reports describe different baselines, not current
+certification. [Archive inventory](archive/README.md) preserves earlier proposals.
+
 DEC-026 establishes durable explicit operators for global actions and a shared nested account response boundary. Ordinary users retain own-account actions; even operator responses are scoped to the operator's account. Global gate, proof verdict, kill result/timing and aggregate operational diagnostics are permitted summaries, never filtered internal financial inputs. SQLite schema v12 adds operator_grants; PostgreSQL migration 011 is packaged but unverified on a real database. See `SECURITY_OPERATIONS.md` and the integration evidence for IMPLEMENTED_VERIFIED / IMPLEMENTED_UNVERIFIED / BLOCKED status.

@@ -43,6 +43,18 @@ python -m ruff format --check .
 
 ## Current remediation checks (2026-10-09)
 
+DEC-027: test_round2_security exercises trusted/untrusted/missing Origin, cookie
+WS rejection, bearer compatibility, operator authority, versioned password and
+concurrent legacy upgrades, malformed hashes, monotonic bounded limiter and
+secret-free audits. The TestClient fixture models a trusted browser Origin;
+security negatives explicitly override it. It changes transport only, not auth.
+test_broker_updates adds OPEN rejection/duplicate/reservation/restart fixtures;
+existing timeout/cancel/fill suites remain. Broker contract tests deny identity
+collision across accounts for both mocks. round2Evidence.test.jsx renders backend
+partial/zero/full/cancelled/unknown quantities and scoped signals/session changes.
+Run `python scripts/check_docs.py` for documentation inventory/link checks.
+Full current results and exact commands are in progress/INTEGRATION.md.
+
 Historical counts above remain historical. Build the ignored SPA assets before backend HTTP page tests. Use `python -m scripts.rehearsal_runner` from a fresh checkout to avoid script-directory import issues; on Windows set PYTHONIOENCODING=utf-8. Create data/ before using a fresh ignored --basetemp=data/<run>.
 
 `tests/test_operator_authority.py` adds explicit-grant/ordinary-user denials, restart/revoke provisioning, owner controls, nested two-account response families, mock-only rejection and preservation of global verdicts. Stale telemetry source-string assertions were replaced by existing behavioral Vitest coverage (logout/account change, HTTP 401 and WS 1008) while backend lifecycle coverage remains. Migration 011 and SQLite v12 are forward-only; real PG integration remains skipped without an isolated URL. The authoritative command/results table and implementation SHA are in progress/INTEGRATION.md. Node 23.6.0 passed local checks with package engine warnings; use a Node version satisfying the locked packages (e.g. 24.15+) for a supported environment. No lockfiles or dependency audit fixes changed.

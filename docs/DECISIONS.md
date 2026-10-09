@@ -623,7 +623,36 @@ IMPLEMENTED_UNVERIFIED pending an isolated database. Production identity,
 cookie/TLS and operator governance remain BLOCKED. Existing migrations are
 immutable and 021 semantics are unchanged.
 
-## DEC-027 — Atomic multi-stock subscription orchestration
+## DEC-027 — Targeted Round 2 security, identity and evidence integration
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Decision
+Permit authoritative OPEN → REJECTED only with zero executed quantity; retain
+filled/terminal/UNKNOWN guards. Reject mock order identity reuse with different
+intent/account. Keep canonical platform IDs and specify scoped provider mapping
+in CONTRACTS; defer real mapping until sponsor evidence, without a new column.
+
+Use configured browser Origins for unsafe HTTP and cookie WebSockets; deny
+missing/untrusted Origin with an explicit nonbrowser Bearer exception. Never
+derive trust from Host/forwarded headers. Ship `--no-proxy-headers` and document
+shared-peer limits. Upgrade legacy passwords on successful login using versioned
+standard-library PBKDF2-SHA256/600000 with compare-and-swap. Add bounded monotonic
+single-worker login attempts and outcome-only audit. Preserve DEC-026 authority
+and projection. Render executed/requested quantities and actual candle-linked
+signals through existing React telemetry, without financial calculations.
+
+### Reason and impact
+Current-dev regressions proved rejection, Origin/hash and mock identity gaps;
+member reports were candidate evidence, not merge-ready branches. Existing TEXT
+hash/salt columns suffice: SQLite stays v12, no migration/dependency/lock changes.
+Corrections/late fees remain unsupported pending event contracts; no ledger or
+candle rewrite. Archive inspected superseded plans/visual reference with redirects
+and repaired links; preserve canonical docs, original research and decision history.
+Member logs become optional startup evidence. Exact checks and blockers are in
+ROUND2_INTEGRATION_AUDIT and progress/INTEGRATION.
+
+## DEC-028 — Atomic multi-stock subscription orchestration
 Date: 2026-10-09
 Status: ACCEPTED
 

@@ -36,3 +36,8 @@ Status legend: IMPLEMENTED_VERIFIED means fresh scoped mock evidence linked in `
 When a test actually runs on the current `dev` commit, add commit SHA, command, output and environment to `docs/progress/INTEGRATION.md` (or linked report); then set the specific row `VERIFIED_CURRENT_COMMIT`. When 021 docs/fixtures arrive, append provenance to `docs/021_API_UNKNOWN.md` and new accepted decisions to `docs/DECISIONS.md`.
 
 DEC-026 security evidence: `tests/test_operator_authority.py` exercises explicit operator grants/revocation, mutation-free 401/403, nested two-account responses and unchanged global safety truth. Existing PS01-PS04, PS06-PS15 mock suites and seven rehearsals pass; these labels do not certify live 021, real charge semantics or PostgreSQL. PS16 preparation remains ongoing.
+
+DEC-027 adds PS01 legacy-compatible password/Origin/login regressions, PS06
+zero-fill rejection and identity collision tests, and PS15 executed/requested
+and candle-linked signal rendering. See ROUND2_INTEGRATION_AUDIT and integration
+for fresh results. PS05 and final live fee/correction evidence remain blocked.

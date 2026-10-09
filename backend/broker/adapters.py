@@ -51,7 +51,10 @@ class MockBrokerAdapter:
     def submit(self, intent):
         self._check()
         if intent.intent_id in self.orders:
-            return self.orders[intent.intent_id]
+            existing = self.orders[intent.intent_id]
+            if existing.intent != intent:
+                raise ValueError("order identity collision")
+            return existing
         status = OrderStatus.REJECTED if self.reject_next else OrderStatus.OPEN
         self.reject_next = False
         order = CanonicalOrder(intent.intent_id, intent, status)

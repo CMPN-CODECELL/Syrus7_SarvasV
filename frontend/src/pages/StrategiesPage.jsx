@@ -111,5 +111,12 @@ export function StrategiesPage(){
         </form>
       </Card>
     </div>
+    <Card title="Emitted signals" meta="Backend candle evidence; interval and timestamp in seconds">
+      <DataTable rows={s?.signals} columns={[
+        {key:'strategy',label:'Strategy'}, {key:'symbol',label:'Symbol'},
+        {key:'side',label:'Side'}, {key:'interval',label:'Interval (seconds)'},
+        {key:'reason',label:'Reason'}, {key:'candle_start',label:'Candle start (UTC epoch)'},
+      ]}/>
+    </Card>
   </Page>
 }

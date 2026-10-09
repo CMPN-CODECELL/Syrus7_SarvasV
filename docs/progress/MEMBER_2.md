@@ -150,6 +150,11 @@ Broker & Order Execution; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 - Live change request readiness for execution/order modifications during hackathon evaluation.
 
 ## Handoff Notes
+
+2026-10-09 DEC-027: zero-fill OPEN rejection and reservation/duplicate/restart
+regressions; mock identity reuse across different accounts rejected in both
+adapter contract suites. Provider/account mapping is specified in CONTRACTS,
+real implementation deferred on sponsor evidence. No migration/lockfile change.
 - Member 2 mock/replay broker and execution responsibilities are complete for the offline prototype. Real 021 integration remains blocked on official sponsor API documentation/credentials.
 - Execution state machine, cancellation flow, broker update flow, disconnect/reconnect recovery, and broker adapter contracts are deterministic, authoritative, and fail-closed.
 - Fills remain financial truth; order status is execution evidence.

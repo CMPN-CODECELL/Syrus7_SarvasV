@@ -68,6 +68,15 @@ def test_contract_submission_identity(broker):
     assert order.remaining_quantity == 100
 
 
+def test_contract_identity_collision_never_reuses_foreign_order(broker):
+    original = make_intent("global-identity", acc="account-one")
+    broker.submit(original)
+    with pytest.raises((ValueError, RuntimeError)):
+        broker.submit(make_intent("global-identity", acc="account-two"))
+    assert broker.orders["global-identity"].intent == original
+    assert len(broker.fills) == 0
+
+
 # Contract B — Rejection
 def test_contract_rejection(broker):
     broker.reject_next = True

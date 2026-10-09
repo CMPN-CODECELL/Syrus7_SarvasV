@@ -37,6 +37,11 @@ Risk & Reliability; canonical responsibilities: ../TEAM_OWNERSHIP.md, Member 3.
 - Validate available PostgreSQL integration without touching production data.
 
 ## Handoff Notes
+
+2026-10-09 DEC-027: configured Origin boundary, versioned PBKDF2 legacy CAS
+upgrade, monotonic bounded peer login limiter, security headers and outcome-only
+audit. Operator/scoping regressions pass. SECURITY_OPERATIONS documents local
+proxy/cookie/Bearer policy and production TLS/identity/ingress blockers.
 One worker. UNKNOWN retains reservation. No synthetic drift fixes; opposing virtual exits need sponsor confirmation.
 
 - 2026-10-07 16:05 Asia/Kolkata validation: pytest 24 passed / 1 skipped (no isolated PostgreSQL URL); Ruff check + format passed; npm run check passed; npm audit 0 vulnerabilities. No live Neon connectivity/deployment claim.
