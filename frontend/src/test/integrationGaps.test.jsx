@@ -15,7 +15,7 @@ vi.mock('../telemetry/TelemetryContext',()=>({useTelemetry:()=>mocks.telemetry})
 
 import { Money } from '../components/UI'
 import { AppShell } from '../components/AppShell'
-import { FailureLabPage, SafetyBenchPage, TracesPage } from '../pages/EvidencePages'
+import { FailureLabPage, MarketDataPage, SafetyBenchPage, TracesPage } from '../pages/EvidencePages'
 import { OverviewPage } from '../pages/OverviewPage'
 import { StrategiesPage } from '../pages/StrategiesPage'
 
@@ -60,6 +60,19 @@ beforeEach(()=>{
 })
 
 describe('backend-shaped React projections',()=>{
+  it('labels Yahoo quote evidence and unavailable candle volume honestly',()=>{
+    renderOutlet(<MarketDataPage/>,{snapshot:{...snapshot,gate:'UNCERTAIN',market_session:{status:'OPEN'},market_data:{...snapshot.market_data,label:'YAHOO EXTERNAL QUOTES / MOCK EXECUTION',connected:true,volume_available:false,last_event_timestamp:1791521395,last_raw_event_timestamp:'1791521395000',last_received_at:1791521397,received_messages:12,accepted_updates:11,errors:['initial subscription deadline exceeded']},candles:[{symbol:'TCS',interval:60,open:'100',high:'101',low:'100',close:'101',volume:0,volume_available:false,data_source:'YAHOO_EXTERNAL_QUOTES'}]}})
+    expect(screen.getByText('YAHOO EXTERNAL QUOTES / MOCK EXECUTION')).toBeInTheDocument()
+    expect(screen.getByText('Connected · Volume unavailable')).toBeInTheDocument()
+    expect(screen.getByText('2026-10-09T04:49:55.000Z')).toBeInTheDocument()
+    expect(screen.getByText('Raw: 1791521395000')).toBeInTheDocument()
+    expect(screen.getByText('12 received · 11 accepted')).toBeInTheDocument()
+    expect(screen.getByText('UNCERTAIN')).toBeInTheDocument()
+    expect(screen.getByText('initial subscription deadline exceeded')).toBeInTheDocument()
+    expect(screen.getByText('Unavailable')).toBeInTheDocument()
+    expect(screen.getByText('YAHOO_EXTERNAL_QUOTES')).toBeInTheDocument()
+  })
+
   it('uses gate, health, Safety Proof verdict, readiness, and canonical financial joins',()=>{
     renderOutlet(<OverviewPage/>)
     const gateCard=screen.getByText('Trading gate').closest('section')

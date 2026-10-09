@@ -586,3 +586,16 @@ The operational surface now spans independent workflows that need routing, share
 
 ### Impact
 `frontend/src` becomes the UI source, `frontend/dist` remains generated and ignored, legacy login/register pages are removed, and direct-route refresh requires a completed frontend build. Backend-only environments receive an explicit 503 build instruction when assets are absent.
+
+## DEC-026 — Optional supervised Yahoo quote evidence
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Decision
+Keep replay as the default and provide Yahoo only as an explicit optional dependency/configuration. Run yfinance 1.7.0 in a bounded child process behind a bounded queue; normalize only the verified `id`, `price`, and plausible millisecond `time` fields into canonical ticks and route them through `Platform.tick`. Preserve raw time, label source/volume availability on ticks and candles, and restrict this source to mock execution. Treat every overflow, gap, disconnect, stale period, or malformed update as fail-closed without automatic resume.
+
+### Reason
+Task 9A confirmed sampled price messages but did not establish complete exchange-tick coverage, volume semantics, or unique trade identity. Process supervision contains ambiguous third-party cancellation behavior, while explicit evidence labels prevent sampled Yahoo quotes or zero compatibility quantity from being mistaken for exchange executions or observed volume.
+
+### Impact
+`Tick` and `Candle` gain additive source and volume-availability evidence. The `yahoo` extra pins the probed yfinance 1.7.0, which resolves with the existing `websockets>=13,<16` constraint (validated with 15.0.1). Yahoo can never be mixed with replay in a running timeline and does not establish 021 compatibility.

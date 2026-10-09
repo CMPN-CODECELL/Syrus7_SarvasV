@@ -58,6 +58,9 @@ class Tick:
     price: Decimal
     quantity: int
     event_id: str
+    raw_event_timestamp: str | None = None
+    volume_available: bool = True
+    data_source: str = "UNSPECIFIED"
 
     def __post_init__(self):
         if (
@@ -72,6 +75,12 @@ class Tick:
             type(self.event_timestamp) is not int
             or not self.symbol
             or not self.event_id
+            or (
+                self.raw_event_timestamp is not None
+                and not isinstance(self.raw_event_timestamp, str)
+            )
+            or type(self.volume_available) is not bool
+            or not self.data_source
         ):
             raise ValueError("invalid tick identity/timestamp")
 
@@ -88,6 +97,8 @@ class Candle:
     close: Decimal
     volume: int
     is_closed: bool = True
+    volume_available: bool = True
+    data_source: str = "UNSPECIFIED"
 
 
 @dataclass(frozen=True)

@@ -118,14 +118,26 @@ export function MetricsPage() {
 
 export function MarketDataPage(){
   const {snapshot:s}=useOutletContext()
-  return <Page eyebrow="Market ingestion" title="Market data" description="One- and five-minute candles built from normalized ticks.">
+  const source=s?.market_data?.label||s?.market_data?.provider||'Unavailable'
+  const eventTime=s?.market_data?.last_event_timestamp
+  const receivedTime=s?.market_data?.last_received_at
+  const asUtc=value=>{
+    const numeric=Number(value)
+    return value===null||value===undefined||!Number.isFinite(numeric)?'—':new Date(numeric*1000).toISOString()
+  }
+  return <Page eyebrow="Market ingestion" title="Market data" description="One- and five-minute candles built from normalized updates. Yahoo candles are sampled quote-derived evidence, not complete exchange ticks.">
     <div className="stat-grid">
+      <Card title="Source"><strong>{source}</strong><p>{s?.market_data?.connected?'Connected':'Not connected'} · Volume {s?.market_data?.volume_available===false?'unavailable':'available'}</p></Card>
+      <Card title="Safety gate"><Status value={s?.gate}/></Card>
+      <Card title="Last quote event"><strong>{asUtc(eventTime)}</strong><p>Raw: {s?.market_data?.last_raw_event_timestamp??'—'}</p></Card>
+      <Card title="Last received"><strong>{asUtc(receivedTime)}</strong><p>{s?.market_data?.received_messages??'—'} received · {s?.market_data?.accepted_updates??'—'} accepted</p></Card>
       <Card title="Session"><Status value={s?.market_session?.status}/></Card>
       <Card title="Accepted ticks"><strong>{s?.market_data?.accepted_ticks??'—'}</strong></Card>
       <Card title="Duplicates"><strong>{s?.market_data?.duplicate_ticks??'—'}</strong></Card>
       <Card title="Late ticks"><strong>{s?.market_data?.late_ticks??'—'}</strong></Card>
     </div>
-    <Card title="Closed candles"><DataTable rows={s?.candles} columns={[{key:'symbol',label:'Symbol'},{key:'interval',label:'Interval'},{key:'open',label:'Open'},{key:'high',label:'High'},{key:'low',label:'Low'},{key:'close',label:'Close'},{key:'volume',label:'Volume'}]}/></Card>
+    {s?.market_data?.errors?.length?<Card title="Provider lifecycle errors"><EvidenceView value={s.market_data.errors}/></Card>:null}
+    <Card title="Closed candles"><DataTable rows={s?.candles} columns={[{key:'symbol',label:'Symbol'},{key:'interval',label:'Interval'},{key:'open',label:'Open'},{key:'high',label:'High'},{key:'low',label:'Low'},{key:'close',label:'Close'},{key:'volume',label:'Volume',render:row=>row.volume_available===false?'Unavailable':String(row.volume??'—')},{key:'data_source',label:'Source'}]}/></Card>
   </Page>
 }
 

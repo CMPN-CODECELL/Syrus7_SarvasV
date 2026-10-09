@@ -113,4 +113,25 @@ describe('TelemetryProvider recovery and session boundaries',()=>{
     expect(unauthorized).toHaveBeenCalledOnce()
     window.removeEventListener('algoshield:unauthorized',unauthorized)
   })
+
+  it('clears existing data when a reconnect receives HTTP 401',async()=>{
+    const unauthorized=vi.fn()
+    window.addEventListener('algoshield:unauthorized',unauthorized)
+    mocks.apiGet.mockResolvedValueOnce({account:'acc_a'}).mockRejectedValueOnce(Object.assign(new Error('expired'),{status:401}))
+    render(<TelemetryProvider><Probe/></TelemetryProvider>)
+    await flush()
+    const socket=FakeWebSocket.instances[0]
+    act(()=>{socket.open();socket.message({account:'acc_a'});socket.closeFromServer(1006)})
+    expect(screen.getByTestId('account')).toHaveTextContent('acc_a')
+
+    await act(async()=>{vi.advanceTimersByTime(500)})
+    await flush()
+    expect(screen.getByTestId('account')).toHaveTextContent('none')
+    expect(screen.getByTestId('status')).toHaveTextContent('offline')
+    expect(unauthorized).toHaveBeenCalledOnce()
+    act(()=>vi.runOnlyPendingTimers())
+    expect(mocks.apiGet).toHaveBeenCalledTimes(2)
+    expect(FakeWebSocket.instances).toHaveLength(1)
+    window.removeEventListener('algoshield:unauthorized',unauthorized)
+  })
 })

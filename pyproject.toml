@@ -18,6 +18,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8,<9", "httpx>=0.28,<1", "ruff>=0.15,<1"]
 browser = ["playwright>=1.50,<2"]
+yahoo = ["yfinance==1.7.0"]
 
 [tool.setuptools.packages.find]
 include = ["backend*"]

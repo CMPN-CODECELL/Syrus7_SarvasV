@@ -20,6 +20,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
 
 from backend.platform import Platform
+from backend.market_data.yahoo import YahooMarketDataProvider
 from backend.broker.http_adapter import HTTPMockBrokerAdapter
 from backend.reliability.failure_lab import FailureLab, SCENARIOS
 from backend.shared.config import settings
@@ -152,10 +153,17 @@ def create_app(platform=None):
         store=PostgresStore(config["database_url"]) if config["database_url"] else None,
         demo_enabled=not bool(config["database_url"]) or local_mock,
     )
+    if platform is None and config.get("market_data_provider") == "yahoo":
+        yahoo = YahooMarketDataProvider(
+            engine, symbols=config.get("yahoo_symbols", ("TCS.NS", "INFY.NS"))
+        )
+        engine.configure_external_market_data(yahoo)
 
     @asynccontextmanager
     async def lifespan(app):
         try:
+            if platform is None and engine.external_market_data is not None:
+                engine.start_external_market_data()
             yield
         finally:
             if platform is None:

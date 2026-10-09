@@ -133,6 +133,27 @@ Every broker adapter (including `MockBrokerAdapter` and the eventual `Broker021A
 5. **No Invented Provider Behaviors**:
    - Exchange holidays, special muhurat sessions, and unverified 021 sandbox session rules are not invented. Boundary checks are deterministic and configurable.
 
+## Optional Yahoo External Quote Contract
+
+1. **Opt-in and source separation**:
+   - Replay remains the default. Yahoo is enabled only with `ALGOSHIELD_MARKET_DATA_PROVIDER=yahoo` and the optional `yahoo` dependency extra.
+   - The supported external mapping is explicit: `TCS.NS -> TCS`, `INFY.NS -> INFY`. Other Yahoo symbols fail validation.
+   - Replay and Yahoo updates cannot share one running candle timeline. Yahoo is restricted to mock execution and cannot authorize 021 execution.
+2. **Normalization**:
+   - A Yahoo message requires a supported `id`, finite positive `price`, and plausible decimal-string Unix-millisecond `time` near receipt time.
+   - Price is converted with `Decimal(str(value))`. `Tick.event_timestamp` is normalized to UTC epoch seconds and `Tick.raw_event_timestamp` preserves the original decimal string.
+   - `Tick.data_source` is `YAHOO_EXTERNAL_QUOTES`. Updates enter the system exclusively through `Platform.tick(..., replay=False)` and therefore use existing LIVE freshness evidence.
+3. **Price-only and candle evidence**:
+   - `day_volume` and `last_size` have unconfirmed semantics and are never mapped to `Tick.quantity`.
+   - Canonical `quantity=0` represents a price-only update only when `volume_available=False`. Quote-derived candles retain numeric volume 0 for contract compatibility while `volume_available=False`; UI/API consumers must display that volume as unavailable, not as observed zero volume.
+   - Quote-derived candles carry `data_source=YAHOO_EXTERNAL_QUOTES`. They are sampled quote evidence, not verified complete exchange-tick candles.
+4. **Duplicate identity**:
+   - The adapter hashes available message fields into a bounded best-effort duplicate key with a bounded LRU set. The generated `yahoo-quote:*` value is not an exchange trade ID, and no unique provider trade/message ID is claimed.
+5. **Lifecycle and failure behavior**:
+   - yfinance runs in a supervised child process and communicates through a bounded queue, so its callback cannot block strategy execution or hold the store lock.
+   - Startup, reconnect attempts, staleness detection, stop, and forced termination are bounded. Queue overflow, disconnect, malformed data, startup timeout, or staleness invokes the existing fail-closed safety transition. Fresh messages do not automatically resume trading.
+   - Telemetry exposes provider/label, connection state, configured Yahoo symbols, received and normalized event times (including raw timestamp), message/update/duplicate counts, volume availability, bounded errors, queue capacity, and forced-termination count.
+
 ## Account-Scoped User Workflow and Telemetry Isolation Contract
 
 1. **Identity & Session Derivation**:

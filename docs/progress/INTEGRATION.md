@@ -1,9 +1,49 @@
 # Integration Progress
 
 ## Current Status
-- Phase: integrated mock/replay hardening with Member 4 strategy/runtime and local PostgreSQL verification
+- Phase: integrated mock/replay hardening with optional supervised Yahoo quote evidence
 - Status: BLOCKED
 - Last updated: 2026-10-09 Asia/Kolkata
+
+## 2026-10-09 — Task 9B optional Yahoo external market data
+
+- Replay remains default. Explicit opt-in config attaches a supervised yfinance provider with a fixed `TCS.NS -> TCS`, `INFY.NS -> INFY` mapping and refuses replay/Yahoo timeline mixing or non-mock execution.
+- Yahoo `id`, positive finite `price`, and plausible decimal-string millisecond `time` normalize into canonical LIVE ticks through `Platform.tick` only. Raw and normalized timestamps, source, and unavailable-volume evidence are preserved. `day_volume`/`last_size` are not treated as per-trade quantity; generated duplicate hashes are not exchange IDs.
+- The bounded process/queue lifecycle fails closed on startup timeout, overflow, malformed updates, disconnect and stale gaps, with bounded reconnect and forced child cleanup. It never auto-resumes trading. Telemetry/UI truthfully label `YAHOO EXTERNAL QUOTES / MOCK EXECUTION` and quote-derived unavailable candle volume.
+- The optional `yahoo` extra pins the probed yfinance 1.7.0 and resolved websockets 15.0.1 under the existing `>=13,<16` application constraint; ordinary installs remain unchanged.
+- Disposable-SQLite, trading-disabled 30-second live smoke received 26 TCS/INFY updates, accepted all 26, emitted no orders, retained raw/normalized last time `1791522597000` / `1791522597`, and shut down with no orphan. An initial startup deadline caused a recorded fail-closed termination before the bounded reconnect streamed; the final gate correctly remained `UNCERTAIN` and no automatic resume occurred.
+- Yahoo remains sampled external quote evidence, not verified complete exchange ticks. Volume semantics, unique provider trade identity, gap backfill and 021 symbol/price-source/freshness compatibility remain unverified. No production database or real broker was used.
+- Initial Task 9B validation covered 19 focused Yahoo tests and 57 combined market/candle/replay/Member 4 tests; the final verification below resolves the stale frontend assertion and supersedes that intermediate result.
+
+### Task 9B final verification
+
+- Replaced the obsolete source-string assertion with behavior-level React coverage: populated state is cleared on logout/account change, HTTP 401 during reconnect, and WS 1008; sockets/timers do not retry after terminal invalidation. Existing backend restart safety coverage remains.
+- Lifecycle instrumentation isolated startup costs. The measured first-attempt path was 0.474s to worker/import start, 2.536s through yfinance import, and 3.897s through connection/subscription. A later long capture subscribed at 3.444s. Evidence does not support widening the bounded 8-second startup timeout, so fail-closed semantics remain unchanged.
+- A 225.027-second isolated-SQLite capture accepted 384 TCS/INFY quote updates, then shut down in 225.860 seconds with no orphan. It closed six 1-minute candles and two 5-minute candles, all quote-derived with unavailable volume. The initial five-minute bucket `[1791523200,1791523500)` was partial because observation began in `[1791523320,1791523380)`; there was no reconnect/error evidence in this capture and no gap backfill was attempted.
+- Browser verification used the real FastAPI/Vite dashboard. It displayed `YAHOO EXTERNAL QUOTES / MOCK EXECUTION`, current raw/UTC event/receipt timestamps, advancing counts, `Unavailable` candle volume, `UNCERTAIN`, completed 60/300-second TCS/INFY candles, and no orders/fills. A deliberate isolated child termination displayed `Not connected` and the exit evidence; reconnect restored `Connected` and counts advanced from 130 to 138 while the gate stayed `UNCERTAIN`.
+- Final validation: 335 backend tests passed with 1 environment-gated PostgreSQL skip; all 30 React tests passed; ESLint, Vite production build, Ruff check/format, and `git diff --check` passed.
+
+Exact PowerShell commands for the real isolated dashboard:
+
+```powershell
+Set-Location C:\Users\dyara\Syrus7_SarvasV
+
+$task9bVenv = Join-Path $env:TEMP 'algoshield-task9b-dashboard-venv'
+py -3.13 -m venv $task9bVenv
+& "$task9bVenv\Scripts\python.exe" -m pip install -e '.[yahoo]'
+npm --prefix frontend run build
+
+$env:PYTHONPATH = (Get-Location).Path
+$env:DATABASE_URL = ''
+$env:MOCK_BROKER_URL = ''
+$env:ALGOSHIELD_DB = Join-Path $env:TEMP 'algoshield-task9b-dashboard.db'
+$env:ALGOSHIELD_MARKET_DATA_PROVIDER = 'yahoo'
+$env:ALGOSHIELD_YAHOO_SYMBOLS = 'TCS.NS,INFY.NS'
+
+& "$task9bVenv\Scripts\python.exe" -m uvicorn backend.api:create_app --factory --host 127.0.0.1 --port 8765 --workers 1
+```
+
+Open `http://127.0.0.1:8765/register`, create a disposable local user, then inspect `/market-data` and `/orders`. Do not use Replay in Yahoo mode. Stop the one-worker server with `Ctrl+C`.
 
 ## 2026-10-09 — Bounded yfinance probe follow-up
 

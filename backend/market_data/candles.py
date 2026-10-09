@@ -86,6 +86,12 @@ class CandleBuilder:
         if tick.event_timestamp < self.last.get(tick.symbol, -1):
             self.late_ticks += 1
             raise ValueError("late tick: replay must be ordered before ingestion")
+        if any(
+            self.active.get((tick.symbol, interval)) is not None
+            and self.active[(tick.symbol, interval)].data_source != tick.data_source
+            for interval in self.intervals
+        ):
+            raise ValueError("mixed market-data sources in candle")
         if len(self.seen) >= self.max_seen:
             oldest_identity, oldest_tick = next(iter(self.seen.items()))
             watermark = (
@@ -119,6 +125,8 @@ class CandleBuilder:
                     tick.price,
                     tick.quantity,
                     False,
+                    tick.volume_available,
+                    tick.data_source,
                 )
             else:
                 c = replace(
@@ -127,6 +135,7 @@ class CandleBuilder:
                     low=min(c.low, tick.price),
                     close=tick.price,
                     volume=c.volume + tick.quantity,
+                    volume_available=c.volume_available and tick.volume_available,
                 )
             self.active[key] = c
         return True, closed

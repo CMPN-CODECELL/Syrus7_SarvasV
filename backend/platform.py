@@ -3,7 +3,7 @@ import time
 from collections import deque
 from collections.abc import Iterable
 from threading import Event, Lock, Thread, current_thread
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from decimal import Decimal
 
 from backend.accounting.charges import calculate_indian_charges
@@ -94,6 +94,30 @@ class Platform:
         self._replay_lock = Lock()
         self._replay_stop = Event()
         self._replay_thread = None
+        self.external_market_data = None
+
+    def configure_external_market_data(self, provider):
+        """Attach one explicit source before any timeline has been ingested."""
+        if self.candles.accepted_ticks or self._replay_thread:
+            raise ValueError("market-data source cannot change after ingestion starts")
+        if not isinstance(self.broker, (MockBrokerAdapter, HTTPMockBrokerAdapter)):
+            raise ValueError("Yahoo quotes are restricted to mock execution")
+        self.external_market_data = provider
+
+    def start_external_market_data(self):
+        if self.external_market_data is None:
+            return False
+        if self._replay_thread and self._replay_thread.is_alive():
+            raise ValueError("replay and Yahoo market data cannot run together")
+        # Starting a network feed never reopens execution. An operator must
+        # separately reconcile/resume after fresh evidence exists.
+        self.reliability.fail_closed("YAHOO_FEED_STARTING")
+        return self.external_market_data.start()
+
+    def stop_external_market_data(self):
+        if self.external_market_data is not None:
+            return self.external_market_data.stop()
+        return True
 
     def account(self, account_id):
         if not account_id:
@@ -196,6 +220,20 @@ class Platform:
         started = time.perf_counter()
         if replay:
             self.require_replay_demo()
+            if self.external_market_data is not None:
+                self.reliability.fail_closed("MARKET_DATA_SOURCE_MIXED")
+                raise ValueError("replay and Yahoo market data cannot share a timeline")
+            if tick.data_source == "UNSPECIFIED":
+                tick = replace(tick, data_source="MOCK_REPLAY")
+        elif self.external_market_data is not None:
+            if tick.data_source != "YAHOO_EXTERNAL_QUOTES":
+                self.reliability.fail_closed("MARKET_DATA_SOURCE_MIXED")
+                raise ValueError(
+                    "only configured Yahoo updates may enter this timeline"
+                )
+        elif tick.data_source == "YAHOO_EXTERNAL_QUOTES":
+            self.reliability.fail_closed("MARKET_DATA_SOURCE_NOT_CONFIGURED")
+            raise ValueError("Yahoo market data requires explicit provider opt-in")
         with self.store.lock:
             try:
                 accepted, closed = self.candles.ingest_event(tick)
@@ -385,6 +423,8 @@ class Platform:
         if not isinstance(self.broker, HTTPMockBrokerAdapter):
             return False
         if not self.demo_enabled:
+            return False
+        if self.external_market_data is not None:
             return False
 
         with self._replay_lock:
@@ -812,14 +852,32 @@ class Platform:
                     else None
                 )
 
+            market_data = self.candles.stats()
+            if self.external_market_data is not None:
+                market_data.update(self.external_market_data.telemetry())
+            else:
+                market_data.update(
+                    {
+                        "provider": "MOCK_REPLAY",
+                        "label": "MOCK / REPLAY",
+                        "volume_available": True,
+                        "connected": bool(
+                            self._replay_thread and self._replay_thread.is_alive()
+                        ),
+                    }
+                )
             return {
                 "mode": (
-                    "MOCK / REPLAY"
-                    if self.demo_enabled
+                    "YAHOO EXTERNAL QUOTES / MOCK EXECUTION"
+                    if self.external_market_data is not None
                     else (
-                        "MOCK / PERSISTENT STORE"
-                        if isinstance(self.broker, MockBrokerAdapter)
-                        else "BROKER ADAPTER / LIVE"
+                        "MOCK / REPLAY"
+                        if self.demo_enabled
+                        else (
+                            "MOCK / PERSISTENT STORE"
+                            if isinstance(self.broker, MockBrokerAdapter)
+                            else "BROKER ADAPTER / LIVE"
+                        )
                     )
                 ),
                 "storage": self.store.backend_name,
@@ -850,7 +908,7 @@ class Platform:
                 "candles": [_contract_dict(c) for c in list(self.closed_candles)[-20:]],
                 "signals": signals,
                 "strategy_errors": strategy_errors,
-                "market_data": self.candles.stats(),
+                "market_data": market_data,
                 "market_session": self.market_session.to_dict(self.clock()),
                 "audit": audit_rows,
                 "kill": kill_data,
@@ -901,5 +959,6 @@ class Platform:
     def close(self):
         """Shut down the platform, strategy runtime executor, and store cleanly."""
         self.stop_replay_stream()
+        self.stop_external_market_data()
         self.strategies.close()
         self.store.close()
