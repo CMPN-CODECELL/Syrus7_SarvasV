@@ -232,9 +232,12 @@ def create_app(platform=None, *, trusted_origins=None):
             raise RuntimeError("021 market data requires ALGOSHIELD_021_ENABLED=true")
         symbols = config.get("021_symbols")
         if not symbols:
-            raise RuntimeError(
-                "021 market data requires ALGOSHIELD_021_SYMBOLS; no symbol default is used"
-            )
+            # The catalogue is the source of truth when no explicit universe is
+            # configured.  The provider applies 021's connection/instrument
+            # limits and reports any truncation in telemetry.
+            symbols = broker.all_market_symbols()
+            if not symbols:
+                raise RuntimeError("021 instrument catalogue contains no cash-equity symbols")
         engine.configure_external_market_data(
             MarketData021Provider(
                 engine,

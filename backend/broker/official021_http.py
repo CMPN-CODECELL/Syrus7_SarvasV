@@ -136,6 +136,7 @@ class Official021RESTAdapter:
             "ALGOSHIELD_021_INSTRUMENT_CACHE"
         )
         self.instruments: dict[str, Instrument021] = {}
+        self.market_symbols: tuple[str, ...] = ()
         self._provider_orders: dict[str, str] = {}
         self._seen_trade_ids: set[str] = set()
         self.connected = False
@@ -229,6 +230,7 @@ class Official021RESTAdapter:
         try:
             rows = csv.DictReader(io.StringIO(payload.decode("utf-8-sig")))
             loaded: dict[str, Instrument021] = {}
+            market_symbols: set[str] = set()
             for row in rows:
                 exchange = row.get("exchange", "").strip()
                 if exchange not in EXCHANGE_TO_CODE:
@@ -243,6 +245,8 @@ class Official021RESTAdapter:
                     "IDX",
                 }:
                     continue
+                if row.get("instrument_type") == "STK" and exchange in {"NSECM", "BSEEQ"}:
+                    market_symbols.add(symbol)
                 try:
                     token = int(row["token"])
                     lot = max(1, int(row.get("board_lot_quantity") or 1))
@@ -267,6 +271,7 @@ class Official021RESTAdapter:
                     "021 instruments response contained no usable rows"
                 )
             self.instruments = loaded
+            self.market_symbols = tuple(sorted(market_symbols))
         except UnicodeDecodeError as exc:
             raise Provider021ProtocolError(
                 "021 instruments response is not UTF-8 CSV"
@@ -279,6 +284,13 @@ class Official021RESTAdapter:
             return self.instruments[symbol.upper()]
         except KeyError as exc:
             raise Provider021Blocked(f"no 021 instrument mapping for {symbol}") from exc
+
+    def all_market_symbols(self, *, limit: int | None = None) -> tuple[str, ...]:
+        """Return catalogue-backed cash-equity symbols for automatic feed setup."""
+        if not self.instruments:
+            self._load_instruments()
+        symbols = self.market_symbols or tuple(sorted(self.instruments))
+        return symbols if limit is None else symbols[:limit]
 
     def _mapping(self, platform_order_id: str):
         rows = self.store.rows(

@@ -18,23 +18,29 @@ from backend.shared.contracts import Tick
 
 class MarketData021Provider:
     supports_live_broker = True
+    MAX_INSTRUMENTS_PER_CONNECTION = 100
+    MAX_CONNECTIONS = 20
 
     def __init__(self, platform, adapter, symbols, *, mode="full", socket_factory=None):
         if mode not in {"ltp", "ltpo", "ltpc", "full"}:
             raise ValueError("unsupported 021 market mode")
         self.adapter = adapter
         self.platform = platform
-        self.symbols = tuple(
+        requested_symbols = tuple(
             dict.fromkeys(symbol.upper() for symbol in symbols if symbol)
         )
-        if not self.symbols:
+        if not requested_symbols:
             raise ValueError("at least one 021 symbol is required")
+        capacity = self.MAX_INSTRUMENTS_PER_CONNECTION * self.MAX_CONNECTIONS
+        self.symbols = requested_symbols[:capacity]
         self.mode = mode
         self.socket_factory = socket_factory
         self._stop = Event()
         self._thread: Thread | None = None
+        self._threads: list[Thread] = []
         self._lock = Lock()
         self._connected = False
+        self._connected_count = 0
         self._last_volume = {}
         self._latest_quotes = {}
         self._last_received_at = None
@@ -43,24 +49,39 @@ class MarketData021Provider:
         self.received = 0
         self.normalized = 0
         self.errors = []
+        if len(requested_symbols) > capacity:
+            self.errors.append(
+                f"UNIVERSE_TRUNCATED_021_LIMIT:{len(requested_symbols)}>{capacity}"
+            )
 
     def start(self):
-        if self._thread and self._thread.is_alive():
+        if any(thread.is_alive() for thread in self._threads):
             return False
         self._stop.clear()
-        self._thread = Thread(target=self._run, daemon=True, name="021-market-data")
-        self._thread.start()
+        self._threads = []
+        for index in range(0, len(self.symbols), self.MAX_INSTRUMENTS_PER_CONNECTION):
+            chunk = self.symbols[index : index + self.MAX_INSTRUMENTS_PER_CONNECTION]
+            thread = Thread(
+                target=self._run,
+                args=(chunk,),
+                daemon=True,
+                name=f"021-market-data-{index // self.MAX_INSTRUMENTS_PER_CONNECTION + 1}",
+            )
+            self._threads.append(thread)
+            thread.start()
+        self._thread = self._threads[0]
         return True
 
     def stop(self):
         self._stop.set()
-        if self._thread and self._thread is not current_thread():
-            self._thread.join(timeout=1.0)
-        return not (self._thread and self._thread.is_alive())
+        for thread in self._threads:
+            if thread is not current_thread():
+                thread.join(timeout=1.0)
+        return not any(thread.is_alive() for thread in self._threads)
 
-    def _connect(self):
+    def _connect(self, symbols):
         token = self.adapter.ephemeral_key()
-        instruments = [self.adapter._instrument(symbol) for symbol in self.symbols]
+        instruments = [self.adapter._instrument(symbol) for symbol in symbols]
         pairs = [[instrument.exchange, instrument.token] for instrument in instruments]
         url = self.adapter.base_url.replace("https://", "wss://").replace(
             "http://", "ws://"
@@ -78,10 +99,11 @@ class MarketData021Provider:
         )
         return socket
 
-    def _run(self):
+    def _run(self, symbols):
         try:
-            socket = self._connect()
+            socket = self._connect(symbols)
             with self._lock:
+                self._connected_count += 1
                 self._connected = True
             try:
                 while not self._stop.is_set():
@@ -110,7 +132,8 @@ class MarketData021Provider:
                             self.platform.reliability.fail_closed("021_FEED_UPDATE_REJECTED")
             finally:
                 with self._lock:
-                    self._connected = False
+                    self._connected_count = max(0, self._connected_count - 1)
+                    self._connected = self._connected_count > 0
                 try:
                     socket.close()
                 except Exception:
@@ -121,7 +144,8 @@ class MarketData021Provider:
                 self.platform.reliability.fail_closed("021_FEED_DISCONNECTED")
         except Exception as exc:
             with self._lock:
-                self._connected = False
+                self._connected_count = max(0, self._connected_count - 1)
+                self._connected = self._connected_count > 0
                 self.errors.append(type(exc).__name__)
             try:
                 self.platform.reliability.fail_closed("021_FEED_DISCONNECTED")
@@ -213,6 +237,9 @@ class MarketData021Provider:
                 "source": "021_LIVE",
                 "label": "021 LIVE / REAL MARKET DATA",
                 "connected": self._connected,
+                "connection_count": self._connected_count,
+                "connection_limit": self.MAX_CONNECTIONS,
+                "instrument_limit_per_connection": self.MAX_INSTRUMENTS_PER_CONNECTION,
                 "symbols": list(self.symbols),
                 "canonical_symbols": list(self.symbols),
                 "latest_quotes": [
