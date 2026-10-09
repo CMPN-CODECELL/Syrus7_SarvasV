@@ -569,3 +569,39 @@ readiness/recovery tests passed; full backend regression passed 428 tests with 1
 optional PostgreSQL test skipped. Focused Ruff check/format and `git diff
 --check` passed. The existing Starlette/httpx deprecation warning remains; no
 dependency was changed.
+
+## 2026-10-09 — Member 3 Task 4 risk-only emergency dispatch revalidation
+
+`RiskGateway.authorize_dispatch()` now re-proves a persisted `emergency=1`
+reservation at the serialized pre-dispatch boundary: latched KILLING gate,
+broker connection/settlement, reservation identity, current attributed virtual
+residual, side/quantity bound, and absence of every other non-terminal or
+UNKNOWN order for that strategy/account/symbol. The emergency reservation is
+excluded from its own competing-exposure query. A late fill that reduces the
+residual blocks dispatch before `UNKNOWN`/`dispatch_started` and before any
+broker call; the existing never-dispatched `RESERVED -> REJECTED` transition
+releases it. No provider, `orders.py`, accounting, migration, or shared contract
+changed.
+
+Ordinary explicit-exit enforcement is BLOCKED on Member 2’s shared-contract
+review: canonical `OrderIntent` has no trusted structured reducing/exit class,
+and free-text reasons or strategy names are not used as authorization evidence.
+Required follow-up is a backwards-compatible validated action classification,
+propagated by strategy/runtime/provider code, after which Member 3 can apply the
+same non-crossing residual proof without changing ordinary entry/reversal
+semantics. Member 2’s status/fill ordering, cancel terminal-outcome and scoped
+provider-mapping fixes remain separate live-execution blockers; Member 1 + 2
+still own durable fill identity/attribution. Cancellation coordination and live
+kill adaptation are not complete.
+
+Verification: focused offline risk/recovery/kill/021-fixture suite passed **77
+tests** (`tests/test_admission_recovery_safety.py`, `test_kill.py`,
+`test_execution_state_machine.py`, `test_recovery.py`, `test_safety.py`,
+`test_account_risk.py`, `test_official021_rest.py`) using
+`--basetemp=data/member3-task4-risk-focused`; source Ruff lint and format check
+passed, and `git diff --check` passed. The complete backend regression was
+started once with a fresh ignored basetemp and JUnit output path, but remained
+CPU-active beyond the historical duration and produced no JUnit file; it was
+stopped after bounded observation. It is **not** claimed as a pass. The modified
+test file has six pre-existing Ruff-format findings outside this change; they
+were not mechanically reformatted in this scoped safety task.

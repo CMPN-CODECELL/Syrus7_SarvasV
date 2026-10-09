@@ -11,6 +11,7 @@ from backend.shared.contracts import (
     Side,
     Tick,
 )
+from backend.execution.orders import SubmissionBlocked
 
 
 class ControllableClock:
@@ -397,4 +398,70 @@ def test_emergency_exit_and_mock_replay_contracts_preserved():
     rows = platform.store.rows("SELECT * FROM orders WHERE id='emerg_exit_1'")
     assert rows[0]["status"] in {OrderStatus.OPEN.value, OrderStatus.FILLED.value}
     assert rows[0]["emergency"] == 1
+    platform.close()
+
+
+def test_emergency_dispatch_rechecks_residual_after_late_cancelled_exit_fill(
+    monkeypatch,
+):
+    platform, clock = make_test_platform()
+    platform.reliability.resume()
+
+    entry = make_intent(platform, "entry_for_emergency_race", qty=10)
+    platform.risk.submit(entry)
+    platform.ingest(
+        platform.broker.execute(entry.intent_id, 10, Decimal("100.0"), clock())
+    )
+
+    # A previously cancelled reducing order is terminal locally, but may still
+    # receive a late provider fill while the emergency reservation waits.
+    prior_exit = make_intent(
+        platform, "cancelled_exit_for_emergency_race", side=Side.SELL, qty=5
+    )
+    platform.risk.submit(prior_exit)
+    platform.cancel(prior_exit.intent_id)
+
+    platform.risk.state = Gate.KILLING
+    platform.reliability.safety.set("kill_latched", True)
+    emergency = make_intent(platform, "emergency_race_exit", side=Side.SELL, qty=10)
+    platform.risk.authorize_emergency(emergency)
+
+    broker_submits = []
+    original_submit = platform.broker.submit
+
+    def recording_submit(intent):
+        broker_submits.append(intent.intent_id)
+        return original_submit(intent)
+
+    monkeypatch.setattr(platform.broker, "submit", recording_submit)
+    original_start = platform.orders._start_reserved
+
+    def late_fill_then_start(intent):
+        platform.ingest(
+            platform.broker.execute(
+                prior_exit.intent_id,
+                5,
+                Decimal("100.0"),
+                clock(),
+                allow_late=True,
+            )
+        )
+        return original_start(intent)
+
+    monkeypatch.setattr(platform.orders, "_start_reserved", late_fill_then_start)
+    with pytest.raises(SubmissionBlocked):
+        platform.orders.submit_reserved(emergency)
+
+    row = platform.store.rows(
+        "SELECT status,dispatch_started FROM orders WHERE id=?",
+        (emergency.intent_id,),
+    )[0]
+    assert row["status"] == OrderStatus.REJECTED.value
+    assert row["dispatch_started"] == 0
+    assert broker_submits == []
+    assert platform.ledger.quantity("acc_a", "strat_a", "TCS") == 5
+    audit = platform.store.rows(
+        "SELECT payload FROM audit WHERE type='EMERGENCY_DISPATCH_BLOCKED'"
+    )
+    assert any("EMERGENCY_RESIDUAL_INSUFFICIENT" in row["payload"] for row in audit)
     platform.close()

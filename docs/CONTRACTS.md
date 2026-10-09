@@ -119,6 +119,29 @@ Action semantics remain distinct:
   a latched KILLING gate. Capability/readiness projection alone never authorizes
   or verifies a close.
 
+### Reducing-intent classification handoff (Task 4)
+
+`OrderIntent` currently has no structured, trusted classification for an
+ordinary strategy exit or reducing intent; its `reason` is descriptive text and
+must not authorize a reduction. Therefore the RiskGateway can enforce
+non-crossing residual proof only for the existing persisted `emergency=1`
+reservation path. At both reservation and serialized dispatch it requires an
+opposite-side, positive quantity no greater than the current attributed virtual
+residual, with every other non-terminal order for that strategy/account/symbol
+(including `UNKNOWN`) treated as competing exposure. The emergency reservation
+itself is excluded at dispatch so it cannot conflict with itself. A changed
+residual, competing exposure, kill/gate/connection failure, or unsettled broker
+call blocks before broker submission and releases the never-dispatched
+reservation through the existing `RESERVED -> REJECTED` transition.
+
+Member 2 must review and write the smallest shared-contract addition before
+ordinary exit enforcement: a validated enum-like intent action/classification
+(for example `EXPOSURE` versus `REDUCE_ONLY`), defaulting to exposure for
+backwards compatibility, preserved through strategy/runtime/provider mappings.
+Only that structured field—not strategy names or free-text reasons—may enable
+the same residual proof for normal exits. Until then, ordinary reversal behavior
+and its existing risk limits remain unchanged.
+
 Required provider-contract additions are intentionally not added to
 `backend/shared/contracts.py` in this task. Member 2 review must define provider
 subscription acknowledgement and snapshot coverage/horizon fields before they
