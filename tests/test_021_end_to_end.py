@@ -87,6 +87,8 @@ def test_synthetic_complete_021_fixture_syncs_trade_before_terminal_fill(tmp_pat
                     else []
                 ),
             )
+        if path.endswith("/portfolio/holdings"):
+            return httpx.Response(200, json=[])
         raise AssertionError(f"unexpected fake 021 request: {request.method} {path}")
 
     class CompleteFake021(Official021RESTAdapter):

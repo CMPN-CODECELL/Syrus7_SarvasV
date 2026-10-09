@@ -1,5 +1,10 @@
 # Member 2 Progress
 
+- 2026-10-09: Integrated current `origin/main` with the 021 execution branch.
+  Preserved REST trade identity as fill authority, provider-order mappings,
+  optional order-stream lifecycle telemetry, update acknowledgement, and the
+  documented 021 strategy path through platform risk. Merged-tree validation:
+  480 backend passed / 1 skipped; 51 frontend passed; Ruff, ESLint, and Vite build passed.
 - 2026-10-09: Official 021 wire normalization added behind an OFF-by-default adapter boundary: instruments, signed quantity, paise, response/error classification, TC1/TC3/TC4/TC8 strict parsing. Order-WS trade evidence cannot create Fill without REST identity. Fixture-verified only; transport, durable mapping and sandbox remain blocked.
 
 ## Ownership
@@ -180,3 +185,12 @@ real implementation deferred on sponsor evidence. No migration/lockfile change.
   REST submit → unique REST fill → ledger position → complete fixture
   reconciliation. Full backend regression: 441 passed, 1 optional PostgreSQL
   test skipped.
+
+## 2026-10-09 — Empty 021 virtual-account bootstrap
+
+- Re-verified authenticated account reads: orders, trades, positions and
+  holdings simultaneously returned empty; instruments and ephemeral-key reads
+  passed. No write endpoint was invoked.
+- Added the DEC-038 adapter boundary: only those four empty views plus an
+  execution-empty dedicated 021 store can report bootstrap completeness. Any
+  provider data, local order/fill, or mapping retains incomplete status.

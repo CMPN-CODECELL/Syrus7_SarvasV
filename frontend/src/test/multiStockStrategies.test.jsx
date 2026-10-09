@@ -8,7 +8,7 @@ vi.mock('../api/client',()=>({api:{get:mocks.get,post:mocks.post}}))
 
 import { StrategiesPage } from '../pages/StrategiesPage'
 
-function renderPage(refresh=vi.fn(),snapshot={subscriptions:[],positions:[]}){
+function renderPage(refresh=vi.fn(),snapshot={subscriptions:[],positions:[],market_data:{canonical_symbols:['RELIANCE','TCS','INFY']}}){
   const context={snapshot,refresh}
   return render(<MemoryRouter><Routes><Route element={<Outlet context={context}/> }><Route index element={<StrategiesPage/>}/></Route></Routes></MemoryRouter>)
 }
@@ -25,13 +25,14 @@ describe('multi-stock strategy creation',()=>{
     mocks.post.mockResolvedValue({enabled:true})
     renderPage(refresh,{
       subscriptions:[{id:'auto-hidden',account:'acc_a',kind:'auto_adaptive',symbol:'TCS',enabled:1,state:'READY',readiness:{samples:0,warmup:1,ready:false}}],positions:[],
-      auto_mode:{enabled:false,candidate_count:200,evaluated_count:12,policy:{max_positions:3,entry_momentum:'0.003',take_profit:'0.01',stop_loss:'0.005'},decisions:[{symbol:'TCS',selected_strategy:'mean_reversion',action:'HOLD',result:null,momentum:'0.002',reason:'no entry or exit threshold crossed',observed_at:123}]},
+      auto_mode:{enabled:false,candidate_count:200,evaluated_count:12,selected_symbol:'TCS',selected_strategy:'mean_reversion',selected_strategy_instance_id:'auto-hidden',policy:{max_positions:3,entry_momentum:'0.003',take_profit:'0.01',stop_loss:'0.005'},decisions:[{symbol:'TCS',selected_strategy:'mean_reversion',action:'HOLD',result:null,momentum:'0.002',reason:'no entry or exit threshold crossed',observed_at:123}],instances:[{id:'auto-hidden',kind:'auto_adaptive',symbol:'TCS',readiness:{samples:5,warmup:5,ready:true},financial_position:{net_quantity:0,net_pnl:'0',charges:'0'},decision:{selected_strategy:'mean_reversion',action:'HOLD',result:null},latest_order:null}]},
     })
     expect(screen.getByText('Profit is not guaranteed.')).toBeInTheDocument()
     expect(screen.getAllByText('TCS').length).toBeGreaterThan(0)
-    expect(screen.getByText('Mean Reversion')).toBeInTheDocument()
+    expect(screen.getAllByText('Mean Reversion').length).toBeGreaterThan(0)
     expect(screen.getByText('HOLD')).toBeInTheDocument()
-    expect(screen.queryByText('auto-hidden')).not.toBeInTheDocument()
+    expect(screen.getAllByText(/auto-hidden/).length).toBeGreaterThan(0)
+    expect(screen.getByText('No broker order')).toBeInTheDocument()
     await user.click(screen.getByRole('button',{name:'Start auto mode'}))
     expect(mocks.post).toHaveBeenCalledWith('/api/auto-mode/start')
     expect(refresh).toHaveBeenCalledOnce()
@@ -44,7 +45,7 @@ describe('multi-stock strategy creation',()=>{
     await user.selectOptions(dropdown,'RELIANCE')
     expect(screen.getByRole('button',{name:'Remove RELIANCE'})).toBeInTheDocument()
     expect(screen.getByText(/momentum-reliance/)).toBeInTheDocument()
-    expect(screen.getByText(/not confirmation of live-feed availability/i)).toBeInTheDocument()
+    expect(screen.getByText(/authenticated backend\/provider inventory/i)).toBeInTheDocument()
     expect(within(dropdown).getByRole('option',{name:'RELIANCE'})).toBeDisabled()
   })
 

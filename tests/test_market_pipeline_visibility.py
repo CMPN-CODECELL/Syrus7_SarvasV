@@ -31,7 +31,20 @@ def test_closed_candles_are_idempotent_provider_scoped_and_restart_safe(tmp_path
         assert rows[0]["close"] == "101.50"
         assert rows[0]["volume_available"] == 0
 
-        original = Candle("TCS", 60, rows[0]["start_time"], rows[0]["end_time"], Decimal("1"), Decimal("2"), Decimal("1"), Decimal("2"), 0, True, False, "MOCK_REPLAY")
+        original = Candle(
+            "TCS",
+            60,
+            rows[0]["start_time"],
+            rows[0]["end_time"],
+            Decimal("1"),
+            Decimal("2"),
+            Decimal("1"),
+            Decimal("2"),
+            0,
+            True,
+            False,
+            "MOCK_REPLAY",
+        )
         first.store.save_candle(original, provider="other-source")
         first.store.save_candle(original, provider="replay")
         assert first.store.candle_count("replay") == 1
@@ -44,7 +57,9 @@ def test_closed_candles_are_idempotent_provider_scoped_and_restart_safe(tmp_path
     try:
         assert len(restored.closed_candles) == 1
         assert restored.closed_candles[0].data_source == "MOCK_REPLAY"
-        assert restored.store.candle_rows("TCS", 60, 20, "replay")[0]["close"] == "101.50"
+        assert (
+            restored.store.candle_rows("TCS", 60, 20, "replay")[0]["close"] == "101.50"
+        )
     finally:
         restored.close()
 
@@ -93,11 +108,17 @@ def test_account_snapshot_does_not_expose_other_replay_instruments():
         platform.account("account-a")
         platform.strategies.subscribe("account-a", "mine", "momentum", "TCS")
         platform.tick(_tick(1_800_000_000, "100.25", "own"), replay=True)
-        platform.tick(Tick("PRIVATE", 1_800_000_001, Decimal("99"), 0, "other"), replay=True)
+        platform.tick(
+            Tick("PRIVATE", 1_800_000_001, Decimal("99"), 0, "other"), replay=True
+        )
 
         snapshot = platform.snapshot("account-a")
-        assert [item["symbol"] for item in snapshot["market_data"]["latest_quotes"]] == ["TCS"]
-        assert {item["symbol"] for item in snapshot["market_data"]["forming_candles"]} == {"TCS"}
+        assert [
+            item["symbol"] for item in snapshot["market_data"]["latest_quotes"]
+        ] == ["TCS"]
+        assert {
+            item["symbol"] for item in snapshot["market_data"]["forming_candles"]
+        } == {"TCS"}
         assert {item["symbol"] for item in snapshot["candles"]} <= {"TCS"}
     finally:
         platform.close()
@@ -135,7 +156,20 @@ def test_postgres_candle_repository_uses_migration_column_names():
     store.depth = 0
     store.CANDLE_RETENTION_SECONDS = 365 * 24 * 60 * 60
     store.lock = __import__("threading").RLock()
-    candle = Candle("TCS", 60, 60, 120, Decimal("1"), Decimal("2"), Decimal("1"), Decimal("2"), 0, True, False, "021_LIVE")
+    candle = Candle(
+        "TCS",
+        60,
+        60,
+        120,
+        Decimal("1"),
+        Decimal("2"),
+        Decimal("1"),
+        Decimal("2"),
+        0,
+        True,
+        False,
+        "021_LIVE",
+    )
     store.save_candle(candle, provider="021")
     store.candle_rows("TCS", 60, 20, provider="021")
     insert_query = store.db.calls[0][0]

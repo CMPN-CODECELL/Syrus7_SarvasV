@@ -132,6 +132,114 @@ def test_auto_mode_compares_momentum_breakout_and_mean_reversion():
         platform.close()
 
 
+def test_auto_mode_persists_selected_instance_before_entry_threshold():
+    platform, clock = running_platform()
+    try:
+        platform.auto_mode.entry_momentum = D("0.50")
+        platform.auto_mode.start("account-a")
+        for index, price in enumerate((100, 100, 100)):
+            tick(platform, clock, "BBB", price, index)
+        for index, price in enumerate((100, 100, 101)):
+            tick(platform, clock, "AAA", price, index)
+
+        snapshot = platform.snapshot("account-a")
+        auto = snapshot["auto_mode"]
+        assert auto["selected_symbol"] == "AAA"
+        assert auto["selected_strategy_instance_id"].startswith("auto-")
+        assert len(auto["instances"]) == 1
+        instance = auto["instances"][0]
+        assert instance["symbol"] == "AAA"
+        assert instance["readiness"] == {
+            "samples": 3,
+            "warmup": 3,
+            "ready": True,
+            "evidence": "NORMALIZED_MARKET_UPDATES",
+        }
+        assert instance["financial_position"]["evidence_status"] == "NO_FILLS"
+        assert instance["latest_order"] is None
+        assert not platform.store.rows(
+            "SELECT id FROM orders WHERE strategy LIKE 'auto-%'"
+        )
+    finally:
+        platform.close()
+
+
+def test_auto_mode_retires_flat_unselected_instances():
+    platform, _clock = running_platform()
+    try:
+        platform.strategies.subscribe(
+            "account-a", "auto-retired-old", "auto_adaptive", "OLD"
+        )
+        platform.auto_mode.start("account-a")
+        selected = platform.auto_mode._select_subscription(
+            "account-a", "AAA", "momentum"
+        )
+
+        rows = {
+            row["id"]: row
+            for row in platform.store.rows(
+                "SELECT id,enabled FROM subscriptions WHERE kind='auto_adaptive'"
+            )
+        }
+        assert rows[selected]["enabled"] == 1
+        assert rows["auto-retired-old"]["enabled"] == 0
+        assert [
+            row["id"]
+            for row in platform.snapshot("account-a")["auto_mode"]["instances"]
+        ] == [selected]
+    finally:
+        platform.close()
+
+
+def test_auto_mode_restores_explicit_start_but_not_stop(tmp_path):
+    path = str(tmp_path / "auto-restore.db")
+    first = Platform(path)
+    first.account("account-a")
+    first.strategies.subscribe("account-a", "seed-a", "momentum", "AAA")
+    first.auto_mode.start("account-a")
+    first.close()
+
+    restarted = Platform(path)
+    try:
+        assert restarted.auto_mode.restore() == ("account-a",)
+        assert restarted.auto_mode.evidence("account-a")["enabled"] is True
+        restarted.auto_mode.stop("account-a")
+    finally:
+        restarted.close()
+
+    stopped = Platform(path)
+    try:
+        assert stopped.auto_mode.restore() == ()
+        assert stopped.auto_mode.evidence("account-a")["enabled"] is False
+    finally:
+        stopped.close()
+
+
+def test_subscription_without_fills_has_backend_zero_projection():
+    platform, _clock = running_platform()
+    try:
+        subscription = next(
+            row
+            for row in platform.snapshot("account-a")["subscriptions"]
+            if row["id"] == "seed-a"
+        )
+        assert subscription["financial_position"] == {
+            "strategy_instance_id": "seed-a",
+            "symbol": "AAA",
+            "net_quantity": 0,
+            "average_price": "0",
+            "realized_pnl": "0",
+            "unrealized_pnl": "0",
+            "gross_pnl": "0",
+            "charges": "0",
+            "net_pnl": "0",
+            "evidence_status": "NO_FILLS",
+        }
+        assert platform.snapshot("account-a")["positions"] == []
+    finally:
+        platform.close()
+
+
 def test_auto_mode_api_is_authenticated_and_account_scoped():
     platform = Platform()
     platform.account("account-a")

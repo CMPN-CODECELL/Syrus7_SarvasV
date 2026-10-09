@@ -176,10 +176,10 @@ class Reliability:
         else:
             broker_status, broker_reason = "VERIFIED", "BROKER_EVIDENCE_FRESH"
 
-        coverage_verified = (
-            report.get("verified") is True
-            and self.health in {Health.HEALTHY, Health.DEGRADED}
-        )
+        coverage_verified = report.get("verified") is True and self.health in {
+            Health.HEALTHY,
+            Health.DEGRADED,
+        }
         coverage_status = "VERIFIED" if coverage_verified else "UNKNOWN"
         coverage_reason = (
             "SNAPSHOT_COVERAGE_VERIFIED"
@@ -189,9 +189,33 @@ class Reliability:
         reconciliation_status = "VERIFIED" if coverage_verified else "UNKNOWN"
         reconciliation_reason = report.get("reason") or "RECONCILIATION_UNAVAILABLE"
 
-        subscription_status = "UNKNOWN" if has_external else "NOT_APPLICABLE"
+        provider_state = {}
+        if has_external and self.external_market_data is not None:
+            telemetry = getattr(self.external_market_data, "telemetry", None)
+            if telemetry is not None:
+                provider_state = telemetry()
+        subscribed_symbols = set(provider_state.get("subscribed_symbols") or ())
+        subscription_observed = bool(
+            has_external
+            and required_symbols
+            and provider_state.get("connected") is True
+            and required_symbols <= subscribed_symbols
+        )
+        subscription_status = (
+            "NOT_APPLICABLE"
+            if not required_symbols
+            else "VERIFIED"
+            if subscription_observed
+            else "UNKNOWN"
+            if has_external
+            else "NOT_APPLICABLE"
+        )
         subscription_reason = (
-            "PROVIDER_SUBSCRIPTION_EVIDENCE_UNAVAILABLE"
+            "NO_REQUIRED_MARKET_SYMBOLS"
+            if not required_symbols
+            else "PROVIDER_SUBSCRIPTION_OBSERVED"
+            if subscription_observed
+            else "PROVIDER_SUBSCRIPTION_EVIDENCE_UNAVAILABLE"
             if has_external
             else "NO_EXTERNAL_PROVIDER_SUBSCRIPTION"
         )
@@ -727,20 +751,32 @@ class Reliability:
             if not evidence["session_open"]:
                 raise ValueError(f"market session closed: {evidence['session_reason']}")
             if evidence["broker_status"] == "DISCONNECTED":
-                raise ValueError(f"broker evidence not ready: {evidence['broker_reason']}")
+                raise ValueError(
+                    f"broker evidence not ready: {evidence['broker_reason']}"
+                )
             if evidence["broker_reason"] in {
                 "BROKER_CALL_UNSETTLED",
                 "BROKER_RECONCILIATION_REQUIRED",
             }:
-                raise ValueError(f"broker evidence not ready: {evidence['broker_reason']}")
+                raise ValueError(
+                    f"broker evidence not ready: {evidence['broker_reason']}"
+                )
             if evidence["coverage_status"] != "VERIFIED":
-                raise ValueError(f"snapshot coverage not verified: {evidence['coverage_reason']}")
+                raise ValueError(
+                    f"snapshot coverage not verified: {evidence['coverage_reason']}"
+                )
             if evidence["reconciliation_status"] != "VERIFIED":
-                raise ValueError(f"reconciliation not verified: {evidence['reconciliation_reason']}")
+                raise ValueError(
+                    f"reconciliation not verified: {evidence['reconciliation_reason']}"
+                )
             if evidence["subscription_status"] not in {"VERIFIED", "NOT_APPLICABLE"}:
-                raise ValueError(f"provider subscription evidence unavailable: {evidence['subscription_reason']}")
+                raise ValueError(
+                    f"provider subscription evidence unavailable: {evidence['subscription_reason']}"
+                )
             if evidence["unknown_order_count"] > 0:
-                raise ValueError("unresolved unknown orders present across accounts; reconciliation required")
+                raise ValueError(
+                    "unresolved unknown orders present across accounts; reconciliation required"
+                )
 
             adapter = getattr(self.broker, "adapter", self.broker)
             with self.store.lock:

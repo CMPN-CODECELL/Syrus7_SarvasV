@@ -786,3 +786,145 @@ Local HTTP explicitly uses `ALGOSHIELD_SECURE_COOKIE=false`; deployment behind a
 
 ### Reason and impact
 URL credentials leak through browser history, logs, and referrers. Explicit configuration prevents a local development default from silently asserting TLS transport or proxy trust. This does not invent a production origin, proxy allowlist, or identity provider, and does not alter account-scoped server authorization.
+
+## DEC-036 — Guarded, bounded automatic strategy mode
+
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Decision
+
+Add an authenticated, explicitly started auto mode over a configurable bounded
+set of provider-supported cash equities. It compares momentum, breakout and
+rebound-confirmed mean-reversion evidence, chooses a strongest qualified
+stock/policy pair for a quantity-one long entry, bounds concurrent attributed
+positions, and exits on configured take-profit, stop-loss or reversal evidence.
+
+Auto creates ordinary one-symbol subscriptions and canonical `OrderIntent`
+values. RiskGateway, OrderManager, broker fills, ledger attribution,
+reconciliation, market-session controls and the global gate remain
+non-bypassable. Durable start/stop evidence restores scanning after restart but
+never reopens the gate; reconciliation and authorized resume remain mandatory.
+
+### Reason and impact
+
+This makes inactive strategies understandable and offers a hands-off workflow
+without inventing a second execution path, unbounded whole-market sockets,
+short-selling assumptions or a profitability claim. Loss remains possible and
+live 021 writes remain subject to DEC-033/034 reconciliation limits. No schema,
+migration, provider wire contract or broker authority changed.
+
+## DEC-037 — Adaptive auto-policy evidence and backend-owned empty financial state
+
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Context
+
+The first auto-mode presentation exposed internal subscription rows and rendered
+missing fill-derived positions as dashes. It also described one momentum score,
+which did not meet the requested adaptive strategy-selection workflow. Replacing
+dashes in React with computed zeroes would violate the backend financial-truth
+boundary.
+
+### Decision
+
+Clarify and extend DEC-036: Auto mode compares momentum, breakout and
+rebound-confirmed mean-reversion scores after bounded cross-stock coverage, and
+records the selected policy and score with BUY/SELL/HOLD evidence. Internal
+`auto_*` subscriptions remain durable attribution/control records but are not
+listed as user-created manual strategy instances; open auto positions remain
+visible in the Auto mode panel and full order/fill history remains available.
+
+The backend subscription projection, not React, supplies a zero-valued financial
+view tagged `NO_FILLS` when no attributed fill exists. The authoritative
+positions collection remains fill-derived and omits that synthetic display row.
+Once fills exist, the subscription view is tagged `FILL_DERIVED` and uses Ledger
+output. Zero therefore means verified absence of attributed fills in local
+history, not an invented trade or broker-safety claim.
+
+### Impact
+
+No schema, provider contract, execution authority, fill semantics or risk rule
+changes. Auto selection remains a simple deterministic policy comparison, not
+ML, portfolio optimization, a claim of the objectively best strategy, or a
+profit guarantee. Live 021 writes retain all DEC-033/034 blockers.
+
+## DEC-038 — Isolated 021 ledger and strict empty virtual-account bootstrap
+
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Context
+
+Fresh authenticated reads returned HTTP 200 with empty orders, trades,
+positions and holdings, but no pagination, history-start or atomic snapshot
+metadata. The configured SQLite file also contained an older offline mock/replay
+timeline (159 orders, 132 fills and 12 non-terminal orders) with no 021 order
+mapping. Treating those two broker timelines as one made safe reconciliation
+impossible. DEC-034 remains correct for arbitrary and non-empty 021 snapshots,
+but did not define a bootstrap for a provably unused virtual account.
+
+### Decision
+
+When 021 is enabled without PostgreSQL, use `ALGOSHIELD_021_DB` with the default
+`data/platform-021.db`; never reuse `ALGOSHIELD_DB`, which remains the offline
+mock/replay ledger. Preserve the old database and history.
+
+Permit one narrow complete snapshot: all authenticated 021 orders, aggregate
+trades, positions and holdings must simultaneously be empty; the dedicated 021
+store must contain no local order, fill or 021 mapping. Any non-empty provider
+view or any local execution history leaves snapshot completeness false under
+DEC-033/034. Fresh accepted market marks for every required symbol, plus the
+provider's active subscribed-symbol set and connected state, constitute serving
+subscription evidence; sending a subscription alone does not.
+
+An empty bootstrap only allows reconciliation to become verified. It leaves the
+gate STOPPED and still requires an authorized explicit resume. After the first
+order, ordinary mapped order/trade/position reconciliation applies and the
+today-only cross-day limitation remains fail-closed on restart until a complete
+history horizon is established.
+
+### Impact
+
+This enables a genuinely unused 021 virtual account without deleting or
+ignoring prior financial history. It does not certify arbitrary empty responses,
+non-empty accounts, cross-day recovery, charges, corrections or kill behavior.
+It introduces no broker bypass and does not submit a live order during bootstrap.
+
+## DEC-039 — Provider-derived 021 demo execution without fabricated portfolio state
+
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Context
+
+The virtual exchange rejects some cash instruments for intraday eligibility,
+pre-open state or illiquid market-order restrictions. It may express a
+definitive rejection as HTTP 4xx, an application-failure envelope, or an
+`orderId=0` followed by a terminal zero-fill row. Treating all of those as an
+uncertain submission stopped Auto even though the provider proved no exposure.
+The provider's optional order WebSocket also closes independently while REST
+orders and per-order trades remain the documented execution authority.
+
+### Decision
+
+Never seed holdings, fills or P&L for demonstrations. Configure the documented
+021 product with `ALGOSHIELD_021_PRODUCT`; use `CNC` for the cash-equity demo.
+Map only definitive, zero-execution provider failures to `REJECTED`. Timeouts,
+transport failures, ambiguous responses and any executed quantity remain
+`UNKNOWN` and fail closed. Terminal provider rows with zero traded quantity do
+not poison an otherwise empty-account bootstrap.
+
+Rank 021 cash-equity Auto candidates by provider freeze quantity as a bounded
+liquidity proxy; do not hardcode stock names. The order WebSocket remains
+optional lifecycle telemetry: disconnects are audited, while REST freshness,
+reconciliation and per-order trades retain execution/fill authority. Market
+feed loss, REST uncertainty and unknown submissions still close the gate.
+
+### Impact
+
+The demo shows genuine strategy intents, risk decisions and 021 responses. A
+provider rejection is visible as rejection, an accepted order remains open
+until provider lifecycle evidence arrives, and portfolio/P&L changes only from
+unique REST trade fills. This does not promise execution or profit.

@@ -75,6 +75,27 @@ def test_connected_but_incomplete_and_missing_subscription_evidence_is_unknown(
     platform.close()
 
 
+def test_fresh_marks_prove_external_subscription_is_serving():
+    platform, _ = configured_platform(external=True)
+    platform.external_market_data.telemetry = lambda: {
+        "provider": "021",
+        "source": "021_LIVE",
+        "connected": True,
+        "last_received_at": platform.clock(),
+        "subscribed_symbols": ["X"],
+    }
+    assert platform.reliability.reconcile() is True
+
+    readiness = platform.provider_readiness("a")
+    assert readiness["subscription"] == {
+        "status": "VERIFIED",
+        "observed_at": None,
+        "reason_code": "PROVIDER_SUBSCRIPTION_OBSERVED",
+    }
+    assert readiness["resume"]["eligible"] is True
+    platform.close()
+
+
 def test_stale_market_and_broker_evidence_are_not_ready():
     platform, clock = configured_platform()
     assert platform.reliability.reconcile() is True

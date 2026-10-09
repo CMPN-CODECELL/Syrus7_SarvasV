@@ -234,6 +234,9 @@ def test_official_open_runtime_is_blocked_without_subscription_acknowledgement()
                 "RELIANCE", int(now), Decimal("100"), 0, "seed", data_source="021_LIVE"
             )
         )
+        platform.strategies.subscribe(
+            "a", "official-breakout", "open_1pct_tp5_sl5", "RELIANCE"
+        )
         assert platform.reliability.reconcile()
         with pytest.raises(
             ValueError,

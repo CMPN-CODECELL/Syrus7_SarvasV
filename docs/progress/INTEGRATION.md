@@ -1,5 +1,22 @@
 # Integration Progress
 
+## 2026-10-09 — `origin/main` integration checkpoint
+
+- Merged main's canonical admission/recovery safety, operator-aware React controls,
+  durable candle visibility, and secure telemetry work with the 021 REST/market,
+  order lifecycle, Auto mode, and provider-evidence implementation on
+  `codex/021-integration`.
+- Conflict resolution preserved the mandatory intent → risk → order manager →
+  broker path. Auto and documented 021 strategies again consume normalized ticks;
+  REST trades remain fill authority and optional order WebSocket events remain
+  lifecycle telemetry only.
+- Provider subscription acknowledgement, quote freshness, broker snapshot coverage,
+  and reconciliation remain separate safety evidence. Missing evidence does not
+  become a success state.
+- Current merged-tree validation: Ruff passed; backend **480 passed, 1 skipped**;
+  frontend **51 passed**; ESLint and the Vite production build passed;
+  `git diff --check` passed.
+
 ## 2026-10-09 — Admission and recovery safety enforcement (Member 3 Task 3, DEC-034)
 
 - Implemented unified canonical safety evidence evaluator `Reliability.evaluate_safety_evidence(*, account_id=None, symbols=None, external_market_data=None, broker_connected=None)` that evaluates underlying evidence dimensions: broker transport connectivity, settlement/uncertainty state, market quote freshness, broker evidence freshness, snapshot completeness, reconciliation status, external provider subscription review, and unresolved unknown orders.
@@ -36,6 +53,20 @@
   - Frontend: 47 passed across 10 test files (including 5 new focused tests in `frontend/src/test/operatorAuthority.test.jsx`); ESLint clean (0 errors, 0 warnings); Vite production build passed.
   - Backend: 38 passed in `tests/test_operator_authority.py`, including strengthened revocation zero-mutation verification on gate, order rows, and fill rows, with session remaining valid for ordinary authenticated endpoints.
 
+- Added a process-local, explicitly activated auto strategy orchestrator over
+  the existing one-instance/one-symbol contract. It scans a bounded cash-equity
+  catalogue subset, selects among momentum, breakout and mean reversion, records
+  BUY/SELL/HOLD and risk outcomes, and preserves the
+  canonical risk → order → broker → fill → ledger chain.
+- Dynamic 021 feed composition now includes active scan candidates and symbols
+  required by open orders/positions. Rebuilding that universe remains fail-closed
+  and requires reconciliation plus explicit resume before risk-increasing work.
+- Added server-side policy configuration and React controls/evidence. This is
+  mock-fixture verified, not a profitability or live-021-write claim. Backend
+  `NO_FILLS` projections replace ambiguous financial dashes without adding
+  browser-side calculations or authoritative position rows. Final
+  regression: 446 backend passed / 1 optional PostgreSQL skip; 43 frontend
+  passed; Ruff, formatting, ESLint, Vite build, docs links and diff checks passed.
 
 ## 2026-10-09 — Official 021-03 gap-only fixture integration
 
@@ -569,6 +600,79 @@ readiness/recovery tests passed; full backend regression passed 428 tests with 1
 optional PostgreSQL test skipped. Focused Ruff check/format and `git diff
 --check` passed. The existing Starlette/httpx deprecation warning remains; no
 dependency was changed.
+
+- Merged current `origin/main` into `codex/021-integration` without discarding
+  existing work. Removed whole-catalogue default subscription; live desired
+  universe is enabled strategy symbols plus optional pinned symbols and updates
+  through controlled fail-closed socket rebuilds.
+- Added provider-boundary duplicate fingerprints, 10-second configurable
+  timestamp normalization with detailed fallback evidence, bounded market
+  reconnect/resubscribe, order-stream reconnect, REST-fill-first sequencing,
+  durable-apply acknowledgement, and separate broker operation deadlines.
+- Registered `time_0915_1515` and `open_1pct_tp5_sl5` in runtime composition;
+  both remain ordinary canonical intent producers subject to reconciliation,
+  RiskGateway and OrderManager. React Market Data now exposes market/order socket
+  health, desired/subscribed universe, official open, duplicate/timestamp and
+  reconnect evidence without any provider secret.
+- Authenticated read-only 021 checks passed orders, instruments, trades,
+  positions, ephemeral key, two-symbol market WS observations, normalized live
+  quotes and order-WS handshake. No order write occurred. The documented
+  today/current endpoints still do not establish complete cross-day broker
+  history, so live reconciliation and risk-increasing execution remain safely
+  blocked rather than falsely certified.
+- Final verification: backend `441 passed, 1 skipped`; frontend `42 passed`,
+  ESLint and Vite production build passed; Ruff check/format and diff check
+  passed. The only backend warning is the existing Starlette/httpx deprecation.
+
+## 2026-10-09 — Adaptive Auto attribution visibility
+
+- Auto now persists the selected account-scoped attribution instance once its
+  cross-stock comparison coverage is warm, before an entry threshold is crossed.
+  This makes subscription/readiness visible without fabricating a broker order.
+- Auto readiness is based on normalized provider updates, while its snapshot row
+  includes backend fill-derived financial evidence, current decision/risk result,
+  and latest real order state. The selected policy remains evidence on one Auto
+  instance so the runtime cannot emit duplicate policy intents.
+- The manual stock picker no longer contains hardcoded symbol shortcuts; it uses
+  authenticated backend/provider inventory. No live 021 order was submitted in
+  this validation task.
+- Explicit Auto start/stop lifecycle now restores from durable audit evidence on
+  application restart. Restoration re-enables scanning only and leaves the
+  reconciliation-controlled global gate unchanged.
+
+## 2026-10-09 — 021 empty-account bootstrap and ledger isolation
+
+- Fresh authenticated reads returned 200 for orders, trades, positions,
+  holdings, instruments and ephemeral key. The four account-state lists were
+  empty; the catalogue contained 104,969 rows. Order-specific reads were not
+  callable because no order ID exists; no write endpoint was invoked.
+- The previous shared SQLite file contained offline mock history and no 021
+  mappings. DEC-038 now selects a dedicated 021 SQLite ledger and permits only a
+  simultaneous four-view empty bootstrap when that ledger has no execution
+  history. Any non-empty/cross-day state remains incomplete.
+- Fresh accepted marks for every provider-reported subscribed symbol now provide
+  serving-subscription evidence. Reconciliation still leaves the gate STOPPED
+  until authorized explicit resume. Focused tests passed; full-suite evidence is
+  recorded after final validation.
+
+## 2026-10-09 — Truthful 021 virtual-exchange demo execution
+
+- No dummy holdings, fills or P&L were inserted. A dedicated ignored demo ledger
+  preserves identity and user-created strategy rows while starting execution
+  evidence empty.
+- 021 cash orders are configurable with `ALGOSHIELD_021_PRODUCT=CNC`. Auto ranks
+  provider catalogue stocks by provider freeze quantity instead of a hardcoded
+  symbol list.
+- Definitive 021 validation failures now remain `REJECTED` across HTTP 4xx,
+  failure-envelope and zero-ID terminal-row variants. Ambiguous writes still
+  become `UNKNOWN` and fail closed.
+- Live evidence observed real risk-approved quantity-one requests: illiquid or
+  session-restricted instruments were rejected with provider reasons, while
+  `ARCFIN BUY` was provider-accepted as `OPEN`. No fill was claimed without a
+  uniquely identified REST trade.
+- The optional order WebSocket no longer owns safety authority; disconnects are
+  audited while REST order/trade evidence remains authoritative. Market-feed or
+  REST uncertainty still fails closed.
 
 ## 2026-10-09 — Member 3 Task 4 risk-only emergency dispatch revalidation
 

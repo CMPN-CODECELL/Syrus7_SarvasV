@@ -26,12 +26,20 @@ Member 4 coverage in `test_member4.py`: 3/5 EMA signal, five-candle EMA/mean-rev
 
 Multi-stock coverage in `test_multi_stock_subscriptions.py` verifies authentication and session ownership, normalization/deduplication, deterministic symbol slugs, the 20-symbol bound, unknown kinds, all-or-nothing collision behavior, same-kind multi-symbol execution, symbol routing, stop/failure isolation, replay generation for every selected symbol, and strategy+symbol financial attribution. `multiStockStrategies.test.jsx` verifies comma entry, chips/removal, ID preview, single batch submission, pending/success output, and atomic conflict messaging.
 
-`tests/test_auto_mode.py` verifies bounded account-scoped activation, warm-up and
-strongest-candidate selection, canonical risk/order/fill routing, profit-target
-exit, and refusal to create an order when the global gate is closed. The React
-strategy test verifies that policy thresholds, HOLD evidence, the no-profit-
-guarantee warning and authenticated start action are visible. These deterministic
-mock tests prove control flow, not strategy profitability or live 021 execution.
+`tests/test_auto_mode.py` verifies bounded account-scoped activation, warm-up,
+adaptive momentum/breakout/mean-reversion comparison, strongest-candidate
+selection, canonical risk/order/fill routing, profit-target exit, backend-owned
+`NO_FILLS` zero projections, and refusal to create an order when the global gate
+is closed. It also verifies that a selected attribution instance is persisted
+before the entry threshold while no order is fabricated, and that obsolete flat
+Auto instances are disabled without touching exposed/working attribution. The React strategy test
+verifies policy thresholds, selected strategy, provider-backed symbol choices,
+HOLD evidence, selected Auto instances, the no-profit-guarantee warning and the
+authenticated start action. These deterministic mock tests prove control flow,
+not strategy profitability or live 021 execution.
+The backend suite also recreates the platform from disk and verifies that an
+explicit Auto start restores scanning, while a later explicit stop remains
+stopped; neither lifecycle operation resumes the global gate.
 
 ## Required extensions before live integration
 
@@ -63,6 +71,12 @@ secret-free audits. The TestClient fixture models a trusted browser Origin;
 security negatives explicitly override it. It changes transport only, not auth.
 
 021 integration tests use an in-process HTTP transport fixture containing the documented auth, gzipped instruments, order, per-order trade, and position envelopes. They verify exact paise/signed-quantity encoding, durable order mapping, fill identity requirements, and snapshot/drain behavior. On 2026-10-09 a separate credentialed read-only smoke test passed auth-backed orders, instruments, trades, positions, ephemeral keys, a two-symbol market snapshot, normalization and order-WS handshake. It submitted no order and does not prove fees, corrections, cross-day completeness, reconciliation or kill behavior.
+
+DEC-038 tests verify that 021 selects a distinct SQLite ledger, a simultaneously
+empty orders/trades/positions/holdings response bootstraps only an execution-empty
+store, any local execution or non-empty provider view keeps the snapshot
+incomplete, and subscription readiness requires fresh accepted marks for every
+required provider-reported subscribed symbol.
 test_broker_updates adds OPEN rejection/duplicate/reservation/restart fixtures;
 existing timeout/cancel/fill suites remain. Broker contract tests deny identity
 collision across accounts for both mocks. round2Evidence.test.jsx renders backend

@@ -141,6 +141,4 @@ class PostgresStore(Store):
                 "SELECT COUNT(*) AS n FROM algoshield.closed_candles WHERE provider=?",
                 (provider,),
             )[0]["n"]
-        return self.rows(
-            "SELECT COUNT(*) AS n FROM algoshield.closed_candles"
-        )[0]["n"]
+        return self.rows("SELECT COUNT(*) AS n FROM algoshield.closed_candles")[0]["n"]

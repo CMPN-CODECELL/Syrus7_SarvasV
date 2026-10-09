@@ -36,7 +36,7 @@ const snapshot={
   subscriptions:[
     {id:'alpha',account:'acc_a',kind:'momentum',symbol:'TCS',enabled:1,state:'RUNNING',readiness:{samples:5,warmup:5,ready:true}},
     {id:'zero',account:'acc_a',kind:'mean_reversion',symbol:'INFY',enabled:0,state:'STOPPED',readiness:{samples:0,warmup:5,ready:false}},
-    {id:'missing',account:'acc_a',kind:'breakout',symbol:'RELIANCE',enabled:1,state:'READY',readiness:{samples:1,warmup:1,ready:true}},
+    {id:'missing',account:'acc_a',kind:'breakout',symbol:'RELIANCE',enabled:1,state:'READY',readiness:{samples:1,warmup:1,ready:true},financial_position:{net_quantity:0,net_pnl:'0',charges:'0',evidence_status:'NO_FILLS'}},
   ],
   positions:[
     {account_id:'acc_a',strategy_instance_id:'alpha',symbol:'TCS',net_quantity:7,net_pnl:'123.4500',charges:'1.25'},
@@ -63,12 +63,13 @@ describe('backend-shaped React projections',()=>{
   it('labels Yahoo quote evidence and unavailable candle volume honestly',()=>{
     renderOutlet(<MarketDataPage/>,{snapshot:{...snapshot,gate:'UNCERTAIN',market_session:{status:'OPEN'},market_data:{...snapshot.market_data,label:'YAHOO EXTERNAL QUOTES / MOCK EXECUTION',connected:true,volume_available:false,last_event_timestamp:1791521395,last_raw_event_timestamp:'1791521395000',last_received_at:1791521397,received_messages:12,accepted_updates:11,errors:['initial subscription deadline exceeded']},candles:[{symbol:'TCS',interval:60,open:'100',high:'101',low:'100',close:'101',volume:0,volume_available:false,data_source:'YAHOO_EXTERNAL_QUOTES'}]}})
     expect(screen.getByText('YAHOO EXTERNAL QUOTES / MOCK EXECUTION')).toBeInTheDocument()
-    const feedCard=screen.getByText('Market feed').closest('section')
+    const feedCard=screen.getByText('Provider health').closest('section')
     expect(within(feedCard).getByText('UNKNOWN')).toBeInTheDocument()
-    expect(within(feedCard).getByText(/Transport connected/)).toBeInTheDocument()
+    const sourceCard=screen.getByRole('heading',{name:'Source'}).closest('section')
+    expect(within(sourceCard).getByText(/Connected/)).toBeInTheDocument()
     expect(screen.getByText('2026-10-09T04:49:55.000Z')).toBeInTheDocument()
     expect(screen.getByText('Raw: 1791521395000')).toBeInTheDocument()
-    const messagesCard=screen.getByText('Provider messages').closest('section')
+    const messagesCard=screen.getByText('Last received').closest('section')
     expect(messagesCard).toHaveTextContent('12')
     expect(messagesCard).toHaveTextContent('11 accepted')
     expect(screen.getByText('UNCERTAIN')).toBeInTheDocument()

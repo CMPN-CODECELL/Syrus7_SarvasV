@@ -209,6 +209,7 @@ def create_app(platform=None, *, trusted_origins=None, cookie_secure=None):
             username=config.get("021_username"),
             password=config.get("021_password"),
             access_token=config.get("021_token"),
+            product=config["021_product"],
             instrument_cache=config.get("021_instrument_cache"),
             read_timeout=config["broker_read_timeout_seconds"],
             write_timeout=config["broker_write_timeout_seconds"],
@@ -271,8 +272,10 @@ def create_app(platform=None, *, trusted_origins=None, cookie_secure=None):
     @asynccontextmanager
     async def lifespan(app):
         try:
-            if platform is None and engine.external_market_data is not None:
-                engine.start_external_market_data()
+            if platform is None:
+                engine.auto_mode.restore()
+                if engine.external_market_data is not None:
+                    engine.start_external_market_data()
             yield
         finally:
             if platform is None:

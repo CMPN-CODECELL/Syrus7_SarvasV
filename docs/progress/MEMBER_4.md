@@ -2,12 +2,14 @@
 
 - 2026-10-09: Added guarded auto mode with bounded catalogue sampling, adaptive
   momentum/breakout/mean-reversion ranking, long-only quantity-one entry,
-  take-profit/stop-loss/reversal
-  exits, per-account BUY/SELL/HOLD plus risk-result evidence, authenticated
-  start/stop APIs and Strategies UI controls. All intents use the existing
+  take-profit/stop-loss/reversal exits, per-account BUY/SELL/HOLD plus risk-result
+  evidence, authenticated start/stop APIs and Strategies UI controls. Internal
+  auto subscriptions are separated from manual rows; backend `NO_FILLS`
+  projections supply explicit zero position/P&L/charges without browser math.
+  All intents use the existing
   RiskGateway/OrderManager/fill path; process restart disables auto mode and no
   profit guarantee is made. Tests: `tests/test_auto_mode.py` plus React strategy
-  coverage. Final regression: 445 backend passed / 1 optional PostgreSQL skip;
+  coverage. Final regression: 446 backend passed / 1 optional PostgreSQL skip;
   43 frontend passed; Ruff, formatting, ESLint, Vite build, docs links and diff
   checks passed.
 
@@ -399,6 +401,10 @@ No candle algorithm, financial calculation or telemetry provider changed.
 - The dropdown distinguishes symbols observed in backend snapshots from explicitly
   labeled demo shortcuts. It does not claim live-feed availability or silently
   alter provider-specific symbol suffixes.
+- Follow-up: removed the hardcoded shortcut list. The dropdown now uses only
+  authenticated backend/provider inventory and observed symbols. Auto persists
+  and displays its selected attribution instance before order entry, uses
+  normalized-update readiness, and shows its backend risk/order/financial state.
 
 2026-10-09 documentation integration: current ownership, dependencies and acceptance gates are consolidated in [TEAM_EXECUTION_PLAN](../TEAM_EXECUTION_PLAN.md), DEC-028. Direct branch pushes are allowed; PRs optional. No new member feature is claimed implemented by this planning update. Fresh cross-module evidence is in [INTEGRATION](INTEGRATION.md).
 
@@ -419,3 +425,10 @@ No candle algorithm, financial calculation or telemetry provider changed.
 - No live provider smoke test, credential use, order placement or trading resume
   was performed. 021 transport and reconciliation completeness remain
   live-unverified.
+
+## 2026-10-09 — 021 serving-subscription evidence
+
+- Provider readiness now recognizes an active 021 subscription only after fresh
+  accepted marks exist for every required symbol and the provider reports those
+  symbols subscribed. This allows the UI to distinguish verified serving data
+  from a socket/send acknowledgement while preserving fail-closed behavior.

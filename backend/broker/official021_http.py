@@ -244,7 +244,8 @@ class Official021RESTAdapter:
                 if exchange not in EXCHANGE_TO_CODE:
                     continue
                 symbol = row.get("symbol", "").strip().upper()
-                if not symbol or row.get("instrument_type") not in {
+                instrument_type = row.get("instrument_type")
+                if not symbol or instrument_type not in {
                     "STK",
                     "FUTSTK",
                     "FUTIDX",
@@ -253,8 +254,14 @@ class Official021RESTAdapter:
                     "IDX",
                 }:
                     continue
+                if self.product == "CNC" and not (
+                    instrument_type == "STK" and exchange in {"NSECM", "BSEEQ"}
+                ):
+                    continue
+                if self.product == "NRML" and exchange not in {"NSEFO", "BSEFO"}:
+                    continue
                 if (
-                    row.get("instrument_type") == "STK"
+                    instrument_type == "STK"
                     and exchange in {"NSECM", "BSEEQ"}
                     and symbol[:1].isalpha()
                 ):
@@ -283,7 +290,15 @@ class Official021RESTAdapter:
                     "021 instruments response contained no usable rows"
                 )
             self.instruments = loaded
-            self.market_symbols = tuple(sorted(market_symbols))
+            self.market_symbols = tuple(
+                sorted(
+                    market_symbols,
+                    key=lambda symbol: (
+                        -(loaded[symbol].freeze_quantity or 0),
+                        symbol,
+                    ),
+                )
+            )
         except UnicodeDecodeError as exc:
             raise Provider021ProtocolError(
                 "021 instruments response is not UTF-8 CSV"
@@ -348,8 +363,89 @@ class Official021RESTAdapter:
     def submit(self, intent: OrderIntent) -> CanonicalOrder:
         instrument = self._instrument(intent.symbol)
         payload = self._order_payload(intent, instrument)
-        response = self._request("POST", "/orders", json=payload, write=True)
-        data = parse_envelope(response.json())
+        try:
+            response = self._request("POST", "/orders", json=payload, write=True)
+        except Provider021Blocked as exc:
+            # 4xx provider validation/authorization responses are definitive:
+            # the request wasn't accepted and cannot have created exposure.
+            with self.store.transaction():
+                self.store.audit(
+                    "021_ORDER_REJECTED",
+                    {
+                        "order_id": intent.intent_id,
+                        "symbol": intent.symbol,
+                        "reason": str(exc),
+                    },
+                )
+            return CanonicalOrder(intent.intent_id, intent, OrderStatus.REJECTED)
+        response_payload = response.json()
+        if (
+            isinstance(response_payload, dict)
+            and response_payload.get("success") is False
+            and response_payload.get("error")
+        ):
+            with self.store.transaction():
+                self.store.audit(
+                    "021_ORDER_REJECTED",
+                    {
+                        "order_id": intent.intent_id,
+                        "symbol": intent.symbol,
+                        "reason": _text(response_payload["error"]),
+                    },
+                )
+            return CanonicalOrder(intent.intent_id, intent, OrderStatus.REJECTED)
+        data = parse_envelope(response_payload)
+        if isinstance(data, dict) and not data.get("orderId"):
+            provider_status = _text(data.get("status")).lower()
+            provider_type = _text(data.get("type")).lower()
+            rejection = _text(
+                data.get("reason") or data.get("message") or data.get("error")
+            )
+            if (
+                rejection
+                or provider_status == "rejected"
+                or provider_type
+                in {
+                    "error",
+                    "failure",
+                    "failed",
+                    "rejected",
+                }
+            ):
+                with self.store.transaction():
+                    self.store.audit(
+                        "021_ORDER_REJECTED",
+                        {
+                            "order_id": intent.intent_id,
+                            "symbol": intent.symbol,
+                            "reason": rejection or "provider rejected order",
+                        },
+                    )
+                return CanonicalOrder(intent.intent_id, intent, OrderStatus.REJECTED)
+            # The virtual exchange may acknowledge with orderId=0 and publish
+            # the real rejection only in the orders view. Resolve that exact
+            # token/product/quantity without retrying the write.
+            for row in self._orders():
+                if (
+                    _text(row.get("status")) == "Rejected"
+                    and _signed_int(row.get("token")) == instrument.token
+                    and _text(row.get("product")) == instrument.product
+                    and abs(_signed_int(row.get("qtyTraded", 0))) == 0
+                    and abs(_signed_int(row.get("qtyRemaining", 0))) == intent.quantity
+                ):
+                    with self.store.transaction():
+                        self.store.audit(
+                            "021_ORDER_REJECTED",
+                            {
+                                "order_id": intent.intent_id,
+                                "symbol": intent.symbol,
+                                "reason": _text(row.get("reason"))
+                                or "provider rejected order",
+                            },
+                        )
+                    return CanonicalOrder(
+                        intent.intent_id, intent, OrderStatus.REJECTED
+                    )
         if not isinstance(data, dict) or not data.get("orderId"):
             raise Provider021ProtocolError("021 order response omitted orderId")
         provider_order_id = str(data["orderId"])
@@ -483,6 +579,11 @@ class Official021RESTAdapter:
         positions = parse_plain_list(
             self._request("GET", "/portfolio/positions").json()
         )
+        holdings = []
+        if not orders and not trades and not positions:
+            holdings = parse_plain_list(
+                self._request("GET", "/portfolio/holdings").json()
+            )
         mapped = {
             row["provider_order_id"]: row
             for row in self.store.rows(
@@ -493,10 +594,35 @@ class Official021RESTAdapter:
         # The documented endpoints expose current/today state only. They do not
         # prove complete cross-day order and fill history, so this snapshot must
         # not certify reconciliation until that coverage is verified live.
-        complete = False
+        local_execution_empty = not self.store.rows(
+            "SELECT id FROM orders LIMIT 1"
+        ) and not self.store.rows("SELECT id FROM fills LIMIT 1")
+        # A provider-side terminal rejection/cancellation with zero traded
+        # quantity cannot create exposure.  021 may report such rejected
+        # attempts with orderId=0, which is intentionally not durable enough
+        # to map to a local intent.  It must not poison an otherwise empty
+        # account bootstrap, while any executed quantity remains blocking.
+        no_exposure_orders = all(
+            _text(row.get("status")) in {"Rejected", "Cancelled"}
+            and abs(_signed_int(row.get("qtyTraded", 0))) == 0
+            for row in orders
+        )
+        complete = bool(
+            no_exposure_orders
+            and not trades
+            and not positions
+            and not holdings
+            and not mapped
+            and local_execution_empty
+        )
         for row in orders:
             mapping = mapped.get(_text(row.get("orderId")))
             if mapping is None:
+                if (
+                    _text(row.get("status")) in {"Rejected", "Cancelled"}
+                    and abs(_signed_int(row.get("qtyTraded", 0))) == 0
+                ):
+                    continue
                 complete = False
                 continue
             intent = self._local_intent(mapping)
@@ -646,7 +772,10 @@ class Official021RESTAdapter:
         token = self.ephemeral_key()
         url = self.base_url.replace("https://", "wss://").replace("http://", "ws://")
         url = url.replace("/api/developer-api/v1", "/api/developer/websocket/orders")
-        return connect(f"{url}?token={token}")
+        # The 021 virtual order stream doesn't reliably answer WebSocket ping
+        # frames. Disable the client library's keepalive pings; EOF/read errors
+        # still surface as disconnects and retain the fail-closed behavior.
+        return connect(f"{url}?token={token}", ping_interval=None)
 
     def parse_order_update(self, frame: bytes) -> BrokerUpdate | None:
         """Normalize one order frame without manufacturing a fill from WS data."""

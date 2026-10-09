@@ -52,7 +52,9 @@ def make_test_platform(*, external=False):
     else:
         source = "MOCK_REPLAY"
     platform.tick(
-        Tick("TCS", int(clock()), Decimal("100.0"), 10, "init-mark", data_source=source),
+        Tick(
+            "TCS", int(clock()), Decimal("100.0"), 10, "init-mark", data_source=source
+        ),
         replay=not external,
     )
     return platform, clock
@@ -118,7 +120,14 @@ def test_stale_feed_and_broker_block_admission_with_proper_codes():
 
     # Feed a fresh mark
     platform.tick(
-        Tick("TCS", int(clock()), Decimal("101.0"), 10, "fresh-tick", data_source="MOCK_REPLAY"),
+        Tick(
+            "TCS",
+            int(clock()),
+            Decimal("101.0"),
+            10,
+            "fresh-tick",
+            data_source="MOCK_REPLAY",
+        ),
         replay=True,
     )
     assert platform.reliability.reconcile() is True
@@ -137,7 +146,9 @@ def test_incomplete_reconciliation_blocks_admission_and_resume(monkeypatch):
     platform, clock = make_test_platform()
     # Incomplete snapshot
     snapshot = replace(platform.broker.snapshot(), is_complete=False)
-    monkeypatch.setattr(platform.broker_calls, "snapshot", lambda timeout=None: snapshot)
+    monkeypatch.setattr(
+        platform.broker_calls, "snapshot", lambda timeout=None: snapshot
+    )
 
     assert platform.reliability.reconcile() is False
     assert platform.reliability.report["reason"] == "SNAPSHOT_INCOMPLETE"
@@ -158,7 +169,9 @@ def test_incomplete_reconciliation_blocks_admission_and_resume(monkeypatch):
 # -----------------------------------------------------------------------------
 # 2. Evidence invalidates between reservation and dispatch: zero broker calls
 # -----------------------------------------------------------------------------
-def test_evidence_invalidates_between_reservation_and_dispatch_zero_broker_calls(monkeypatch):
+def test_evidence_invalidates_between_reservation_and_dispatch_zero_broker_calls(
+    monkeypatch,
+):
     platform, clock = make_test_platform()
     platform.reliability.resume()
     assert platform.risk.state == Gate.RUNNING
@@ -285,7 +298,9 @@ def test_reconnect_and_restart_never_auto_resume(tmp_path):
     platform = Platform(path=db_file, clock=clock)
     platform.account("acc_a")
     platform.strategies.subscribe("acc_a", "strat_a", "momentum", "TCS")
-    platform.tick(Tick("TCS", int(clock()), Decimal("100.0"), 10, "init-mark"), replay=True)
+    platform.tick(
+        Tick("TCS", int(clock()), Decimal("100.0"), 10, "init-mark"), replay=True
+    )
     platform.reliability.resume()
     assert platform.risk.state == Gate.RUNNING
 
@@ -363,7 +378,9 @@ def test_kill_and_disconnect_during_resume_prevent_gate_opening():
 
     # 2. Broker disconnected before resume
     platform.broker.connected = False
-    with pytest.raises(ValueError, match="broker evidence not ready|reconciliation required"):
+    with pytest.raises(
+        ValueError, match="broker evidence not ready|reconciliation required"
+    ):
         platform.reliability.resume()
     assert platform.risk.state != Gate.RUNNING
     platform.close()
