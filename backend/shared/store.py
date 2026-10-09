@@ -39,7 +39,7 @@ class Store:
         """)
         version = self.db.execute("PRAGMA user_version").fetchone()[0]
         self.audit_clock = time.time
-        if version > 13:
+        if version > 14:
             raise ValueError("SQLite schema is newer than this application")
         if version < 1:
             self.db.execute("PRAGMA user_version=1")
@@ -64,6 +64,7 @@ class Store:
             (11, "011_benchmark_runs.sql"),
             (12, "012_operator_grants.sql"),
             (13, "013_021_order_mappings.sql"),
+            (14, "014_closed_candles.sql"),
         ):
             if version < number:
                 sql = (
@@ -106,6 +107,25 @@ class Store:
     def rows(self, query, args=()):
         with self.lock:
             return self.db.execute(query, args).fetchall()
+
+    def save_candle(self, candle, *, provider="replay"):
+        with self.transaction():
+            self.db.execute(
+                """INSERT INTO closed_candles
+                (provider,symbol,interval,start_time,end_time,open,high,low,close,volume,is_closed,volume_available,data_source)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(provider,symbol,interval,start_time) DO NOTHING""",
+                (provider, candle.symbol, candle.interval, candle.start_time, candle.end_time,
+                 str(candle.open), str(candle.high), str(candle.low), str(candle.close), candle.volume,
+                 int(candle.is_closed), int(candle.volume_available), candle.data_source),
+            )
+
+    def candle_rows(self, symbol=None, interval=None, limit=200):
+        clauses, args = [], []
+        if symbol: clauses.append("symbol=?"); args.append(symbol.upper())
+        if interval: clauses.append("interval=?"); args.append(interval)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        args.append(min(max(int(limit), 1), 1000))
+        return self.rows(f"SELECT * FROM closed_candles{where} ORDER BY start_time DESC LIMIT ?", tuple(args))
 
     def audit(self, event_type, payload, correlation_id=None):
         # Caller holds the transaction; event commits atomically with its transition.

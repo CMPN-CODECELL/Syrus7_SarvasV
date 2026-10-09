@@ -69,6 +69,61 @@ Synthetic demo fees are not a statutory fee model.
 `BrokerAdapter.submit(intent) -> CanonicalOrder`, `cancel(order_id)`, `snapshot() -> BrokerSnapshot`.
 Mock exposes `execute(...)` for deterministic fill injection; it is not part of the real broker interface. `Broker021Adapter` is OFF by default and blocks all live mutations unless explicitly enabled in server configuration. Its 021 REST submit/modify/cancel lifecycle, order-frame status normalizer, and market provider are fixture-tested; live order/fill/cancel evidence remains unverified.
 
+### Provider readiness and uncertainty projection
+
+`GET /api/provider-readiness` and the account-scoped `provider_readiness` field
+in `GET /api/state` are read-only compositions of existing backend evidence.
+They do not open the gate, resume callbacks, mutate an order, or replace
+RiskGateway admission. The projection is scoped to the authenticated account and
+must not expose credentials, UCCs, provider tokens, foreign order IDs, or another
+account's records.
+
+Connectivity is not readiness. The projection reports these dimensions
+independently, with an `observed_at` value when evidence exists and a stable
+`reason_code` when it does not:
+
+- market and broker transport connectivity;
+- authenticated provider subscription evidence;
+- market-data freshness for the account's enabled subscription symbols;
+- broker evidence freshness;
+- provider-attested snapshot coverage/completeness;
+- reconciliation result;
+- explicit-resume requirement and current eligibility;
+- action classes: new exposure, cancellation, and verified emergency reduction;
+- current kill verification separately from any historical certificate.
+
+Socket connection and subscription-send success cannot produce `subscription:
+VERIFIED`. Until a reviewed provider contract supplies acknowledgement evidence,
+an external provider subscription remains `UNKNOWN`. Missing/stale broker or
+market evidence and incomplete coverage likewise remain `UNKNOWN` or `STALE`;
+they never imply `HEALTHY`, absence of UNKNOWN orders, current flatness, or kill
+success. `BrokerSnapshot.is_complete` remains false where the provider has not
+proved the configured history horizon.
+
+Startup, disconnect, reconnect, and reconciliation leave trading closed unless
+the existing explicit authorized resume operation succeeds. A complete
+reconciliation is necessary but does not prove feed freshness or provider
+subscription readiness. `resume.required` therefore differs from
+`resume.eligible`, and neither is inferred from connection state. This Task 1
+projection is advisory: integrating provider subscription readiness into
+admission is a later Member 3 task after Member 2 supplies reviewed evidence.
+
+Action semantics remain distinct:
+
+- New exposure remains behind RiskGateway, durable reservation, a RUNNING gate,
+  enabled runtime, and complete readiness evidence.
+- Cancellation may be conditionally attempted only for a known working order;
+  UNKNOWN submission/cancel outcomes retain uncertainty and are not a verified
+  exposure release.
+- Emergency reduction remains a per-intent, attributed, bounded reduction under
+  a latched KILLING gate. Capability/readiness projection alone never authorizes
+  or verifies a close.
+
+Required provider-contract additions are intentionally not added to
+`backend/shared/contracts.py` in this task. Member 2 review must define provider
+subscription acknowledgement and snapshot coverage/horizon fields before they
+can become canonical input evidence.
+
 ### Official 021 normalization and strategy policy
 
 - Prices cross the adapter as positive integer paise and canonical money remains `Decimal`; unrepresentable sub-paise prices and tick-size violations are rejected.

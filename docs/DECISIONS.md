@@ -730,3 +730,33 @@ When live 021 mode is enabled, 021 is the required primary market source. Yahoo 
 
 ### Reason and impact
 This converts the documented wire contract into a testable integration without leaking provider details into risk, execution, ledger or UI modules. The official material still does not define charges, corrections, complete history, manual-trade attribution, account mapping, or verified kill semantics, so those remain explicitly unknown; zero charges in the adapter are not a claim that live net P&L is exact. No live order or secret is included in this change.
+
+## DEC-033 — Evidence-separated provider readiness projection
+
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Decision
+
+Expose one account-scoped, read-only provider-readiness projection from the
+existing platform/reliability composition. Connectivity, provider subscription
+evidence, market freshness, broker freshness, snapshot coverage, reconciliation,
+explicit-resume status, action class, and current kill verification remain
+separate fields. Missing evidence is `UNKNOWN`; connection or send success never
+proves subscription readiness. A historical kill certificate cannot prove
+current flatness without current complete, fresh reconciliation evidence.
+
+The projection grants no execution authority and does not alter RiskGateway,
+OrderManager, provider modules, cancellation states, or reconciliation. Existing
+explicit resume remains mandatory after startup/reconnect, while the projection
+also states whether all currently modeled evidence would make resume eligible.
+Provider-owned canonical acknowledgement/coverage fields require Member 2 review
+before later admission integration.
+
+### Reason and impact
+
+One composite `connected` or `HEALTHY` label can conceal independent uncertainty
+and encourage unsafe recovery. The additive projection freezes honest semantics
+without weakening the conservative 021 `is_complete=False` boundary or inventing
+provider behavior. Live 021 execution readiness remains blocked on the handoffs
+listed in the Member 3 and integration progress records.

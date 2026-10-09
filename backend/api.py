@@ -626,6 +626,11 @@ def create_app(platform=None, *, trusted_origins=None):
     def get_market_session():
         return financial_json(engine.market_session.to_dict(engine.clock()))
 
+    @app.get("/api/candles")
+    def historical_candles(request: Request, symbol: str | None = None, interval: int | None = Query(None, ge=60, le=3600), limit: int = Query(200, ge=1, le=1000)):
+        require_user(request)
+        return financial_json([dict(row) for row in engine.store.candle_rows(symbol, interval, limit)])
+
     @app.post("/api/market/session")
     def set_market_session(body: MarketSessionRequest, request: Request):
         user = require_operator(request)
@@ -745,6 +750,11 @@ def create_app(platform=None, *, trusted_origins=None):
     def reconciliation_center(request: Request):
         user = require_user(request)
         return account_response(user, engine.reliability.reconciliation_center())
+
+    @app.get("/api/provider-readiness")
+    def provider_readiness(request: Request):
+        user = require_user(request)
+        return account_response(user, engine.provider_readiness(user["account_id"]))
 
     @app.get("/api/traces")
     def recent_traces(request: Request, limit: int = Query(20, ge=1, le=100)):

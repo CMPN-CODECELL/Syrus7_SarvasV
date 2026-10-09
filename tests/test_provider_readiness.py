@@ -1,0 +1,162 @@
+from dataclasses import replace
+from decimal import Decimal
+
+from fastapi.testclient import TestClient
+
+from backend.api import create_app
+from backend.platform import Platform
+from backend.shared.contracts import OrderStatus, Tick
+from tests.usp_helpers import authenticate
+
+
+class Clock:
+    def __init__(self):
+        self.now = 1_800_000_000.0
+
+    def __call__(self):
+        return self.now
+
+
+class ConnectedProvider:
+    supports_live_broker = True
+
+    def stop(self):
+        return True
+
+    def telemetry(self):
+        return {
+            "provider": "021",
+            "source": "021_LIVE",
+            "connected": True,
+            "last_received_at": None,
+        }
+
+
+def configured_platform(*, external=False):
+    clock = Clock()
+    platform = Platform(clock=clock)
+    platform.account("a")
+    platform.strategies.subscribe("a", "s", "momentum", "X")
+    if external:
+        platform.configure_external_market_data(ConnectedProvider())
+        source = "021_LIVE"
+    else:
+        source = "MOCK_REPLAY"
+    platform.tick(
+        Tick(
+            "X", int(clock()), Decimal("100"), 0, "readiness-mark", data_source=source
+        ),
+        replay=not external,
+    )
+    return platform, clock
+
+
+def test_connected_but_incomplete_and_missing_subscription_evidence_is_unknown(
+    monkeypatch,
+):
+    platform, _ = configured_platform(external=True)
+    complete = platform.broker.snapshot()
+    monkeypatch.setattr(
+        platform.broker_calls,
+        "snapshot",
+        lambda timeout=None: replace(complete, is_complete=False),
+    )
+
+    assert platform.reliability.reconcile() is False
+    readiness = platform.provider_readiness("a")
+
+    assert readiness["connectivity"]["market"]["status"] == "CONNECTED"
+    assert readiness["subscription"]["status"] == "UNKNOWN"
+    assert readiness["snapshot_coverage"]["status"] == "UNKNOWN"
+    assert readiness["reconciliation"]["status"] == "UNKNOWN"
+    assert readiness["resume"]["eligible"] is False
+    assert readiness["actions"]["new_exposure"]["status"] == "BLOCKED"
+    assert readiness["kill_verification"]["status"] == "UNKNOWN"
+    platform.close()
+
+
+def test_stale_market_and_broker_evidence_are_not_ready():
+    platform, clock = configured_platform()
+    assert platform.reliability.reconcile() is True
+    clock.now += 16
+
+    readiness = platform.provider_readiness("a")
+
+    assert readiness["market_freshness"]["status"] == "STALE"
+    assert readiness["broker_freshness"]["status"] == "STALE"
+    assert readiness["resume"]["eligible"] is False
+    assert readiness["actions"]["new_exposure"]["status"] == "BLOCKED"
+    platform.close()
+
+
+def test_complete_reconciliation_requires_explicit_resume():
+    platform, _ = configured_platform()
+
+    assert platform.reliability.reconcile() is True
+    readiness = platform.provider_readiness("a")
+
+    assert platform.risk.state == "STOPPED"
+    assert platform.strategies.enabled is False
+    assert readiness["reconciliation"]["status"] == "VERIFIED"
+    assert readiness["resume"] == {
+        "required": True,
+        "eligible": True,
+        "runtime_enabled": False,
+        "reason_code": "EXPLICIT_RESUME_ELIGIBLE",
+    }
+    assert readiness["actions"]["new_exposure"]["status"] == "BLOCKED"
+    platform.close()
+
+
+def test_complete_reconciliation_does_not_replace_market_readiness():
+    platform, clock = configured_platform()
+    assert platform.reliability.reconcile() is True
+    with platform.store.transaction() as db:
+        db.execute(
+            "UPDATE risk_marks SET received_at=?, event_timestamp=? WHERE symbol='X'",
+            (clock() - 16, int(clock()) - 16),
+        )
+
+    readiness = platform.provider_readiness("a")
+
+    assert readiness["reconciliation"]["status"] == "VERIFIED"
+    assert readiness["broker_freshness"]["status"] == "VERIFIED"
+    assert readiness["market_freshness"]["status"] == "STALE"
+    assert readiness["resume"]["eligible"] is False
+    platform.close()
+
+
+def test_provider_readiness_endpoint_is_account_scoped():
+    platform, _ = configured_platform()
+    platform.account("b")
+    platform.strategies.subscribe("b", "other", "momentum", "Y")
+    with platform.store.transaction() as db:
+        db.execute(
+            "INSERT INTO orders (id,strategy,account,symbol,side,quantity,created,status,filled,emergency,dispatch_started) "
+            "VALUES (?,?,?,?,?,?,?,?,0,0,1)",
+            (
+                "foreign-unknown",
+                "other",
+                "b",
+                "Y",
+                "BUY",
+                1,
+                platform.clock(),
+                OrderStatus.UNKNOWN,
+            ),
+        )
+
+    with TestClient(create_app(platform)) as client:
+        authenticate(client, platform, "a", "readiness-user", operator=False)
+        response = client.get("/api/provider-readiness")
+        state_response = client.get("/api/state")
+
+    assert response.status_code == 200
+    assert state_response.status_code == 200
+    readiness = response.json()
+    assert readiness["unknown_order_count"] == 0
+    assert state_response.json()["provider_readiness"]["unknown_order_count"] == 0
+    assert "foreign-unknown" not in response.text
+    assert "foreign-unknown" not in state_response.text
+    assert "b" not in readiness
+    platform.close()
