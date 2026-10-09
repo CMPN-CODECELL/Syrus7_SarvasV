@@ -244,7 +244,8 @@ export function FailureLabPage(){
   const [activeStepIndex,setActiveStepIndex]=useState(0);
   const [error,setError]=useState('');
   const resultRef=useRef(null);
-  const mockLabEnabled=snapshot?.demo_enabled!==false;
+  const mockLabEnabled=snapshot?.failure_lab_enabled!==false;
+  const isolatedLab=snapshot?.demo_enabled===false;
 
   useEffect(()=>{
     api.get('/api/failure-lab/scenarios')
@@ -308,10 +309,10 @@ export function FailureLabPage(){
 
   const run=async(scenario,customParams)=>{
     if(!mockLabEnabled){
-      setError('Failure Lab is available only in offline mock mode. Stop the 021 backend and restart with ALGOSHIELD_021_ENABLED=false to run synthetic tests.');
+      setError('Failure Lab is temporarily unavailable.');
       return;
     }
-    if(busy||!confirm(`Run ${guideFor(scenario,details).title}? This will mutate the current mock platform and may change its safety, order, fill, or position state.`))return;
+    if(busy||!confirm(`Run ${guideFor(scenario,details).title}? ${isolatedLab?'This runs in an isolated mock sandbox and cannot change live 021 state.':'This will mutate the current mock platform and may change its safety, order, fill, or position state.'}`))return;
     const paramsToSend=customParams||getParamsFor(scenario);
     setBusy(scenario);
     setSelectedScenario(scenario);
@@ -331,8 +332,8 @@ export function FailureLabPage(){
 
   return(
     <Page eyebrow="Practice a failure safely" title="Failure Lab" description="Simulate broker and market failures to verify risk and recovery protections in real time.">
-      <p className="muted">These tests mutate the current mock platform. Review the selected scenario, then confirm before running it.</p>
-      {!mockLabEnabled&&<div className="error" role="status">021 virtual-exchange mode is active. Synthetic Failure Lab scenarios are disabled because they cannot inject fake events into 021 provider state.</div>}
+      <p className="muted">{isolatedLab?'These tests run in an isolated offline sandbox and cannot change 021 orders, fills, positions, or market data.':'These tests mutate the current mock platform.'} Review the selected scenario, then confirm before running it.</p>
+      {isolatedLab&&<div className="notice" role="status">021 virtual-exchange mode is active. Failure Lab runs against an isolated mock sandbox; live provider state remains untouched.</div>}
       {error&&<div className="error" role="alert">{error}</div>}
 
       {busy&&runningGuide&&(
@@ -490,7 +491,7 @@ export function FailureLabPage(){
                       }}
                       aria-label={`Run ${guide.title} mock test`}
                     >
-                      {isBusy?'Test running…':'Run on current mock platform'}
+                      {isBusy?'Test running…':isolatedLab?'Run in isolated sandbox':'Run on current mock platform'}
                     </button>
                   </div>
                 </div>

@@ -22,7 +22,7 @@ from starlette.websockets import WebSocketDisconnect
 from backend.platform import Platform
 from backend.market_data.yahoo import YahooMarketDataProvider
 from backend.market_data.official021 import MarketData021Provider
-from backend.broker.adapters import Broker021Adapter
+from backend.broker.adapters import Broker021Adapter, MockBrokerAdapter
 from backend.broker.http_adapter import HTTPMockBrokerAdapter
 from backend.reliability.failure_lab import FailureLab, SCENARIOS, SCENARIO_METADATA
 from backend.shared.config import settings
@@ -800,7 +800,22 @@ def create_app(platform=None, *, trusted_origins=None):
                 params = json.loads(body.decode("utf-8"))
         except Exception:
             params = {}
-        return account_response(user, FailureLab(engine).run(scenario, params=params))
+        sandbox = None
+        target = engine
+        if not engine.demo_enabled:
+            # Live 021 state is never mutated by synthetic scenarios. Run the
+            # same FailureLab contract against a fresh in-memory mock sandbox.
+            sandbox = Platform(":memory:", broker=MockBrokerAdapter(), demo_enabled=True)
+            target = sandbox
+        try:
+            result = FailureLab(target).run(scenario, params=params)
+            if sandbox is not None:
+                result["execution_context"] = "ISOLATED_OFFLINE_SANDBOX"
+                result["live_provider_untouched"] = True
+            return result if sandbox is not None else account_response(user, result)
+        finally:
+            if sandbox is not None:
+                sandbox.close()
 
     @app.post("/api/reconcile")
     def reconcile(request: Request):

@@ -884,6 +884,7 @@ class Platform:
                 )
             result = {
                 "demo_enabled": self.demo_enabled,
+                "failure_lab_enabled": True,
                 "mode": (
                     self.external_market_data.telemetry().get(
                         "label", "EXTERNAL MARKET DATA"
