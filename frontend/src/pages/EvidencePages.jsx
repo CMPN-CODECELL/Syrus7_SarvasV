@@ -10,7 +10,7 @@ export function ReconciliationPage(){
   const [error,setError]=useState('');
   const run=async action=>{if(busy)return;setBusy(action);setError('');try{await api.post(`/api/broker/${action}`);await refresh?.()}catch(e){setError(e.message||'Broker control failed.')}finally{setBusy('')}};
   const disconnect=()=>{if(confirm('Disconnect the broker and fail closed?'))run('disconnect')};
-  return <RemotePage endpoint="/api/reconciliation" eyebrow="Recovery" title="Reconciliation center" description="Expected local state compared with observed broker truth.">
+  return <RemotePage endpoint="/api/reconciliation" eyebrow="Recovery" title="Reconciliation center" description="Expected local state compared with observed broker truth." render={data=><ReconciliationView data={data}/>}> 
     {error&&<div className="error" role="alert">{error}</div>}
     <Card title="Broker controls"><p className="muted">Operator-only controls. Reconnect always reconciles before trading can resume.</p><div className="actions"><button type="button" disabled={!!busy} onClick={()=>run('updates/sync')}>{busy==='updates/sync'?'Syncing…':'Sync broker updates'}</button><button type="button" disabled={!!busy} onClick={()=>run('reconnect')}>{busy==='reconnect'?'Reconnecting…':'Reconnect and reconcile'}</button><button type="button" disabled={!!busy} onClick={disconnect}>{busy==='disconnect'?'Disconnecting…':'Disconnect broker'}</button></div></Card>
   </RemotePage>
