@@ -233,6 +233,39 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 - Next step: rerun Task 9A during live NSE hours. Production `MarketData021Provider`, React,
   contracts, and dependency files remain unchanged.
 
+## 2026-10-09 — Task 9A bounded supervisor and live NSE evidence
+
+- Replaced coroutine-only deadline enforcement in `scripts/probe_yfinance_stream.py` with a
+  parent-supervised worker process. The parent bounds import, connection, subscription, listening,
+  cleanup, termination, and reap; it emits a final report even if the worker stalls. Incremental
+  JSON-lines evidence is flushed for lifecycle progress, bounded samples, and count checkpoints.
+  Missing summaries retain `message_count=null` rather than being reported as zero.
+- The installed isolated environment remains unchanged: Python 3.13.7, yfinance 1.7.0, and
+  websockets 15.0.1. Inspection confirmed that yfinance `listen()` catches cancellation and awaits
+  `close()`, but the earlier no-output hang did not identify which phase stalled; the supervisor
+  therefore treats every worker phase as untrusted instead of asserting that cancellation was the
+  root cause.
+- Offline focused tests cover a hanging connection/subscription, messages followed by hanging
+  cleanup, and normal completion. They verify bounded return, retained evidence, unavailable-count
+  honesty, and a reaped child. Validation: 5 focused tests passed; Ruff check and format check passed;
+  `git diff --check` passed.
+- Live NSE retry (`TCS.NS INFY.NS`, 30 seconds, five retained samples) completed normally in
+  31.259904 seconds within its 34-second maximum, with subscription returning at 4.339743 seconds,
+  clean provider cleanup, child exit code 0, and no orphan process. It received 42 decoded price
+  messages: INFY.NS 23 and TCS.NS 19. Classification: **STREAM_CONFIRMED**.
+- Observed fields included `id`, `price`, `time`, `day_volume`, `last_size`, `exchange`,
+  `market_hours`, `quote_type`, `price_hint`, `change`, and `change_percent` (plus one `bid`). Example
+  raw evidence: INFY.NS price 1025.25, time `1791521394000`, day_volume `5674765`, last_size `11`;
+  TCS.NS price 2190.8, time `1791521395000`, day_volume `5338028`, last_size `10`.
+- The decoded uint64 values arrived as decimal strings. Magnitude-based interpretation of the raw
+  time values as Unix milliseconds gives 2026-10-09T04:49:54Z and 04:49:55Z, within seconds of the
+  04:49:50Z probe start, so milliseconds are runtime-plausible but remain an inference rather than a
+  provider contract. Observed median interarrival was about 1.015 seconds for INFY.NS and 1.020
+  seconds for TCS.NS. `day_volume` and `last_size` semantics remain unproven; neither is claimed to be
+  per-trade quantity, and `id` is not claimed as a unique trade/message ID.
+- BTC-USD was not run because NSE streaming was confirmed. Dashboard/production adapter integration
+  remains pending; application dependencies and application code were not changed.
+
 ## Blockers / Teammate Dependencies
 - **Ram (Member 3) Operator Authorization**: Global mutation endpoints (`POST /api/kill`, `POST /api/reconcile`, `POST /api/resume`, `PUT /api/risk/policies/{strategy}`, `POST /api/failure-lab/{scenario}`, etc.) currently operate in offline demo mode. Ram must implement role-based operator authorization before multi-user production deployment.
 - **Ram (Member 3) Continuous Broker Refresh**: Automated background broker polling / WebSocket sync loop is needed to refresh `last_verified_at` continuously under live conditions without manual `reconcile()` calls.

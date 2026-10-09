@@ -5,6 +5,26 @@
 - Status: BLOCKED
 - Last updated: 2026-10-09 Asia/Kolkata
 
+## 2026-10-09 — Bounded yfinance probe follow-up
+
+- Hardened only the standalone Task 9A probe and focused tests: a parent process now supervises the
+  yfinance worker across import/connect/subscribe/listen/cleanup, terminates and reaps a stuck child,
+  preserves flushed incremental evidence, and always emits a final report. Unavailable message counts
+  remain null rather than being inferred as zero.
+- Current isolated versions are Python 3.13.7, yfinance 1.7.0, and websockets 15.0.1; no dependency
+  changes were made. Five focused offline tests passed, including hanging connection and hanging
+  cleanup cases; Ruff check/format and `git diff --check` passed.
+- A 30-second live TCS.NS/INFY.NS run completed in 31.259904 seconds with normal cleanup and a reaped
+  exit-code-0 child. Subscription returned at 4.339743 seconds and 42 decoded price messages arrived
+  (INFY.NS 23, TCS.NS 19), so the independent NSE result is **STREAM_CONFIRMED**. BTC-USD was not
+  needed.
+- Runtime messages exposed `price`, decimal-string `time`, `day_volume`, and usually `last_size`.
+  Raw times such as `1791521394000` are magnitude-plausible Unix milliseconds near receipt time, but
+  the unit remains an inference. Volume semantics and unique event identity remain unresolved; no
+  field is asserted to be per-trade quantity or a unique trade ID.
+- This evidence does not implement or approve a production adapter. Dashboard integration remains
+  pending, and no React, application, database, order, strategy, or broker code changed.
+
 ## 2026-10-09 — React contract, telemetry, and action-rejection verification
 
 - Aligned Overview and Safety Proof with verified backend fields (`gate`, `health`, `verdict`,
