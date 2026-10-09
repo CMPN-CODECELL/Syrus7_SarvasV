@@ -159,3 +159,6 @@ real implementation deferred on sponsor evidence. No migration/lockfile change.
 - Execution state machine, cancellation flow, broker update flow, disconnect/reconnect recovery, and broker adapter contracts are deterministic, authoritative, and fail-closed.
 - Fills remain financial truth; order status is execution evidence.
 - Validation: pytest 180 passed / 1 skipped (isolated PostgreSQL URL); Ruff check + format passed; npm run check passed. No live Neon connectivity/deployment claim.
+
+
+2026-10-09 documentation integration: current ownership, dependencies and acceptance gates are consolidated in [TEAM_EXECUTION_PLAN](../TEAM_EXECUTION_PLAN.md), DEC-028. Direct branch pushes are allowed; PRs optional. No new member feature is claimed implemented by this planning update. Fresh cross-module evidence is in [INTEGRATION](INTEGRATION.md).

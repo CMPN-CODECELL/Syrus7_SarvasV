@@ -1,5 +1,7 @@
 # AlgoShield â€” Demo, Rehearsal & Debug Guide
 
+Use [TEAM_EXECUTION_PLAN](TEAM_EXECUTION_PLAN.md) for the current demo/browser tasks. Seven mock rehearsals passed in the release candidate; the browser script still uses legacy selectors and has not established current React browser coverage. Label mock demonstrations explicitly.
+
 ## Overview
 This document outlines deterministic demonstration scenarios, execution commands, and a step-by-step 4–5 minute live walkthrough script for technical vivas, hackathon evaluation, and regression validation.
 

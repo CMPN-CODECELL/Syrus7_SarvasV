@@ -326,3 +326,6 @@ No candle algorithm, financial calculation or telemetry provider changed.
   Owned subscription/policy/order workflows remain permitted; global replay and
   market controls require an explicit operator.
 
+
+
+2026-10-09 documentation integration: current ownership, dependencies and acceptance gates are consolidated in [TEAM_EXECUTION_PLAN](../TEAM_EXECUTION_PLAN.md), DEC-028. Direct branch pushes are allowed; PRs optional. No new member feature is claimed implemented by this planning update. Fresh cross-module evidence is in [INTEGRATION](INTEGRATION.md).

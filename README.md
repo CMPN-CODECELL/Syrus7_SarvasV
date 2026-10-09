@@ -1,5 +1,7 @@
 # AlgoShield
 
+Current team workflow: [execution plan](docs/TEAM_EXECUTION_PLAN.md), [validation](docs/TESTING.md). Team members can directly push branches with repository write permission; PRs are optional. Integrate tested checkpoints on dev; only promote validated commits to main after successful CI. Never force-push or bypass server rules.
+
 Safety control plane for untrusted trading strategies, built for SYRUS 7.0 FinTech PS-06.
 
 `tick -> 1m/5m candle -> strategy -> intent -> risk reservation -> order manager -> broker -> fill ledger -> reconciliation -> dashboard`

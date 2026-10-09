@@ -30,3 +30,5 @@ Original body/history is preserved; relative navigation links were repaired.
 
 Applied migrations, executable fixtures, decision history, requirements,
 deployment runbooks and user research were not deleted or relocated.
+
+The [pre-promotion implementation delta](2026-10-09/IMPLEMENTATION_DELTA-pre-promotion.md) preserves historical task ordering. The sole active execution plan is [TEAM_EXECUTION_PLAN](../TEAM_EXECUTION_PLAN.md).

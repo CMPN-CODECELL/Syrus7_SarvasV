@@ -1,5 +1,7 @@
 # Architecture
 
+Current operational boundaries and dependency gates are in [TEAM_EXECUTION_PLAN](TEAM_EXECUTION_PLAN.md). Member 1 owns persistence/accounting, Member 2 provider contracts/execution, Member 3 shared security/reliability integration, Member 4 frontend/feed consumers. SQLite mock evidence does not prove PostgreSQL or live-provider behavior.
+
 ## Goal and flow
 
 Untrusted strategies express intent. Platform services own execution authority. Fills create financial truth; broker snapshots verify external truth. One deployable Python/FastAPI modular monolith runs a serialized control plane, Neon PostgreSQL durable store (SQLite offline fallback), and a React SPA driven by authenticated backend telemetry. PostgreSQL is configured through the centralized Store boundary and versioned additive migrations; Redis is unnecessary now. A database advisory ownership lock rejects a second backend process, but multi-process execution is still unsupported.

@@ -1,5 +1,7 @@
 # Shared contracts
 
+Shared-contract changes have one writer and affected-owner review under [TEAM_EXECUTION_PLAN](TEAM_EXECUTION_PLAN.md). Member 2 must establish verified sponsor schemas before provider-specific behavior is implemented. No financial or broker contract is changed by DEC-028.
+
 Canonical executable definitions: `backend/shared/contracts.py`. Documentation describes them; modules must import them rather than create local variants.
 
 ## Bootstrap conventions

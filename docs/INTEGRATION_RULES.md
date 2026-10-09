@@ -1,5 +1,7 @@
 # Integration Rules
 
+DEC-028 supersedes mandatory PR/dev-only workflow instructions: direct branch pushes are allowed, PRs optional. Validate each checkpoint before integrating on dev; the lead promotes validated commits to main through normal fast-forward pushes with successful CI. Repository write permissions and server checks still apply.
+
 These rules exist to prevent four developers and multiple AI models from creating conflicting implementations.
 
 ## Rule 1 — One canonical model per concept

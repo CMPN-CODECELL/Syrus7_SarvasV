@@ -323,3 +323,14 @@ Documentation/research commit: 6a15db172725de23f887c170cfc22c0061101d92.
 Final delivery adds only this evidence clarification; no production change.
 
 
+
+
+## 2026-10-09 ? Safe main promotion and direct-push workflow (DEC-028)
+
+Validated dev baseline: 4782ca17ddc209e4543707375d18e5c28f80ff46. Isolated linked worktree preserves the original checkout and its four member-report deletions. Remote main before promotion: dd21746051119edf58fbdd85f333d54c67fe8260; after normal fast-forward push: 63266eb3aab1dfaa0c3934bae744d459df2184c4. No migrations, provider behavior or future member features changed.
+
+Fresh Windows evidence: Python 3.13.1, Node 23.6.0, npm 10.9.2. Initial setup attempt: 351 Python passed, 3 failed, 1 skipped, 18 errors (missing SPA/temp access); unavailable frontend dependencies. After dependencies were reused and SPA built, `python -m pytest -q -p no:cacheprovider --basetemp=.pytest-promotion-retry --tb=short`: 372 passed, 1 skipped, 75.39s. PostgreSQL opt-in was skipped; no production database was touched. Frontend test: 30 passed / 7 files, 11.46s; frontend lint/build, Ruff check/format (95 files) and root TypeScript check passed. UTF-8 `python -m scripts.rehearsal_runner`: seven mock scenarios passed; measured mock kill 0.12s. Local Node engine warnings remain a reproducibility limitation.
+
+Old GitHub workflow failed because pytest preceded SPA build. Commit 63266eb repairs that order, validates frontend and rehearsals, and triggers on pushes only. [GitHub CI](https://github.com/CMPN-CODECELL/Syrus7_SarvasV/actions/runs/37885956412/job/113675898318) succeeded on every step with Node 22. [PR #1](https://github.com/CMPN-CODECELL/Syrus7_SarvasV/pull/1) was closed without merge after the owner requested direct pushes. Protection/rules inspection returned HTTP 403; no permission grants or server settings were changed. A successful normal push proves this credential could push, not that every team account has write access.
+
+The separate documentation integration adds a single four-member execution plan and fresh requirement/module evidence. Real 021, isolated PG, deployment proxy/Origin configuration and current React browser smoke remain unverified. Legacy browser selectors need a future task. Unrelated feature/multi-stock-strategies was not merged. Historical source Markdown whitespace is retained; generated files and local deletions are excluded from commits.

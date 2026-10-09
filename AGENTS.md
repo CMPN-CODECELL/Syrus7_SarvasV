@@ -5,7 +5,7 @@
 
 Before changing code, agents MUST read, in order:
 1. `docs/PROJECT_TRUTH.md` — short product, architecture and authority map.
-2. `docs/IMPLEMENTATION_DELTA.md` — actual gap-first task order and release blockers.
+2. `docs/TEAM_EXECUTION_PLAN.md` — actual gap-first task order and release blockers.
 3. Task-specific `docs/CONTRACTS.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY_OPERATIONS.md`, `docs/SAFETY_INVARIANTS.md`, `docs/DECISIONS.md`, `docs/021_API_UNKNOWN.md` and relevant source/tests.
 4. `docs/TESTING.md` before validation. Consult `docs/REQUIREMENTS_TRACEABILITY.md` for requirement changes and `docs/RESEARCH_DECISIONS.md` for research provenance; historical member reports are optional evidence, never task authority.
 
@@ -15,7 +15,7 @@ Status rule: history/progress/research files are **not** proof of the current ch
 
 Non-negotiable: Strategies cannot call broker directly; durable risk reservation precedes dispatch; effective unique attributed fills control financial state; ambiguity/restart fail closed; incomplete broker data cannot certify safety; kill never succeeds from submitted requests alone; React never computes safety/P&L; external 021 behavior is UNKNOWN until verified. Mock fault injection never accesses a live broker.
 
-Do not modify/push `main`. Safely preserve local work, integrate on `dev` or a branch targeting `dev`, run the relevant tests, update existing docs with evidence, append decision history, and report the exact commit/results/blockers.
+DEC-028: Team members may directly push branches; pull requests are optional. Integrate tested checkpoints on `dev`; the integration lead may promote validated commits to `main` with a normal fast-forward push and successful CI. Preserve local work, respect server permissions, never force-push, and report exact evidence and blockers.
 
 ---
 

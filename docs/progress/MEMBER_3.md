@@ -59,3 +59,6 @@ One worker. UNKNOWN retains reservation. No synthetic drift fixes; opposing virt
   cover actions, evidence, traces, broker responses and audit payloads.
 - SQLite schema v12 is verified. PostgreSQL migration 011 is packaged but blocked
   on an isolated database; no Neon or production access occurred.
+
+
+2026-10-09 documentation integration: current ownership, dependencies and acceptance gates are consolidated in [TEAM_EXECUTION_PLAN](../TEAM_EXECUTION_PLAN.md), DEC-028. Direct branch pushes are allowed; PRs optional. No new member feature is claimed implemented by this planning update. Fresh cross-module evidence is in [INTEGRATION](INTEGRATION.md).
