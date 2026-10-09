@@ -1,5 +1,18 @@
 # Integration Progress
 
+## 2026-10-09 — Admission and recovery safety enforcement (Member 3 Task 3, DEC-034)
+
+- Implemented unified canonical safety evidence evaluator `Reliability.evaluate_safety_evidence(*, account_id=None, symbols=None, external_market_data=None, broker_connected=None)` that evaluates underlying evidence dimensions: broker transport connectivity, settlement/uncertainty state, market quote freshness, broker evidence freshness, snapshot completeness, reconciliation status, external provider subscription review, and unresolved unknown orders.
+- Decoupled evidence readiness from gate/runtime state: readiness does not depend on whether the gate is `RUNNING` or strategy runtime is enabled. Refactored `readiness_projection()` to consume this evaluator.
+- Enforced action-specific readiness: new exposure requires fresh broker/market evidence, verified external subscription, complete reconciliation, and zero unresolved unknown orders across accounts, failing closed with granular reason codes (`RISK_BROKER_DISCONNECTED`, `RISK_PROVIDER_SUBSCRIPTION_UNAVAILABLE`, `RISK_UNKNOWN_ORDERS_PRESENT`, `RISK_STALE_MARKET_DATA`, `RISK_STALE_BROKER_STATE`, `RISK_RECONCILIATION_REQUIRED`). Order cancellation and emergency reducing-order exits retain their permissive exit contracts.
+- Serialized pre-dispatch revalidation: re-evaluates gate/kill authorization and safety evidence inside `RiskGateway.authorize_dispatch(intent, row)` under the store lock at the exact boundary before `dispatch_started=1`/`UNKNOWN` is committed and before `broker.submit()` is called. No network calls under the lock. If invalidated between reservation and dispatch, authorization is rejected and the reservation released safely via `OrderManager._start_reserved`'s never-dispatched transition with zero broker calls. Preserved durable `UNKNOWN` and exposure retention without retry once dispatch has begun.
+- Hardened global resume across all execution-relevant accounts and symbols without scoping to the operator's account alone; re-checked kill latch, disconnect, and snapshot completeness inside the store lock, leaving the gate `CLOSED` with an explicit reason on failure; reconnect or feed resumption never auto-resumes trading.
+- Clean ownership preserved: zero edits to raw provider modules or `orders.py`.
+- Validation:
+  - 10 new tests in `tests/test_admission_recovery_safety.py` passed.
+  - Full backend test suite: 447 passed, 1 skipped (isolated PostgreSQL).
+  - Ruff linter: all checks passed.
+
 ## 2026-10-09 — Frontend operator awareness & client authority boundaries (Member 3 Task 2)
 
 - Reused authoritative authenticated user state `useAuth().user.is_operator`; missing or unknown roles strictly default to non-operator (`isOperator = Boolean(user?.is_operator)`).

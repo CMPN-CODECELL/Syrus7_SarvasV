@@ -111,6 +111,7 @@ class Platform:
                 "external market data source is not compatible with this broker"
             )
         self.external_market_data = provider
+        self.reliability.external_market_data = provider
         provider_key = provider.telemetry().get("provider")
         self._restore_closed_candles(provider_key)
 

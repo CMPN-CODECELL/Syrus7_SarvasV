@@ -760,3 +760,19 @@ and encourage unsafe recovery. The additive projection freezes honest semantics
 without weakening the conservative 021 `is_complete=False` boundary or inventing
 provider behavior. Live 021 execution readiness remains blocked on the handoffs
 listed in the Member 3 and integration progress records.
+
+## DEC-034 — Canonical admission, pre-dispatch, and recovery safety enforcement
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Decision
+Implement one canonical safety evidence evaluator `Reliability.evaluate_safety_evidence(*, account_id=None, symbols=None, external_market_data=None, broker_connected=None)` that assesses physical evidence dimensions (broker connectivity, settlement/uncertainty state, market feed freshness, broker state freshness, snapshot completeness, reconciliation status, external provider subscription review, and unresolved unknown orders) completely decoupled from execution gate state (`CLOSED`/`RUNNING`) or strategy runtime state (`is_enabled`).
+
+Enforce action-specific readiness:
+1. New directional exposure strictly requires fresh broker/market evidence, complete reconciliation, verified external provider subscriptions (when external feed is used), and zero unresolved unknown orders across relevant accounts. Missing/unverified provider evidence remains `UNKNOWN` and blocks new exposure with canonical reason codes (`RISK_BROKER_DISCONNECTED`, `RISK_PROVIDER_SUBSCRIPTION_UNAVAILABLE`, `RISK_UNKNOWN_ORDERS_PRESENT`, `RISK_STALE_MARKET_DATA`, `RISK_STALE_BROKER_STATE`, `RISK_RECONCILIATION_REQUIRED`).
+2. Order cancellations and emergency reducing exits retain their existing contracts and are exempt from new-exposure blocking rules.
+3. Pre-dispatch revalidation occurs inside `RiskGateway.authorize_dispatch(intent, row)` under the serialized store lock immediately before `dispatch_started=1`/`UNKNOWN` is committed and before `broker.submit()`. If evidence or gate state has invalidated since initial reservation, authorization is safely rejected and the reservation released without broker submission and without fabricating a broker rejection. Once dispatch has commenced, uncertainty retains `UNKNOWN` status and potential exposure without retry.
+4. Hardened global resume evaluates cross-account evidence across all execution-relevant accounts, never scoped solely to the operator's account, and re-validates the kill latch, disconnect, and snapshot completeness inside `with self.store.lock:` before opening the gate. Reconnections and feed arrivals never automatically resume trading.
+
+### Reason and impact
+Prevents race conditions between risk reservation and broker dispatch, eliminates blind auto-resumption, guarantees cross-account safety prior to opening the execution gate, and ensures that missing provider evidence fails closed without altering fill ingestion, accounting, or mock/replay contracts. Zero changes to raw provider modules or orders.py were made. All 447 backend tests pass cleanly.
