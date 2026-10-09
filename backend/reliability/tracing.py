@@ -105,16 +105,19 @@ class TraceService:
         }
 
     def recent_traces(self, limit=20, account_id=None):
-        args = (account_id, limit) if account_id else (limit,)
-        where = "WHERE o.account=?" if account_id else ""
-        rows = self.store.rows(
-            "SELECT DISTINCT a.correlation_id FROM audit a "
-            "LEFT JOIN orders o ON o.id=a.correlation_id "
-            f"{where} AND a.correlation_id IS NOT NULL "
-            "ORDER BY a.sequence DESC LIMIT ?"
-            if where
-            else "SELECT DISTINCT correlation_id FROM audit "
-            "WHERE correlation_id IS NOT NULL ORDER BY sequence DESC LIMIT ?",
-            args,
-        )
+        if account_id:
+            rows = self.store.rows(
+                "SELECT a.correlation_id, MAX(a.sequence) AS latest_sequence "
+                "FROM audit a LEFT JOIN orders o ON o.id=a.correlation_id "
+                "WHERE o.account=? AND a.correlation_id IS NOT NULL "
+                "GROUP BY a.correlation_id ORDER BY latest_sequence DESC LIMIT ?",
+                (account_id, limit),
+            )
+        else:
+            rows = self.store.rows(
+                "SELECT correlation_id, MAX(sequence) AS latest_sequence "
+                "FROM audit WHERE correlation_id IS NOT NULL "
+                "GROUP BY correlation_id ORDER BY latest_sequence DESC LIMIT ?",
+                (limit,),
+            )
         return [self.trace(row["correlation_id"], account_id) for row in rows]
