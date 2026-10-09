@@ -74,10 +74,8 @@ def verify_snapshot(store, snapshot, now, max_age=5):
         row = local[oid]
         if row["filled"] or not (
             row["status"] == OrderStatus.UNKNOWN
-            or (
-                not row["dispatch_started"]
-                and row["status"] in {OrderStatus.RESERVED, OrderStatus.REJECTED}
-            )
+            or row["status"] == OrderStatus.REJECTED
+            or (not row["dispatch_started"] and row["status"] == OrderStatus.RESERVED)
         ):
             raise SnapshotError("LOCAL_ORDER_MISSING_AT_BROKER")
     fills = {}

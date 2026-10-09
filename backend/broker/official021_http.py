@@ -11,10 +11,13 @@ from __future__ import annotations
 import csv
 import gzip
 import io
+import json
 import os
 import time
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -611,31 +614,132 @@ class Official021RESTAdapter:
                 trades.append({**row, "orderId": provider_order_id})
         return trades
 
+    def _empty_bootstrap_at(self) -> float | None:
+        """Return the latest durable empty-account proof, if one exists."""
+        for row in reversed(
+            self.store.rows(
+                "SELECT payload FROM audit WHERE type='RECONCILED' ORDER BY sequence"
+            )
+        ):
+            try:
+                report = json.loads(row["payload"])
+                observed_at = float(report["observed_at"])
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+                continue
+            if (
+                report.get("verified") is True
+                and report.get("orders") == 0
+                and report.get("unique_fills") == 0
+                and not report.get("broker_positions")
+                and not report.get("unexplained_positions")
+            ):
+                return observed_at
+        return None
+
+    @staticmethod
+    def _provider_day(timestamp: float):
+        return datetime.fromtimestamp(timestamp, ZoneInfo("Asia/Kolkata")).date()
+
+    def _same_day_continuity_complete(
+        self,
+        *,
+        bootstrap_at,
+        observed_at,
+        orders,
+        aggregate_trades,
+        mapped_trades,
+        positions,
+        holdings,
+        mapped,
+    ) -> bool:
+        """Prove a bounded same-day horizon from an earlier empty bootstrap.
+
+        This never certifies a cross-day recovery. It requires every
+        exposure-bearing provider order and trade in the provider's current-day
+        views to map to this durable ledger, plus current positions and no
+        settled holdings outside that horizon.
+        """
+        if bootstrap_at is None or holdings:
+            return False
+        try:
+            trading_day = self._provider_day(float(bootstrap_at))
+            if self._provider_day(float(observed_at)) != trading_day:
+                return False
+        except (TypeError, ValueError, OSError, OverflowError):
+            return False
+
+        provider_order_ids = set()
+        for order in orders:
+            status = _text(order.get("status"))
+            quantity = abs(_signed_int(order.get("qtyTraded", 0)))
+            if status in {"Rejected", "Cancelled"} and quantity == 0:
+                continue
+            provider_order_id = _text(order.get("orderId"))
+            try:
+                placed_at = float(order["time"])
+            except (KeyError, TypeError, ValueError):
+                return False
+            if (
+                not provider_order_id
+                or provider_order_id == "0"
+                or placed_at < bootstrap_at
+                or self._provider_day(placed_at) != trading_day
+            ):
+                return False
+            provider_order_ids.add(provider_order_id)
+        if provider_order_ids != set(mapped):
+            return False
+
+        remote_trade_ids = {_text(row.get("tradeId")) for row in aggregate_trades}
+        mapped_trade_ids = {_text(row.get("tradeId")) for row in mapped_trades}
+        if remote_trade_ids != mapped_trade_ids:
+            return False
+
+        mapped_platform_ids = {row["platform_order_id"] for row in mapped.values()}
+        for row in self.store.rows(
+            "SELECT id,status,filled FROM orders WHERE dispatch_started=1 OR filled>0"
+        ):
+            if row["id"] not in mapped_platform_ids and not (
+                row["status"] == OrderStatus.REJECTED.value and row["filled"] == 0
+            ):
+                return False
+
+        accounts = {row["account"] for row in mapped.values()}
+        if positions and len(accounts) != 1:
+            return False
+        for position in positions:
+            if not self._symbol_for_token(
+                position.get("exchange"), position.get("token")
+            ):
+                return False
+        return True
+
     def snapshot(self) -> BrokerSnapshot:
         orders = self._orders()
-        trades = self._mapped_trades(
-            {
-                row["provider_order_id"]: row
-                for row in self.store.rows(
-                    "SELECT * FROM broker_order_mappings WHERE provider=?",
-                    (self.provider,),
-                )
-            }
-        )
-        positions = parse_plain_list(
-            self._request("GET", "/portfolio/positions").json()
-        )
-        holdings = []
-        if not orders and not trades and not positions:
-            holdings = parse_plain_list(
-                self._request("GET", "/portfolio/holdings").json()
-            )
         mapped = {
             row["provider_order_id"]: row
             for row in self.store.rows(
-                "SELECT * FROM broker_order_mappings WHERE provider=?", (self.provider,)
+                "SELECT * FROM broker_order_mappings WHERE provider=?",
+                (self.provider,),
             )
         }
+        trades = self._mapped_trades(mapped)
+        positions = parse_plain_list(
+            self._request("GET", "/portfolio/positions").json()
+        )
+        observed_at = time.time()
+        bootstrap_at = self._empty_bootstrap_at()
+        holdings = []
+        aggregate_trades = []
+        if bootstrap_at is not None:
+            aggregate_trades = self._trades()
+            holdings = parse_plain_list(
+                self._request("GET", "/portfolio/holdings").json()
+            )
+        elif not orders and not trades and not positions:
+            holdings = parse_plain_list(
+                self._request("GET", "/portfolio/holdings").json()
+            )
         canonical_orders = []
         # The documented endpoints expose current/today state only. They do not
         # prove complete cross-day order and fill history, so this snapshot must
@@ -660,6 +764,16 @@ class Official021RESTAdapter:
             and not holdings
             and not mapped
             and local_execution_empty
+        )
+        complete = complete or self._same_day_continuity_complete(
+            bootstrap_at=bootstrap_at,
+            observed_at=observed_at,
+            orders=orders,
+            aggregate_trades=aggregate_trades,
+            mapped_trades=trades,
+            positions=positions,
+            holdings=holdings,
+            mapped=mapped,
         )
         for row in orders:
             mapping = mapped.get(_text(row.get("orderId")))
@@ -694,7 +808,7 @@ class Official021RESTAdapter:
                     row.get("netQuantity", 0)
                 )
         return BrokerSnapshot(
-            tuple(canonical_orders), tuple(fills), position_map, complete, time.time()
+            tuple(canonical_orders), tuple(fills), position_map, complete, observed_at
         )
 
     def _symbol_for_token(self, exchange, token):
@@ -704,6 +818,13 @@ class Official021RESTAdapter:
                 and CODE_TO_EXCHANGE.get(instrument.exchange) == exchange
             ):
                 return instrument.symbol
+        mapped = self.store.rows(
+            "SELECT symbol FROM broker_order_mappings "
+            "WHERE provider=? AND exchange=? AND token=? ORDER BY created DESC LIMIT 1",
+            (self.provider, _text(exchange), int(token or 0)),
+        )
+        if mapped:
+            return mapped[0]["symbol"]
         return None
 
     def _fills_from_trades(self, trades, mapped):
@@ -870,4 +991,5 @@ class Official021RESTAdapter:
             update_type,
             status,
             timestamp=time.time(),
+            provisional=True,
         )

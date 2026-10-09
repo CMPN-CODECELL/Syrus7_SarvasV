@@ -30,6 +30,7 @@ def test_environment_precedence_and_local_file(monkeypatch, tmp_path):
         "auto_exchange": "NSECM",
         "auto_max_positions": 3,
         "auto_lookback_updates": 5,
+        "auto_min_warmed_symbols": 20,
         "auto_entry_momentum": 0.003,
         "auto_take_profit": 0.01,
         "auto_stop_loss": 0.005,

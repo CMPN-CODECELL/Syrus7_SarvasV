@@ -54,6 +54,11 @@ never bypasses reconciliation/risk, starts disabled after every process restart,
 and does not guarantee profit. Stopping it does not implicitly liquidate existing
 positions. Configure its bounded policy with the
 `ALGOSHIELD_AUTO_*` placeholders in `.env.example`.
+The prototype-responsive defaults need two normalized updates for one eligible
+symbol, use a 0.01% entry edge, 0.05% take-profit/stop thresholds, a two-second
+cooldown, quantity one and at most one simultaneous Auto position. These defaults
+increase demonstration activity without weakening broker evidence, reconciliation,
+pending-order, market-session or central risk checks.
 
 After signing in, `POST /api/auto-mode/start` enables evaluation only and
 `POST /api/auto-mode/stop` disables new Auto decisions. Neither endpoint opens
@@ -149,7 +154,10 @@ $env:ALGOSHIELD_DB="data/yahoo-fallback.db"
 Read the [architecture](docs/ARCHITECTURE.md), [decisions](docs/DECISIONS.md), [contracts](docs/CONTRACTS.md), [safety invariants](docs/SAFETY_INVARIANTS.md) and [021 unknowns](docs/021_API_UNKNOWN.md) before extending the system.
 
 ## Neon and database workflow
-Requested project: `muddy-tooth-14996153`, branch: `production`. Intended linkage is not proof of authenticated access. See `docs/progress/INTEGRATION.md` for actual setup status.
+Authorized project: `soft-glade-57602806`, branch: `production`. The dedicated
+`algoshield` schema and all reviewed migrations were verified there on
+2026-10-09; runtime deployment and isolated transaction testing remain separate.
+See `docs/progress/INTEGRATION.md` for exact evidence and limits.
 
 ```sh
 npm install
@@ -157,7 +165,7 @@ npm run check
 neon login
 neon skills -y
 neon mcp -y
-neon link --project-id muddy-tooth-14996153 --branch production -y
+neon link --project-id soft-glade-57602806 --branch production -y
 neon config init
 python -m backend.shared.migrate
 # After reviewing existing schema and the additive migration:
@@ -183,4 +191,4 @@ python -m backend.shared.provision_operator --sqlite-path data/platform.db --use
 python -m backend.shared.provision_operator --sqlite-path data/platform.db --username alice --revoke
 ```
 
-Restart the backend and sign in. The command requires an existing offline SQLite file and user, ignores DATABASE_URL, and records grants/revocations durably. It never assigns first-user privileges or accepts public promotion. All global kill/resume/reconcile, broker controls, replay, market overrides, account administration, and mock fault/benchmark mutations require an operator. Ordinary users retain own-account controls and scoped views. PostgreSQL migration 011 is additive and not applied remotely; isolated PostgreSQL validation/provisioning remains blocked here. See [security operations](docs/SECURITY_OPERATIONS.md).
+Restart the backend and sign in. The command requires an existing offline SQLite file and user, ignores DATABASE_URL, and records grants/revocations durably. It never assigns first-user privileges or accepts public promotion. All global kill/resume/reconcile, broker controls, replay, market overrides, account administration, and mock fault/benchmark mutations require an operator. Ordinary users retain own-account controls and scoped views. The reviewed PostgreSQL migration set is applied to the authorized empty production schema; identity/operator provisioning and rollback-only transaction tests were not run there. See [security operations](docs/SECURITY_OPERATIONS.md).

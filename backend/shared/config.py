@@ -154,6 +154,9 @@ def settings():
     result["auto_lookback_updates"] = _bounded_int(
         values, "ALGOSHIELD_AUTO_LOOKBACK_UPDATES", 5, 2, 100
     )
+    result["auto_min_warmed_symbols"] = _bounded_int(
+        values, "ALGOSHIELD_AUTO_MIN_WARMED_SYMBOLS", 20, 1, 2000
+    )
     result["auto_entry_momentum"] = _positive_float(
         values, "ALGOSHIELD_AUTO_ENTRY_MOMENTUM", 0.003
     )

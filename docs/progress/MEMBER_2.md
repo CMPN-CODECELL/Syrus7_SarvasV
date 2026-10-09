@@ -194,3 +194,31 @@ real implementation deferred on sponsor evidence. No migration/lockfile change.
 - Added the DEC-038 adapter boundary: only those four empty views plus an
   execution-empty dedicated 021 store can report bootstrap completeness. Any
   provider data, local order/fill, or mapping retains incomplete status.
+
+## 2026-10-09 — Provisional lifecycle ordering and dynamic market universe
+
+- 021 order-WebSocket updates are marked provisional. If stronger REST trade
+  evidence advances an order before a queued lifecycle frame is consumed, an
+  illegal lifecycle regression is ignored and audited instead of closing the
+  global gate. Authoritative updates keep strict transition validation.
+- With no explicit symbol override, market WebSockets now subscribe the dynamic
+  execution-required universe rather than pinning the entire cash catalogue.
+  Catalogue discovery/search remains complete and separate from active feed
+  fan-out.
+- Validation: backend **482 passed, 1 skipped**; frontend **51 passed**; Ruff,
+  TypeScript, ESLint, Vite build and diff whitespace checks passed.
+
+## 2026-10-09 — Same-day continuity and broker freshness heartbeat
+
+- A prior verified empty 021 bootstrap can now anchor a strict same-day
+  continuity proof; unknown orders/trades, mapping gaps, holdings, unresolved
+  positions or a date boundary remain incomplete.
+- Provider reads and writes share `BrokerSession`. The live heartbeat refreshes
+  REST updates/snapshots every two seconds only under RUNNING/REDUCE_ONLY,
+  skips an active write, lets a write wait for an active snapshot, and never
+  changes a stopped gate to running.
+- Live evidence includes genuine provider BUY fills for `ABATEAS` and `A1L`;
+  subsequent CNC SELL rejections remain terminal zero-fill evidence rather than
+  fabricated exits.
+- Validation: backend **488 passed, 1 skipped**; frontend **51 passed**;
+  TypeScript, Ruff, ESLint, Vite build and diff checks passed.

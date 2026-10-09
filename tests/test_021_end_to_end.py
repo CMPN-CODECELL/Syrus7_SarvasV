@@ -71,6 +71,26 @@ def test_synthetic_complete_021_fixture_syncs_trade_before_terminal_fill(tmp_pat
                     else []
                 ),
             )
+        if path.endswith("/trades"):
+            return httpx.Response(
+                200,
+                json=(
+                    [
+                        {
+                            "tradeId": 5001,
+                            "tradeTime": now,
+                            "quantity": 1,
+                            "token": 2885,
+                            "exchange": "NSECM",
+                            "product": "INTRADAY",
+                            "price": 10100,
+                            "symbol": "RELIANCE",
+                        }
+                    ]
+                    if state["executed"]
+                    else []
+                ),
+            )
         if path.endswith("/portfolio/positions"):
             return httpx.Response(
                 200,

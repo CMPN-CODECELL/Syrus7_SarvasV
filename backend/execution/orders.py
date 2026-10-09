@@ -556,6 +556,7 @@ class OrderManager:
                     "type": update.update_type.value,
                     "status": update.status.value if update.status else None,
                     "has_fill": update.fill is not None,
+                    "provisional": update.provisional,
                 },
             )
 
@@ -667,6 +668,25 @@ class OrderManager:
                     order_quantity=order_qty,
                 )
             except Exception as exc:
+                # Some providers expose a best-effort lifecycle stream in
+                # addition to an authoritative REST trade ledger. A frame can
+                # be queued while an order is OPEN and arrive here after the
+                # REST fill has already advanced it to FILLED. Such provisional
+                # evidence must not regress financial truth or fail the global
+                # execution gate.
+                if update.provisional and update.fill is None:
+                    with self.store.transaction():
+                        self.store.audit(
+                            "BROKER_UPDATE_IGNORED",
+                            {
+                                "update_id": update.update_id,
+                                "order_id": update.order_id,
+                                "current_status": current_status.value,
+                                "target_status": target_status.value,
+                                "reason": "STALE_PROVISIONAL_LIFECYCLE",
+                            },
+                        )
+                    return self._row_to_canonical(row)
                 with self.store.transaction():
                     self.store.audit(
                         "BROKER_UPDATE_REJECTED",

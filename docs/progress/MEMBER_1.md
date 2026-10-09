@@ -4,6 +4,18 @@
 
 Current source inspection found no independent ledger formula or schema defect: retain Decimal fill-derived positions, global canonical fill-ID conflict checks, order/account/strategy attribution, partial/reversal handling, and the existing outer transaction that groups fill insert, order cumulative quantity/status, reservation-derived exposure, and audits. Added two missing rollback/concurrency acceptance tests in `tests/test_execution_state_machine.py`; targeted validation passed 51 tests across execution state, Member 1 ledger, and broker update suites. Full suite on refreshed `main`: 417 passed, 1 isolated PostgreSQL test skipped; seven offline mock rehearsals passed (mock kill 0.29s); Ruff check/format passed. PostgreSQL remains blocked without `ALGOSHIELD_TEST_DATABASE_URL`; no migration added.
 
+## 2026-10-09 authorized Neon production schema deployment
+
+The owner explicitly selected Neon project `soft-glade-57602806`, branch
+`production`. Inspection found the managed `algoshield` schema and migration
+ledger; the reviewed additive runner applied the remaining migrations without
+resetting or copying local rows. Verification found 14 exact migration
+name/checksum matches, 17 application tables, successful `PostgresStore`
+initialization, and zero accounts, users, subscriptions, orders, fills or
+operator grants. No identity was provisioned and no integration test or demo
+seed ran against production. Isolated transaction/controller parity remains
+blocked on a separate authorized non-production database.
+
 ### Provider handoff to Member 2
 
 - Persist `(provider, UCC, brokerOrderId) -> platform order ID` before processing dependent events. Enforce collision isolation across both provider and UCC, and preserve the mapping across restart. Cancellation and per-order trade reads must resolve through the same mapping.

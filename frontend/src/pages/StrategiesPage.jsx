@@ -112,6 +112,7 @@ export function StrategiesPage(){
         <div><span>Stocks scanned</span><b>{auto.candidate_count}</b></div>
         <div><span>Stocks observed</span><b>{auto.evaluated_count}</b></div>
         <div><span>Max positions</span><b>{auto.policy?.max_positions??'—'}</b></div>
+        <div><span>Warm-up / cooldown</span><b>{auto.policy?.lookback_updates??'—'} updates · {auto.policy?.min_warmed_symbols??'—'} stock · {auto.policy?.cooldown_seconds??'—'}s</b></div>
         <div><span>Entry / profit / stop</span><b>{pct(auto.policy?.entry_momentum)} / {pct(auto.policy?.take_profit)} / {pct(auto.policy?.stop_loss)}</b></div>
         <div><span>021 order admission</span><b>{exposure?.status||gate||'UNKNOWN'}</b></div>
       </div>

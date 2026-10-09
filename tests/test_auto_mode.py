@@ -81,6 +81,11 @@ def test_auto_mode_buys_strongest_candidate_and_exits_at_profit_target():
             == 1
         )
 
+        platform.broker.all_market_symbols = lambda: ("BBB",)
+        platform.auto_mode.scan_limit = 1
+        platform.auto_mode.start("account-a")
+        assert platform.auto_mode.market_symbols() == ("AAA",)
+
         tick(platform, clock, "AAA", 105, "profit")
         orders = platform.store.rows(
             "SELECT side,status FROM orders WHERE strategy LIKE 'auto-%' ORDER BY created,id"
@@ -173,6 +178,42 @@ def test_live_auto_requires_explicit_bounded_allowlist():
         platform.close()
 
 
+def test_auto_mode_counts_pending_entries_and_skips_repeatedly_rejected_symbols():
+    platform, clock = running_platform()
+    try:
+        platform.broker.all_market_symbols = lambda: ("AAA", "BBB", "CCC")
+        with platform.store.transaction() as db:
+            for sequence in (1, 2):
+                db.execute(
+                    "INSERT INTO orders "
+                    "(id,strategy,account,symbol,side,quantity,created,status,filled,emergency,dispatch_started) "
+                    "VALUES (?,?,?,?,?,?,?,?,0,0,1)",
+                    (
+                        f"rejected-{sequence}",
+                        "auto-rejected-aaa",
+                        "account-a",
+                        "AAA",
+                        "BUY",
+                        1,
+                        clock(),
+                        "REJECTED",
+                    ),
+                )
+            db.execute(
+                "INSERT INTO orders "
+                "(id,strategy,account,symbol,side,quantity,created,status,filled,emergency,dispatch_started) "
+                "VALUES ('pending','auto-pending-bbb','account-a','BBB','BUY',1,?,'OPEN',0,0,1)",
+                (clock(),),
+            )
+
+        assert platform.auto_mode._position_count("account-a") == 1
+        platform.auto_mode.scan_limit = 2
+        platform.auto_mode.start("account-a")
+        assert platform.auto_mode.market_symbols() == ("BBB", "CCC")
+    finally:
+        platform.close()
+
+
 def test_auto_allowlist_bounds_candidate_demand():
     platform = Platform(auto_symbols=("BBB", "AAA"), auto_scan_limit=1)
     platform.account("account-a")
@@ -183,6 +224,42 @@ def test_auto_allowlist_bounds_candidate_demand():
         assert evidence["candidate_count"] == 1
         assert platform.auto_mode.market_symbols_for("account-a") == ("BBB",)
         assert evidence["policy"]["candidate_source"] == "CONFIGURED_ALLOWLIST"
+    finally:
+        platform.close()
+
+
+def test_prototype_defaults_trade_after_two_updates_for_one_warmed_symbol():
+    clock = Clock()
+    platform = Platform(
+        clock=clock,
+        auto_scan_limit=2,
+        auto_max_positions=1,
+        auto_lookback=2,
+        auto_min_warmed_symbols=1,
+        auto_entry_momentum=0.0001,
+        auto_take_profit=0.0005,
+        auto_stop_loss=0.0005,
+        auto_cooldown_seconds=2,
+    )
+    platform.account("account-a")
+    platform.strategies.subscribe("account-a", "seed-a", "momentum", "AAA")
+    assert platform.reliability.reconcile()
+    platform.reliability.resume()
+    platform.market_session.set_status("OPEN")
+    try:
+        platform.auto_mode.start("account-a")
+        tick(platform, clock, "AAA", 100, 1)
+        tick(platform, clock, "AAA", 100.02, 2)
+
+        orders = platform.store.rows(
+            "SELECT side,quantity,status FROM orders WHERE strategy LIKE 'auto-%'"
+        )
+        assert [tuple(row) for row in orders] == [("BUY", 1, "FILLED")]
+        policy = platform.auto_mode.evidence("account-a")["policy"]
+        assert policy["lookback_updates"] == 2
+        assert policy["min_warmed_symbols"] == 1
+        assert policy["max_positions"] == 1
+        assert policy["cooldown_seconds"] == 2
     finally:
         platform.close()
 

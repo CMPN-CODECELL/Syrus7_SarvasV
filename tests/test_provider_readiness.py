@@ -32,6 +32,13 @@ class ConnectedProvider:
         }
 
 
+class AlreadyStartedProvider(ConnectedProvider):
+    symbols = ("X",)
+
+    def start(self):
+        return False
+
+
 def configured_platform(*, external=False):
     clock = Clock()
     platform = Platform(clock=clock)
@@ -72,6 +79,18 @@ def test_connected_but_incomplete_and_missing_subscription_evidence_is_unknown(
     assert readiness["resume"]["eligible"] is False
     assert readiness["actions"]["new_exposure"]["status"] == "BLOCKED"
     assert readiness["kill_verification"]["status"] == "UNKNOWN"
+    platform.close()
+
+
+def test_already_started_provider_still_starts_broker_evidence_worker(monkeypatch):
+    platform = Platform()
+    platform.broker.provider = "021"
+    provider = AlreadyStartedProvider()
+    platform.configure_external_market_data(provider)
+    monkeypatch.setattr(platform, "start_broker_order_stream", lambda: True)
+
+    assert platform.start_external_market_data() is False
+    assert platform._broker_refresh_thread.is_alive()
     platform.close()
 
 
@@ -172,6 +191,28 @@ def test_stale_market_and_broker_evidence_are_not_ready():
     assert readiness["broker_freshness"]["status"] == "STALE"
     assert readiness["resume"]["eligible"] is False
     assert readiness["actions"]["new_exposure"]["status"] == "BLOCKED"
+    platform.close()
+
+
+def test_broker_evidence_refresh_preserves_gate_only_for_complete_match(monkeypatch):
+    platform, clock = configured_platform()
+    platform.reliability.resume()
+    gate = platform.risk.state
+    clock.now += 4
+
+    assert platform.reliability.refresh_broker_evidence() is True
+    assert platform.risk.state == gate
+    assert platform.reliability.last_broker_at == clock.now
+
+    complete = platform.broker.snapshot()
+    monkeypatch.setattr(
+        platform.broker_calls,
+        "snapshot",
+        lambda timeout=None: replace(complete, is_complete=False),
+    )
+    assert platform.reliability.refresh_broker_evidence() is False
+    assert platform.risk.state == "UNCERTAIN"
+    assert platform.reliability.report["reason"] == "SNAPSHOT_INCOMPLETE"
     platform.close()
 
 

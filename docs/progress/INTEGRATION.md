@@ -1,5 +1,19 @@
 # Integration Progress
 
+## 2026-10-09 — Prototype-responsive Auto policy
+
+- Tuned configurable Auto defaults for visible virtual-exchange demonstrations:
+  two normalized updates, one warmed eligible symbol, 0.01% entry edge, 0.05%
+  take-profit/stop thresholds, two-second cooldown, quantity one, and one
+  simultaneous Auto position.
+- Preserved the non-bypassable market-session/global gate, provider subscription,
+  fresh intent-symbol mark, broker reconciliation, pending-order and RiskGateway
+  checks. No fill, position, P&L or provider success is fabricated.
+- Added a deterministic regression proving the default policy can buy after two
+  updates through the normal risk/order/fill path. Validation: 481 backend passed,
+  1 optional PostgreSQL test skipped; 51 frontend passed; Ruff, ESLint and Vite
+  production build passed.
+
 ## 2026-10-09 — `origin/main` integration checkpoint
 
 - Merged main's canonical admission/recovery safety, operator-aware React controls,
@@ -806,3 +820,71 @@ strict expected xfail. Relevant 021, adapter, Auto, readiness, market-pipeline
 and configuration regression passed: 100 passed and the same 1 strict expected
 xfail. Full Ruff lint passed; Ruff format check reported 175 files formatted;
 `git diff --check` passed.
+## 2026-10-09 — 021 ordering path live diagnosis and lifecycle race fix
+
+- Verified from the dedicated 021 ledger that Auto submitted and the virtual
+  exchange filled a real quantity-one `ARCFIN` BUY; later intents were blocked
+  only after the global gate became `UNCERTAIN`.
+- Fixed a race where a provisional order-WebSocket `OPEN` frame queued before
+  an authoritative REST fill could be consumed after `FILLED`, incorrectly
+  closing the global gate. Provisional lifecycle regressions are now audited as
+  ignored; authoritative illegal regressions remain fail-closed.
+- Unset `ALGOSHIELD_021_SYMBOLS` now keeps the complete catalogue searchable but
+  subscribes live WebSocket quotes only for active execution needs and Auto's
+  bounded candidates. Live observation showed fresh risk marks without the
+  former catalogue-wide market-feed disconnect storm.
+- The existing ledger remains `UNCERTAIN/DRIFTED` after restart because it
+  contains a real fill and 021 today-only views cannot certify complete
+  cross-day history (DEC-038). No history was erased or safety state fabricated.
+- Validation: backend **482 passed, 1 skipped**; frontend **51 passed**; Ruff,
+  TypeScript, ESLint, Vite production build and `git diff --check` passed.
+
+## 2026-10-09 — Continuous 021 Auto execution recovery
+
+- Preserved the prior 021 database and rotated to a new isolated virtual-session
+  ledger only after authenticated provider reads proved orders, trades,
+  positions and holdings had reset empty. Login tokens, operator grant and
+  non-financial manual subscription configuration were carried forward; no
+  order, fill, position, P&L or Auto decision was copied.
+- Added DEC-038 same-day continuity verification, including aggregate/per-order
+  trade identity equality, complete order mapping, current position resolution,
+  empty holdings and a strict Asia/Kolkata date boundary.
+- Auto now retains every attributed open position in its managed feed across
+  catalogue changes, counts pending BUY symbols against `max_positions`, and
+  moves past symbols with repeated definitive zero-fill rejections.
+- Added DEC-040's serialized two-second broker-evidence heartbeat. It refreshes
+  only after explicit resume, never opens the gate, skips busy writes, and fails
+  closed on genuine incomplete/mismatched evidence.
+- Live provider evidence: Auto placed multiple real quantity-one BUY orders;
+  021 returned unique fills for `ABATEAS` and `A1L`. Auto subsequently emitted
+  SELL exits, which 021 definitively rejected under CNC same-day/Trade-to-Trade
+  restrictions. After the concurrency fix, the gate remained RUNNING for a
+  15-second observation with five successful broker evidence refreshes and
+  eight new provider order attempts.
+- Validation: backend **488 passed, 1 skipped**; frontend **51 passed**;
+  TypeScript, Ruff, ESLint, Vite production build and diff checks passed.
+
+## 2026-10-09 — Main reconciliation and promotion verification
+
+- Fast-forwarded `codex/021-integration` to current `origin/main` and preserved
+  both main's acceptance/Auto composition repairs and the subsequent 021
+  lifecycle, same-day continuity and serialized evidence-heartbeat changes.
+- Verified the combined tree before promotion: backend **488 passed, 1 skipped,
+  1 expected xfail** (the documented cross-account provider-order-ID scope
+  blocker); frontend **51 passed**; TypeScript, Ruff, ESLint, Vite production
+  build, all seven deterministic mock rehearsals and `git diff --check` passed.
+
+## 2026-10-09 — Authorized Neon production schema migration
+
+- The owner explicitly designated Neon project `soft-glade-57602806`, branch
+  `production`; DEC-041 supersedes DEC-009's earlier intended project identity.
+- Inspection found an existing managed `algoshield` schema. The repository's
+  additive migration runner completed transactionally with no reset, deletion,
+  local-row copy, demo seed, identity provisioning or operator grant.
+- Post-apply verification found all **14** migration names/checksums equal to the
+  repository set, all **17** application tables present, successful
+  `PostgresStore` initialization, and zero rows in accounts, users,
+  subscriptions, orders, fills and operator grants.
+- This verifies production schema deployment only. Rollback-only PostgreSQL
+  integration, transaction parity, restart/controller evidence and application
+  deployment require a separately authorized non-production database/runtime.

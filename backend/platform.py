@@ -15,7 +15,11 @@ from backend.market_data.candles import CandleBuilder
 from backend.market_data.session import MarketSession
 from backend.observability import MetricsRegistry
 from backend.reliability.control import Reliability
-from backend.reliability.broker_calls import BrokerSession, Deadline
+from backend.reliability.broker_calls import (
+    BrokerCallUnsettled,
+    BrokerSession,
+    Deadline,
+)
 from backend.reliability.proof import SafetyProofService
 from backend.reliability.safety_bench import SafetyBench
 from backend.reliability.tracing import TraceService
@@ -54,6 +58,7 @@ class Platform:
         auto_scan_limit=200,
         auto_max_positions=3,
         auto_lookback=5,
+        auto_min_warmed_symbols=20,
         auto_entry_momentum=0.003,
         auto_take_profit=0.01,
         auto_stop_loss=0.005,
@@ -122,6 +127,7 @@ class Platform:
             scan_limit=auto_scan_limit,
             max_positions=auto_max_positions,
             lookback=auto_lookback,
+            min_warmed_symbols=auto_min_warmed_symbols,
             entry_momentum=auto_entry_momentum,
             take_profit=auto_take_profit,
             stop_loss=auto_stop_loss,
@@ -137,6 +143,8 @@ class Platform:
         self._replay_thread = None
         self.external_market_data = None
         self._broker_stream = None
+        self._broker_refresh_stop = Event()
+        self._broker_refresh_thread = None
 
     def configure_external_market_data(self, provider):
         """Attach one explicit source before any timeline has been ingested."""
@@ -188,15 +196,51 @@ class Platform:
             else "YAHOO_FEED_STARTING"
         )
         started = self.external_market_data.start()
-        if started:
+        if started or getattr(self.external_market_data, "symbols", ()):
             self.start_broker_order_stream()
+            self.start_broker_evidence_refresh()
         return started
 
     def stop_external_market_data(self):
+        self.stop_broker_evidence_refresh()
         self.stop_broker_order_stream()
         if self.external_market_data is not None:
             return self.external_market_data.stop()
         return True
+
+    def start_broker_evidence_refresh(self):
+        """Keep verified live broker evidence fresh without reopening a gate."""
+        adapter = getattr(self.broker_calls, "adapter", self.broker)
+        if getattr(adapter, "provider", None) != "021":
+            return False
+        if self._broker_refresh_thread and self._broker_refresh_thread.is_alive():
+            return False
+        self._broker_refresh_stop.clear()
+
+        def run():
+            while not self._broker_refresh_stop.wait(2.0):
+                if self.risk.state not in {Gate.RUNNING, Gate.REDUCE_ONLY}:
+                    continue
+                try:
+                    self.sync_broker_updates()
+                    self.reliability.refresh_broker_evidence()
+                except BrokerCallUnsettled:
+                    continue
+                except Exception:
+                    self.reliability.fail_closed("BROKER_REFRESH_FAILED")
+
+        self._broker_refresh_thread = Thread(
+            target=run, daemon=True, name="021-broker-evidence-refresh"
+        )
+        self._broker_refresh_thread.start()
+        return True
+
+    def stop_broker_evidence_refresh(self):
+        self._broker_refresh_stop.set()
+        thread = self._broker_refresh_thread
+        if thread and thread is not current_thread():
+            thread.join(timeout=3.0)
+        return not (thread and thread.is_alive())
 
     def start_broker_order_stream(self):
         """Start an optional 021 order-status stream without granting it fill authority."""
@@ -252,6 +296,7 @@ class Platform:
         changed = True if refresh is None else refresh()
         if getattr(self.external_market_data, "symbols", ()):
             self.start_broker_order_stream()
+            self.start_broker_evidence_refresh()
         return changed
 
     def required_market_symbols(self):
@@ -369,14 +414,11 @@ class Platform:
                 raise
 
     def drain_broker_updates(self):
-        adapter = getattr(self.broker_calls, "adapter", self.broker)
         with self._replay_lock:
             queued = list(getattr(self, "_provider_update_queue", ()))
             if hasattr(self, "_provider_update_queue"):
                 self._provider_update_queue.clear()
-        authoritative = (
-            adapter.drain_updates() if hasattr(adapter, "drain_updates") else []
-        )
+        authoritative = self.broker_calls.drain_updates()
         return authoritative + queued
 
     def sync_broker_updates(self):

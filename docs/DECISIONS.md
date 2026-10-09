@@ -892,6 +892,27 @@ ignoring prior financial history. It does not certify arbitrary empty responses,
 non-empty accounts, cross-day recovery, charges, corrections or kill behavior.
 It introduces no broker bypass and does not submit a live order during bootstrap.
 
+### 2026-10-09 amendment — durable same-day continuity horizon
+
+The original implementation remained fail-closed after every restart once the
+first order existed, even when the same dedicated ledger retained a verified
+empty-account bootstrap from earlier in the current 021 trading day. That was
+stricter than the decision's requirement for an established complete history
+horizon and prevented the virtual prototype from recovering its own fully
+mapped same-day activity.
+
+The earlier empty bootstrap may now anchor a same-day continuity proof only
+when every exposure-bearing current-day provider order maps to the durable local
+ledger, every aggregate provider trade ID equals the union of mapped per-order
+trade IDs, every dispatched/executed local order is mapped (apart from proven
+zero-fill rejection), current provider positions are symbol-resolvable to the
+single mapped account, and holdings are empty. The bootstrap, every relevant
+order and the new observation must fall on the same Asia/Kolkata trading date.
+Any unknown order/trade, holding, mapping gap, unresolvable position, date
+boundary or subsequent canonical snapshot mismatch remains incomplete and
+fail-closed. Explicit operator reconcile and resume are still required; this
+does not auto-resume or weaken cross-day recovery.
+
 ## DEC-039 — Provider-derived 021 demo execution without fabricated portfolio state
 
 Date: 2026-10-09
@@ -929,78 +950,93 @@ provider rejection is visible as rejection, an accepted order remains open
 until provider lifecycle evidence arrives, and portfolio/P&L changes only from
 unique REST trade fills. This does not promise execution or profit.
 
-## DEC-040 — Explicit Auto demand and generation-scoped 021 serving evidence
+## DEC-040 — Serialized live broker-evidence heartbeat
 
 Date: 2026-10-09
 Status: ACCEPTED
 
 ### Context
 
-The live composition requested the entire cash catalogue when no watchlist or
-trading demand existed, and Auto inherited catalogue order ranked by freeze
-quantity. Observed catalogue values included a sentinel freeze quantity, so
-neither ordering nor that field proved liquidity or execution suitability.
-Readiness also combined a connected socket and locally sent symbol list with a
-fresh mark, without tying the evidence to a connection generation. Provider
-timestamps frequently required receive-time fallback, which could make unknown
-event freshness look current.
+Live admission requires broker evidence no older than five seconds, but the 021
+runtime refreshed that evidence only during operator reconciliation. Continuous
+Auto execution therefore closed itself after five seconds even while market
+data and REST were healthy. A naive background snapshot also raced strategy
+writes through the single-call broker session and converted ordinary contention
+into false uncertainty.
 
 ### Decision
 
-Supersede the candidate-ranking paragraph of DEC-039 and the serving-evidence
-sentence of DEC-038. Live Auto requires an explicit bounded
-`ALGOSHIELD_AUTO_SYMBOLS` allowlist. With no explicit watchlist, enabled
-strategy, exposure, open order, or enabled Auto candidate, the 021 market
-provider stays idle. Connectivity and sent/requested symbols are never serving
-proof. Current 021 readiness accepts only a fresh valid mapped-instrument
-observation tied to its current connection generation; it is labelled
-observation evidence, not provider acknowledgement. Reconnect or dynamic
-universe rebuild invalidates prior serving evidence. Invalid/missing provider
-event time is retained separately from receive time and cannot establish live
-freshness. No provider fact, reconciliation event, or restart enables Auto or
-resumes execution automatically.
+While the gate is explicitly RUNNING or REDUCE_ONLY, a bounded background
+worker drains canonical provider updates and verifies a complete broker snapshot
+every two seconds. Successful refresh updates freshness and reconciliation
+evidence without changing the gate. It never starts or resumes trading.
 
-Live composition enforces the existing Asia/Kolkata `[09:15, 15:30)` schedule.
-Manual OPEN cannot extend live admission outside that schedule, while explicit
-offline replay retains unenforced-hours behavior. Cancellation and separately
-verified emergency-reduction contracts are unchanged.
+All provider update reads run through `BrokerSession`. A heartbeat that finds a
+strategy write in progress skips that cycle. A write arriving during a snapshot
+waits within the configured write deadline; concurrent writes and genuine
+timeouts remain uncertain/fail-closed. Snapshot mismatch, incomplete coverage,
+position drift or provider failure still closes the gate.
 
 ### Impact
 
-Activation produces bounded and reviewable demand, while readiness remains
-instrument- and generation-specific. Activity may remain zero when event time,
-snapshot coverage, reconciliation, gate state, strategy conditions, or provider
-execution evidence is unavailable. That is an explicit block, not a reason to
-weaken safety or manufacture orders.
+Continuous strategies retain fresh broker evidence without operator polling,
+while the existing one-call serialization and non-bypassable risk boundary are
+preserved. The heartbeat adds provider read load and auditable refresh events;
+it does not fabricate fills, retry writes or weaken explicit resume.
 
-## DEC-041 — Exchange-qualified Auto instrument selection
+## DEC-041 — Authorized Neon production target and schema-only deployment
 
 Date: 2026-10-09
 Status: ACCEPTED
 
 ### Context
 
-The 021 catalogue can contain the same symbol on NSECM and BSEEQ. A symbol-only
-cache using the first encountered row made catalogue order an accidental
-execution decision. A reviewed Auto allowlist therefore did not itself prove
-which provider instrument would be subscribed or ordered.
+DEC-009 recorded `muddy-tooth-14996153` as an intended, unauthenticated Neon
+target while progress evidence separately mentioned `soft-glade-57602806`.
+The owner has now explicitly selected project `soft-glade-57602806`, branch
+`production`, and supplied authorized connectivity.
 
 ### Decision
 
-Live Auto is explicitly configured with `ALGOSHIELD_AUTO_EXCHANGE=NSECM`.
-Catalogue loading retains every eligible cash-stock row under the compound
-`(symbol, exchange)` identity. A candidate is valid only when exactly one
-documented `STK` row matches that identity. Missing or duplicate matches fail
-closed; there is no first-row or BSEEQ fallback. The selected current-catalogue
-token supplies both market subscription and order construction, and durable
-order mutation additionally verifies the stored exchange/token/product identity.
-The existing symbol-only path remains for compatible mock/replay and legacy
-callers that do not opt into the live Auto exchange policy.
+Supersede only DEC-009's project identity: the durable PostgreSQL target is Neon
+project `soft-glade-57602806`, branch `production`. Inspect before applying the
+existing checksum-locked additive migrations. Never reset production, copy
+local demo/trading rows, run rollback integration tests, or provision identities
+or operator grants as part of schema deployment.
 
-### Impact
+### Evidence and impact
 
-Reordering NSE/BSE catalogue rows cannot change the selected live Auto
-instrument. Daily token changes come from the configured catalogue rather than
-source constants. This decision does not resolve or alter provider
-UCC/account/order-ID attribution, reconciliation completeness, or execution
-authorization.
+Inspection found the managed `algoshield` schema. Additive migration completed
+transactionally; all 14 migration name/checksum pairs match the repository, all
+17 expected application tables exist, `PostgresStore` initializes, and the
+financial/identity tables inspected remain empty. This verifies schema
+deployment, not runtime deployment, transaction parity, production identity,
+021 readiness or safety certification. Those require separate authorized
+environments and evidence.
+
+## DEC-042 — Explicit Auto demand and generation-scoped 021 serving evidence
+
+Date: 2026-10-09
+Status: ACCEPTED
+
+Live Auto requires a bounded `ALGOSHIELD_AUTO_SYMBOLS` allowlist. With no
+watchlist, enabled strategy, exposure, open order, or enabled Auto candidate,
+the 021 provider remains idle. Connectivity and locally requested symbols are
+not serving proof: readiness requires a fresh valid mapped-instrument
+observation tied to the current connection generation. Reconnect and universe
+changes invalidate that evidence and never resume execution. Invalid or missing
+event time remains distinct from receive time. Live admission enforces
+Asia/Kolkata `[09:15, 15:30)`; replay remains explicitly unenforced.
+
+## DEC-043 — Exchange-qualified Auto instrument selection
+
+Date: 2026-10-09
+Status: ACCEPTED
+
+Live Auto uses `ALGOSHIELD_AUTO_EXCHANGE=NSECM`. Catalogue loading retains
+eligible cash-stock rows by `(symbol, exchange)` identity. A candidate requires
+exactly one documented `STK` NSECM row; missing or duplicate mappings fail
+closed, with no first-row or BSEEQ fallback. Current catalogue tokens supply
+both market subscription and order construction, while durable order mutation
+rejects an exchange/token/product mismatch. This does not alter unresolved
+UCC/account/provider-order-ID attribution or reconciliation completeness.
