@@ -8,7 +8,7 @@ Safety control plane for untrusted trading strategies, built for SYRUS 7.0 FinTe
 
 ## Official 021-03 reference rules and status
 
-The canonical wire source is [docs/021/OFFICIAL_API_CONTRACT.md](docs/021/OFFICIAL_API_CONTRACT.md); implementation order is [docs/021/INTEGRATION_BLUEPRINT.md](docs/021/INTEGRATION_BLUEPRINT.md). The official API is **DOCUMENTED**, while live integration remains **OFF by default and LIVE-UNVERIFIED**. Current code fixture-verifies price/quantity normalization and TC1/TC3/TC4/TC8 decoding. It deliberately blocks live writes and does not turn order-WebSocket trade notices into fills without a REST `tradeId` association.
+The canonical wire source is [docs/021/OFFICIAL_API_CONTRACT.md](docs/021/OFFICIAL_API_CONTRACT.md); implementation order is [docs/021/INTEGRATION_BLUEPRINT.md](docs/021/INTEGRATION_BLUEPRINT.md). The official API is **DOCUMENTED**. Authenticated read-only REST, ephemeral-key, market-WebSocket and order-WebSocket handshakes were live-verified on 2026-10-09; no sandbox order was placed. Price/quantity normalization and TC1/TC3/TC4/TC8 decoding are fixture-verified. Live writes remain operator-controlled, and order-WebSocket trade notices never become fills without REST `tradeId` evidence.
 
 The three 021-03 reference strategies are:
 
@@ -16,7 +16,7 @@ The three 021-03 reference strategies are:
 2. `open_1pct_tp5_sl5`: one directional entry per session when LTP crosses 1% from the verified official daily open. After actual fills, application-managed TP/SL is 5% from fill-derived WAP and sizes only the residual; it is a normal intent through RiskGateway, never a broker-side SL shortcut.
 3. `momentum`: existing own strategy using 1-minute candles, 3/5 EMA warm-up/crossover, quantity 1, and central risk limits. A 15:15 custom-strategy exit is not yet integrated, so this is not claimed live-complete.
 
-The first two policies are fixture-verified as isolated decision boundaries but are not yet registered into the production subscription/runtime composition. Mock/replay remains the only end-to-end execution mode.
+The first two policies are registered in normal subscription/runtime composition and route their canonical intents through RiskGateway and OrderManager. Their deterministic runtime path is fixture-verified. Live execution and reconciliation remain blocked until 021 can attest a complete broker evidence horizon; today's documented lists are not treated as cross-day truth.
 
 ## Start here
 
@@ -38,6 +38,18 @@ python -m uvicorn backend.api:create_app --factory --host 127.0.0.1 --port 8000 
 ```
 
 Open http://127.0.0.1:8000, register or sign in, explicitly provision the intended operator as described below, and click **Run replay** from that operator session. Registration assigns a trading account ID from the authenticated username; the dashboard never asks users to type or choose it. Four built-in strategies consume completed candles concurrently in one serialized event loop: a 3/5 EMA crossover, five-period mean reversion, a 5-minute range breakout and 14-period RSI reversal. The Strategies page accepts one or many stock symbols and atomically creates one independent single-symbol strategy instance for each; each instance retains its own warm-up, failure state, risk, position and P&L. The demo stops after replay and displays actual signals, orders, unique fills, charges, virtual positions, market-data counters and audit events. The dashboard supports durable per-strategy start/stop controls. Click **Kill all** to cancel, flatten and verify. API docs: http://127.0.0.1:8000/docs.
+
+The Strategies page also provides an explicit **Auto mode**. It scans a bounded,
+catalogue-derived cash-equity universe, compares momentum, breakout and
+mean-reversion opportunities, and selects the strongest qualified stock and
+policy. It creates ordinary one-symbol strategy instances only when needed and
+emits quantity-one long entries plus take-profit, stop-loss or reversal exits.
+It reports BUY, SELL or HOLD, the selected policy, and the subsequent risk result.
+It never calls the broker directly,
+never bypasses reconciliation/risk, starts disabled after every process restart,
+and does not guarantee profit. Stopping it does not implicitly liquidate existing
+positions. Configure its bounded policy with the
+`ALGOSHIELD_AUTO_*` placeholders in `.env.example`.
 
 ```sh
 python -m pytest -q --basetemp=.pytest-tmp
@@ -64,7 +76,7 @@ Use `DATABASE_URL=postgresql:///algoshield_local` for the application. Run the r
 
 ## Current implementation and limits
 
-Mock/replay remains the verified execution mode; **021 transport is implemented but live-unverified**. FastAPI serves the compiled React/Vite SPA and pushes authenticated account-scoped snapshots through one WebSocket connection. SQLite offline schema v13 stores accounts, durable subscription enablement, policies, marks, approved orders, fills, dispatch/correlation evidence, provider-order mappings and safety/audit state. Strategy callback failures quarantine only the affected subscription; risk policies and live budgets are durable; Decimal amounts are serialized as strings. Start with `RECOVERING`; explicit reconciliation and resume are required. Configure the DB with `ALGOSHIELD_DB` (default `data/platform.db`); copy `.env.example` to ignored `.env.local` if needed. Process environment overrides `.env.local`, which overrides `.env`. Never put real values in tracked examples.
+Mock/replay remains the fully verified execution mode. **021 read transport is live-verified; order writes are not.** FastAPI serves the compiled React/Vite SPA and pushes authenticated account-scoped snapshots through one WebSocket connection. SQLite offline schema v14 stores accounts, durable subscription enablement, policies, marks, approved orders, fills, dispatch/correlation evidence, provider-order mappings, closed candles and safety/audit state. Strategy callback failures quarantine only the affected subscription; risk policies and live budgets are durable; Decimal amounts are serialized as strings. Start with `RECOVERING`; explicit reconciliation and resume are required. Configure the DB with `ALGOSHIELD_DB` (default `data/platform.db`); copy `.env.example` to ignored `.env.local` if needed. Process environment overrides `.env.local`, which overrides `.env`. Never put real values in tracked examples.
 
 Offline SQLite mode persists external mock evidence separately in `<database>.broker.json`, using atomic file replacement. Restart loads both independent stores, keeps trading RECOVERING, and requires reconciliation/explicit resume. An explicitly injected fresh broker against existing local history still fails closed. Never discard execution history to pretend recovery succeeded. The JSON file is a mock fixture only, not an assumed 021 persistence format.
 
@@ -72,9 +84,18 @@ The dashboard exposes candles, orders/fills/P&L and compact backend-derived safe
 
 Kill latches durably and converges through verified cancellation/fill evidence and attributed exits, with bounded broker waits and a nine-second default deadline. SUCCESS means verified flat under ten seconds; SAFE_LATE is verified but misses the SLA; FAILED retains uncertainty. A timed-out external operation may complete later; it is never blindly retried. Verified kill reset requires no open orders and zero broker/virtual positions, leaves STOPPED, and retains the historical certificate. Fresh broker evidence is required within five seconds and LIVE market event/receive evidence within fifteen seconds; offline REPLAY is labeled and uses receive freshness.
 
-This is a local development tool, not a production service. It has a basic durable local login/session boundary and authenticated local WebSocket telemetry, but no production identity provider or arbitrary strategy upload. The documented 021 REST/auth transport, durable order mapping, sampled market provider and fixture tests are now implemented behind an explicit server-side feature flag; they remain live-unverified. Credentials, charges, corrections, complete history and kill semantics are not claimed. Never commit 021 credentials or use the failure lab against live mode. No profitability or live kill SLA claim is made.
+This is a local development tool, not a production service. It has a basic durable local login/session boundary and authenticated local WebSocket telemetry, but no production identity provider or arbitrary strategy upload. The documented 021 REST/auth transport, durable order mapping, sampled market provider, reconnect workers and telemetry are implemented behind an explicit server-side feature flag. Credentials, charges, corrections, complete history and live kill semantics are not claimed. Failure Lab and SafetyBench run only in a fresh isolated mock sandbox even while the primary provider is 021; they never inject fake events into 021 state. No profitability or live kill SLA claim is made.
 
 Provider selection is explicit: when `ALGOSHIELD_021_ENABLED=true`, 021 is the primary market/broker provider and `ALGOSHIELD_MARKET_DATA_PROVIDER` must be `021` (or omitted). The dashboard labels it `021 LIVE / REAL MARKET DATA`. A failed 021 connection fails closed; it never triggers automatic fallback, source mixing, backfill or trading resume. To use Yahoo as the fallback, stop the process and start a fresh mock-broker timeline with `ALGOSHIELD_021_ENABLED=false`, `ALGOSHIELD_MARKET_DATA_PROVIDER=yahoo`, and the `yahoo` dependency extra installed. The default with 021 disabled and no explicit provider is `MOCK / REPLAY`. The Market Data page's Source card, `market_data.provider`, `market_data.source`, `market_data.label`, and candle `data_source` are the authoritative indicators.
+
+The 021 market universe is dynamic: enabled strategy symbols, active auto-mode
+scan candidates, open exposure/order symbols, plus optional pinned
+`ALGOSHIELD_021_SYMBOLS`. Without any of these the feed remains idle. Auto mode
+uses a configurable bounded, evenly sampled cash-equity subset rather than an
+unbounded whole-catalogue socket. Universe changes fail closed, rebuild bounded
+sockets, obtain fresh ephemeral keys, and require reconciliation plus explicit
+resume. Configure timestamp, broker deadlines and auto policy using the
+placeholder-only settings documented in `.env.example`.
 
 PowerShell clean-start Yahoo fallback (set the database path to an isolated SQLite file appropriate for the run):
 

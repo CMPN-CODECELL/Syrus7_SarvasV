@@ -15,6 +15,8 @@ from backend.broker.official021 import (
     parse_order_frame,
 )
 from backend.shared.contracts import Side
+from backend.shared.contracts import Tick
+from backend.platform import Platform
 from backend.shared.store import Store
 from backend.strategies.official021 import (
     OpenBreakoutStrategy,
@@ -205,3 +207,54 @@ def test_breakout_requires_official_open_and_fill_wap_for_residual_exit():
         )
         is None
     )
+
+
+def test_official_open_strategy_is_registered_and_routes_through_platform_risk():
+    now = epoch(9, 10, 0)
+    platform = Platform(clock=lambda: now)
+
+    class Provider:
+        supports_live_broker = True
+
+        def telemetry(self):
+            return {
+                "provider": "021",
+                "source": "021_LIVE",
+                "latest_quotes": [{"symbol": "RELIANCE", "official_open": "100"}],
+            }
+
+        def stop(self):
+            return True
+
+    try:
+        platform.configure_external_market_data(Provider())
+        platform.account("a")
+        platform.tick(
+            Tick(
+                "RELIANCE", int(now), Decimal("100"), 0, "seed", data_source="021_LIVE"
+            )
+        )
+        assert platform.reliability.reconcile()
+        platform.reliability.resume()
+        platform.strategies.subscribe(
+            "a", "official-breakout", "open_1pct_tp5_sl5", "RELIANCE"
+        )
+
+        platform.tick(
+            Tick(
+                "RELIANCE",
+                int(now) + 1,
+                Decimal("101"),
+                0,
+                "trigger",
+                data_source="021_LIVE",
+            )
+        )
+
+        orders = platform.store.rows(
+            "SELECT strategy,status FROM orders WHERE strategy='official-breakout'"
+        )
+        assert len(orders) == 1
+        assert platform.strategies.signals[-1]["reason"].startswith("021-03 1%")
+    finally:
+        platform.close()

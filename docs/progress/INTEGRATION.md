@@ -1,28 +1,19 @@
 # Integration Progress
 
-## 2026-10-09 — Frontend operator awareness & client authority boundaries (Member 3 Task 2)
+## 2026-10-09 — Guarded auto-mode integration
 
-- Reused authoritative authenticated user state `useAuth().user.is_operator`; missing or unknown roles strictly default to non-operator (`isOperator = Boolean(user?.is_operator)`).
-- Topbar navigation prominently displays ` · Operator` badge only when the active session holds verified operator authority.
-- All global mutating operator actions are disabled and clearly labeled with concise "Operator required" guidance when signed in as an ordinary or unranked user:
-  - AppShell: Kill all strategies (`/api/kill`).
-  - OverviewPage: Replay (`/api/demo`), Reconcile (`/api/reconcile`), Reset kill latch (`/api/kill/reset`), Resume (`/api/resume`).
-  - ReconciliationPage: Sync broker updates (`/api/broker/updates/sync`), Reconnect and reconcile (`/api/broker/reconnect`), Disconnect broker (`/api/broker/disconnect`), Reconcile (`/api/reconcile`).
-  - FailureLabPage: Scenario inspector run (`/api/lab/run`) and scenario card run actions.
-  - SafetyBenchPage: Benchmark run (`/api/safety-bench/run`).
-  - MarketDataPage: Open and Close market session overrides (`/api/market/session`).
-- Account-owned controls remain fully accessible:
-  - Strategy subscriptions start/stop and atomic batch creation (`/api/subscriptions/*`).
-  - Order cancellation for open orders (`/api/orders/{id}/cancel`).
-  - Account risk policy inspection (`/api/risk/account-policy`).
-- Backend enforcement remains authoritative: UI restrictions never substitute for `require_operator(request)`. When an operator grant is revoked while a session is active, any mutating operator request returning 403 triggers identity refresh via `refreshAuth()` without logging the user out (403 is never treated as 401/logout), instantly removing operator controls from the UI. Duplicate/re-entrant clicks while in-flight or during identity refresh are prevented.
-- Existing operator provisioning commands documented (never executed):
-  - SQLite: `python -m backend.shared.provision_operator --sqlite-path <db_path> --username <username> [--revoke]`
-  - PostgreSQL: `python -m backend.shared.provision_operator --username <username> [--revoke]`
-- Validation:
-  - Frontend: 47 passed across 10 test files (including 5 new focused tests in `frontend/src/test/operatorAuthority.test.jsx`); ESLint clean (0 errors, 0 warnings); Vite production build passed.
-  - Backend: 38 passed in `tests/test_operator_authority.py`, including strengthened revocation zero-mutation verification on gate, order rows, and fill rows, with session remaining valid for ordinary authenticated endpoints.
-
+- Added a process-local, explicitly activated auto strategy orchestrator over
+  the existing one-instance/one-symbol contract. It scans a bounded cash-equity
+  catalogue subset, selects among momentum, breakout and mean reversion, records
+  BUY/SELL/HOLD and risk outcomes, and preserves the
+  canonical risk → order → broker → fill → ledger chain.
+- Dynamic 021 feed composition now includes active scan candidates and symbols
+  required by open orders/positions. Rebuilding that universe remains fail-closed
+  and requires reconciliation plus explicit resume before risk-increasing work.
+- Added server-side policy configuration and React controls/evidence. This is
+  mock-fixture verified, not a profitability or live-021-write claim. Final
+  regression: 445 backend passed / 1 optional PostgreSQL skip; 43 frontend
+  passed; Ruff, formatting, ESLint, Vite build, docs links and diff checks passed.
 
 ## 2026-10-09 — Official 021-03 gap-only fixture integration
 
@@ -32,51 +23,6 @@ Work started from `main` `2490e82a4f6c1dc60ab8cc8d61f0523899dc80de` after fetch;
 - Phase: integrated mock/replay hardening with optional supervised Yahoo quote evidence
 - Status: BLOCKED
 - Last updated: 2026-10-09 Asia/Kolkata
-
-## 2026-10-09 â€” Candle visibility, chart bootstrap, and account projection follow-up
-
-- Root-cause review of the supplied dashboard evidence found that recent closed
-  bars were only carried in a small in-memory snapshot, the Market Data route did
-  not bootstrap from the authenticated historical endpoint, and the shared
-  frontend bundle predated the current source. The UI now distinguishes account
-  telemetry connectivity from upstream feed state and displays provider/source,
-  latest quote age/staleness, forming versus closed candles, and explicit empty,
-  loading, error, or unavailable reasons. Overview and Market Data share the
-  authenticated 1m/5m chart/history path; symbol and timeframe controls remain
-  available when there are no closed bars.
-- Historical candle reads now select the active provider and return bounded,
-  chronological rows. SQLite and PostgreSQL repositories use the migrated
-  PostgreSQL `interval_seconds` field consistently, support provider filtering,
-  and prune per-symbol history beyond the bounded retention window. Existing
-  finalized-candle writes remain idempotent and restart-restored.
-- Account response review found replay quote/forming-bar observations could
-  bypass the existing symbol filter in nested market telemetry, especially in
-  global-action responses. Replay chart evidence is now restricted to the
-  requesting account's subscribed symbols; public external-provider quote
-  evidence remains available for configured watchlists, including before a
-  strategy is subscribed.
-- Reconciliation now labels startup-without-broker-evidence as pending, not a
-  confirmed position mismatch. The Strategies page explains when there are no
-  subscriptions and callbacks/orders therefore are not running. No fake fills,
-  successful reconciliation, strategy activation, or live market status was
-  added.
-- Current-checkout verification on rebased `main`: full backend suite
-  `437 passed, 1 skipped`; all 49 React tests passed; ESLint, Vite production
-  build, root TypeScript,
-  Ruff lint, seven mock rehearsals and documentation links passed. A
-  `ruff format --check` audit reports eight files would be reformatted; the
-  pre-change `backend/api.py` also fails that formatter check, so broad
-  reformatting was not mixed into this gap-focused change.
-- Local HTTP check served the rebuilt Vite bundle and `/health` returned
-  `process=UP`, `trading=UNCERTAIN`, `reconciliation=DRIFTED`. Authenticated
-  data routes returned 401 without a session as expected; no browser session
-  token was accessed. The currently running process predates the backend edits
-  and was not restarted, preserving its feed connection. Its new backend
-  telemetry/history behavior therefore requires a controlled restart.
-- Live 021 access and isolated PostgreSQL server connectivity remain
-  unverified; the outbound provider probe was blocked before authentication.
-  No broker traffic, production database, or migration was used. The screenshot
-  tick counters alone do not prove that the active feed was 021.
 
 ## 2026-10-09 — Subscription-free Yahoo quote visibility
 
@@ -556,3 +502,27 @@ readiness/recovery tests passed; full backend regression passed 428 tests with 1
 optional PostgreSQL test skipped. Focused Ruff check/format and `git diff
 --check` passed. The existing Starlette/httpx deprecation warning remains; no
 dependency was changed.
+# 2026-10-09 — 021 end-to-end hardening checkpoint
+
+- Merged current `origin/main` into `codex/021-integration` without discarding
+  existing work. Removed whole-catalogue default subscription; live desired
+  universe is enabled strategy symbols plus optional pinned symbols and updates
+  through controlled fail-closed socket rebuilds.
+- Added provider-boundary duplicate fingerprints, 10-second configurable
+  timestamp normalization with detailed fallback evidence, bounded market
+  reconnect/resubscribe, order-stream reconnect, REST-fill-first sequencing,
+  durable-apply acknowledgement, and separate broker operation deadlines.
+- Registered `time_0915_1515` and `open_1pct_tp5_sl5` in runtime composition;
+  both remain ordinary canonical intent producers subject to reconciliation,
+  RiskGateway and OrderManager. React Market Data now exposes market/order socket
+  health, desired/subscribed universe, official open, duplicate/timestamp and
+  reconnect evidence without any provider secret.
+- Authenticated read-only 021 checks passed orders, instruments, trades,
+  positions, ephemeral key, two-symbol market WS observations, normalized live
+  quotes and order-WS handshake. No order write occurred. The documented
+  today/current endpoints still do not establish complete cross-day broker
+  history, so live reconciliation and risk-increasing execution remain safely
+  blocked rather than falsely certified.
+- Final verification: backend `441 passed, 1 skipped`; frontend `42 passed`,
+  ESLint and Vite production build passed; Ruff check/format and diff check
+  passed. The only backend warning is the existing Starlette/httpx deprecation.

@@ -1,6 +1,6 @@
 # 021 Integration — Known Unknowns
 
-The official wire contract is documented in [OFFICIAL_API_CONTRACT](021/OFFICIAL_API_CONTRACT.md), with implementation order in [INTEGRATION_BLUEPRINT](021/INTEGRATION_BLUEPRINT.md). This branch now contains a bounded authenticated REST adapter, durable provider-order mapping, strict market-frame parsing, and a composed `MarketData021Provider`; all remain `IMPLEMENTED_UNVERIFIED` until a sandbox read-only smoke test is run. Mock/fixture evidence still cannot resolve provider fees, correction/bust semantics, complete history coverage, external/manual trade attribution, account mapping, or kill semantics.
+The official wire contract is documented in [OFFICIAL_API_CONTRACT](021/OFFICIAL_API_CONTRACT.md), with implementation order in [INTEGRATION_BLUEPRINT](021/INTEGRATION_BLUEPRINT.md). This branch contains bounded authenticated REST, durable provider-order mapping, strict market parsing, dynamic/reconnecting market sockets and a reconnecting order-status worker. Authenticated read-only endpoints and both WebSocket handshakes are `021_LIVE_VERIFIED` as recorded in [LIVE_VERIFICATION_REPORT](021/LIVE_VERIFICATION_REPORT.md). Mock/fixture evidence and read-only access still cannot resolve provider fees, correction/bust semantics, complete history coverage, external/manual trade attribution, account mapping, write behavior, or kill semantics.
 
 Implemented transport scope:
 
@@ -83,4 +83,4 @@ Additional blockers: snapshot completeness/pagination and consistency, short-sel
 
 ## 2026-10-09 remediation boundary
 
-Local operator authority and account response scoping do not confirm sponsor authentication or multi-account API semantics. Broker021Adapter remains live-disabled. Execution identity/corrections, history completeness/consistency, charges, netting/shorting and measured live kill semantics remain UNKNOWN/BLOCKED. No sandbox or production Neon access occurred; local fixture/mock evidence is recorded in progress/INTEGRATION.md.
+Local operator authority and account response scoping do not confirm multi-account API semantics. `Broker021Adapter` is explicit server-side configuration and was exercised read-only against the sandbox; no write was performed. Execution identity/corrections, history completeness/consistency, charges, netting/shorting and measured live kill semantics remain UNKNOWN/BLOCKED. No production Neon access occurred; current evidence is recorded in progress/INTEGRATION.md.

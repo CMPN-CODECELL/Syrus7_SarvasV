@@ -1,6 +1,6 @@
 # 021-03 Official API Contract — source-controlled integration reference
 
-Status: **DOCUMENTED BY ORGANISER, NOT YET PROVEN AGAINST A LIVE ACCOUNT**. Source: organiser's `021 Trade Hackathon - API Guide.pdf`, 21 pages; supporting Postman collection. Scope: **021-03 Algo Trading Platform only**. `021-02` prohibition on broker order APIs does **not** apply to this track. The 021 simulated exchange uses virtual funds; never describe this as real-money execution.
+Status: **DOCUMENTED BY ORGANISER; READ-ONLY REST/WS CONNECTIVITY LIVE-VERIFIED 2026-10-09**. Source: organiser's `021 Trade Hackathon - API Guide.pdf`, 21 pages; supporting Postman collection. Scope: **021-03 Algo Trading Platform only**. `021-02` prohibition on broker order APIs does **not** apply to this track. The 021 simulated exchange uses virtual funds; never describe this as real-money execution. No order write was performed by the verification recorded in `LIVE_VERIFICATION_REPORT.md`.
 
 ## Source authority and exact endpoints
 

@@ -2,7 +2,7 @@
 
 ## 021 credentials and mode boundary
 
-`ALGOSHIELD_021_ENABLED` defaults to `false` and accepts only literal `true`/`false`. When explicitly enabled, the bounded REST/market transport reads UCC/password or bearer token from server process configuration; the browser never receives these values or an ephemeral WebSocket key. Credentials must never enter frontend state, audit payloads, fixtures or Git. A login invalidates the previous bearer token, so one bounded server-side owner per UCC must control refresh. This branch has not submitted a live order; operator provisioning alone does not authorize a broker write. Failure Lab and SafetyBench remain SQLite/mock-only.
+`ALGOSHIELD_021_ENABLED` defaults to `false` and accepts only literal `true`/`false`. When explicitly enabled, the bounded REST/market transport reads UCC/password or bearer token from server process configuration; the browser never receives these values or an ephemeral WebSocket key. Credentials must never enter frontend state, audit payloads, fixtures or Git. A login invalidates the previous bearer token, so one bounded server-side owner per UCC must control refresh. This branch has not submitted a live order; operator provisioning alone does not authorize a broker write. Failure Lab remains current-platform SQLite/mock-only. SafetyBench is isolated: every run creates fresh in-memory SQLite/mock platforms and never touches the current 021 or PostgreSQL provider.
 
 Git direct-push permission is separate from application operator authority. DEC-028 makes PRs optional and retains server-side permissions. No GitHub access grants or protection changes were made. Deployment Origin/proxy verification remains a task in [TEAM_EXECUTION_PLAN](TEAM_EXECUTION_PLAN.md).
 
@@ -44,9 +44,10 @@ Production identity integration, secure-cookie/TLS policy, operator governance,
 and Neon environment identity remain `BLOCKED`. Never point the offline CLI or
 tests at production.
 
-Failure Lab and SafetyBench also require the existing isolated mock guard.
-Operator status never permits fault injection against PostgreSQL or a non-mock
-broker.
+Failure Lab requires the existing current-platform mock guard. SafetyBench's
+isolated per-case platforms are independently mock-backed, so its operator
+action may run while the current platform uses PostgreSQL or 021; it cannot
+inject events into, submit orders to, or mutate that provider state.
 
 ## Browser and proxy policy (DEC-027)
 

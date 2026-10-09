@@ -1,6 +1,6 @@
 # AlgoShield × official 021-03 — implementation blueprint
 
-Status: **approved engineering recommendation, not evidence that current branch contains integration**. Read `OFFICIAL_API_CONTRACT.md` first and inspect repo at HEAD. Do not infer implementation from older member research (especially its now-stale claim that the API was unpublished). Objective: meet official **021-03**, retain existing AlgoShield risk/reservation/ledger/kill controls, and preserve mock demo as safe regression mode.
+Status: **implemented hardening baseline with explicit remaining live-write gates**. Read `OFFICIAL_API_CONTRACT.md` and `LIVE_VERIFICATION_REPORT.md` first. Read-only REST/WS transport, reconnect, dynamic universe, normalization, runtime strategy wiring and React evidence exist in the current branch; complete 021 reconciliation, fees, live writes and kill verification remain blocked/unverified.
 
 ## Sponsor evaluation intent (source vs inference)
 
