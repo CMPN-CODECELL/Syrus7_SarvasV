@@ -22,6 +22,7 @@ from starlette.websockets import WebSocketDisconnect
 from backend.platform import Platform
 from backend.market_data.yahoo import YahooMarketDataProvider
 from backend.market_data.official021 import MarketData021Provider
+from backend.market_data.catalogue import demo_instruments
 from backend.broker.adapters import Broker021Adapter, MockBrokerAdapter
 from backend.broker.official021 import Provider021Error
 from backend.broker.http_adapter import HTTPMockBrokerAdapter
@@ -628,6 +629,14 @@ def create_app(platform=None, *, trusted_origins=None):
     @app.get("/api/strategies")
     def list_strategies():
         return engine.strategies.list_registered()
+
+    @app.get("/api/instruments")
+    def list_instruments(request: Request, q: str | None = Query(None, max_length=32)):
+        """Return the bounded catalogue; it is not a claim of live availability."""
+        require_user(request)
+        if engine.demo_enabled and engine.external_market_data is None:
+            return demo_instruments(q)
+        return []
 
     @app.get("/api/market/session")
     def get_market_session():

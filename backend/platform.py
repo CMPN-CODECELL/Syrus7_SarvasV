@@ -1160,6 +1160,7 @@ class Platform:
             market_data = self.market_data_evidence()
             result = {
                 "demo_enabled": self.demo_enabled,
+                "operating_mode": "DEMO_PAPER" if self.demo_enabled and self.external_market_data is None else "PERSISTENT_MOCK",
                 "failure_lab_enabled": True,
                 "mode": (
                     self.external_market_data.telemetry().get(
