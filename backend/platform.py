@@ -506,7 +506,7 @@ class Platform:
             self.broker, MockBrokerAdapter
         ):
             raise ValueError(
-                "demo/failure injection requires offline mock storage; production database is protected"
+                "synthetic Failure Lab injection requires the offline mock broker; it cannot inject fake events into the 021 virtual exchange"
             )
 
     def require_replay_demo(self):

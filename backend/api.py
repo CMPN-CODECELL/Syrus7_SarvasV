@@ -364,7 +364,7 @@ def create_app(platform=None, *, trusted_origins=None):
 
         message = str(exc)
         safe_messages = (
-            "demo/failure injection requires offline mock storage",
+            "synthetic Failure Lab injection requires the offline mock broker",
             "demo replay requires an explicitly enabled local mock broker",
         )
         return JSONResponse(

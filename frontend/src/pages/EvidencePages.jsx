@@ -322,7 +322,7 @@ export function FailureLabPage(){
   return(
     <Page eyebrow="Practice a failure safely" title="Failure Lab" description="Simulate broker and market failures to verify risk and recovery protections in real time.">
       <p className="muted">These tests mutate the current mock platform. Review the selected scenario, then confirm before running it.</p>
-      {!mockLabEnabled&&<div className="error" role="status">021 live mode is active. Synthetic Failure Lab scenarios are disabled to protect the real account.</div>}
+      {!mockLabEnabled&&<div className="error" role="status">021 virtual-exchange mode is active. Synthetic Failure Lab scenarios are disabled because they cannot inject fake events into 021 provider state.</div>}
       {error&&<div className="error" role="alert">{error}</div>}
 
       {busy&&runningGuide&&(
