@@ -176,6 +176,7 @@ class YahooMarketDataProvider:
         self._received = 0
         self._accepted = 0
         self._duplicates = 0
+        self._latest_quotes = {}
         self._deadline_terminations = 0
         self._lifecycle = deque(maxlen=32)
 
@@ -241,6 +242,16 @@ class YahooMarketDataProvider:
         self.platform.tick(tick, replay=False)
         with self._lock:
             self._accepted += 1
+            self._latest_quotes[tick.symbol] = {
+                "symbol": tick.symbol,
+                "provider_symbol": payload["id"],
+                "price": str(tick.price),
+                "event_timestamp": tick.event_timestamp,
+                "raw_event_timestamp": tick.raw_event_timestamp,
+                "received_at": received_at,
+                "volume_available": False,
+                "data_source": SOURCE,
+            }
         return True
 
     def record_disconnect(self, error="Yahoo connection ended"):
@@ -367,6 +378,23 @@ class YahooMarketDataProvider:
                 "label": "YAHOO EXTERNAL QUOTES / MOCK EXECUTION",
                 "connected": self._connected,
                 "symbols": list(self.symbols),
+                "canonical_symbols": [YAHOO_SYMBOLS[symbol] for symbol in self.symbols],
+                "latest_quotes": [
+                    self._latest_quotes.get(
+                        YAHOO_SYMBOLS[provider_symbol],
+                        {
+                            "symbol": YAHOO_SYMBOLS[provider_symbol],
+                            "provider_symbol": provider_symbol,
+                            "price": None,
+                            "event_timestamp": None,
+                            "raw_event_timestamp": None,
+                            "received_at": None,
+                            "volume_available": False,
+                            "data_source": SOURCE,
+                        },
+                    ).copy()
+                    for provider_symbol in self.symbols
+                ],
                 "last_received_at": self._last_received_at,
                 "last_event_timestamp": self._last_event_timestamp,
                 "last_raw_event_timestamp": self._last_raw_event_timestamp,

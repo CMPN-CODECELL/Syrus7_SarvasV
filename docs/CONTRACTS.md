@@ -273,6 +273,7 @@ Every broker adapter (including `MockBrokerAdapter` and the eventual `Broker021A
 - Browser sessions use the HttpOnly cookie through `credentials: include`; no token is stored in local storage.
 - Protected routes render no account data until `/api/auth/me` succeeds. HTTP 401 or WebSocket close 1008 clears the current snapshot.
 - One telemetry provider owns `/api/stream/ws`, reconnects with a bounded backoff, and refreshes from `/api/state`; pages do not open independent streams.
+- Yahoo market-data telemetry exposes configured provider symbols, their canonical mappings, and one bounded latest-accepted quote row per configured symbol. Missing quote fields remain null; prices remain decimal strings, raw timestamps remain unchanged, and volume remains explicitly unavailable. This public feed evidence is visible to authenticated accounts even before they create a strategy subscription; account-scoped orders, positions, P&L and strategy evidence remain filtered.
 - Mutations wait for backend responses and then refresh backend state. They never optimistically set `VERIFIED`, `MATCHED`, `SUCCESS`, positions, P&L, or fill status.
 - Multi-stock creation sends one batch request, shows the generated instance IDs before submission, and reports backend-confirmed count/symbols afterward. On a batch conflict it explicitly states that nothing was created and retains the selected set for correction.
 - `FAILED`, `UNKNOWN`, and `SAFE_LATE` are displayed verbatim and must not be mapped to successful labels.
