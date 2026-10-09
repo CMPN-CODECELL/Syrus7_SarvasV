@@ -38,6 +38,7 @@ class MarketData021Provider:
         self._stop = Event()
         self._thread: Thread | None = None
         self._threads: list[Thread] = []
+        self._ephemeral_key: str | None = None
         self._lock = Lock()
         self._connected = False
         self._connected_count = 0
@@ -59,6 +60,7 @@ class MarketData021Provider:
             return False
         self._stop.clear()
         self._threads = []
+        self._ephemeral_key = self.adapter.ephemeral_key()
         for index in range(0, len(self.symbols), self.MAX_INSTRUMENTS_PER_CONNECTION):
             chunk = self.symbols[index : index + self.MAX_INSTRUMENTS_PER_CONNECTION]
             thread = Thread(
@@ -80,7 +82,7 @@ class MarketData021Provider:
         return not any(thread.is_alive() for thread in self._threads)
 
     def _connect(self, symbols):
-        token = self.adapter.ephemeral_key()
+        token = self._ephemeral_key or self.adapter.ephemeral_key()
         instruments = [self.adapter._instrument(symbol) for symbol in symbols]
         pairs = [[instrument.exchange, instrument.token] for instrument in instruments]
         url = self.adapter.base_url.replace("https://", "wss://").replace(
@@ -120,7 +122,12 @@ class MarketData021Provider:
                         observations = parse_market_frames(frame)
                     except Exception as exc:
                         with self._lock:
-                            self.errors.append(type(exc).__name__)
+                            detail = str(exc).strip()
+                            self.errors.append(
+                                f"{type(exc).__name__}: {detail[:120]}"
+                                if detail
+                                else type(exc).__name__
+                            )
                         self.platform.reliability.fail_closed("021_FEED_PROTOCOL_ERROR")
                         continue
                     for observation in observations:
@@ -128,7 +135,12 @@ class MarketData021Provider:
                             self._emit(observation)
                         except (ValueError, Provider021Error) as exc:
                             with self._lock:
-                                self.errors.append(type(exc).__name__)
+                                detail = str(exc).strip()
+                                self.errors.append(
+                                    f"{type(exc).__name__}: {detail[:120]}"
+                                    if detail
+                                    else type(exc).__name__
+                                )
                             self.platform.reliability.fail_closed("021_FEED_UPDATE_REJECTED")
             finally:
                 with self._lock:
