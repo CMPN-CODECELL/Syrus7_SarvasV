@@ -14,7 +14,9 @@ Do not assume answers absent from the official contract or until harmless author
 
 DEC-027's [broker identity contract](CONTRACTS.md) requires provider/account-scoped
 mapping, durable restart/cancel translation and canonical snapshot normalization.
-Mock identity collision rejection is verified; real 021 mapping is not implemented.
+Mock identity collision rejection and fixture-backed 021 durable mapping are
+implemented. The 021 mapping remains live-unverified, and today's documented
+REST lists do not establish a complete cross-day reconciliation snapshot.
 Referenced corrections/busts and independent fee revisions remain unsupported
 until replacement/delta/ordering/identity/session semantics and fixtures arrive.
 No benchmark's FIX/IBKR/Kite fields establish 021 behavior.

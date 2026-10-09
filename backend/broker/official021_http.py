@@ -121,7 +121,8 @@ class Official021RESTAdapter:
     ):
         self.store = store
         self.base_url = (
-            base_url or os.getenv(
+            base_url
+            or os.getenv(
                 "ALGOSHIELD_021_BASE_URL",
                 "https://devapi.021.trade/api/developer-api/v1",
             )
@@ -177,7 +178,9 @@ class Official021RESTAdapter:
             pass
         raise error_type(f"HTTP {response.status_code}: {detail}")
 
-    def _request(self, method: str, path: str, *, json: dict | None = None, write=False):
+    def _request(
+        self, method: str, path: str, *, json: dict | None = None, write=False
+    ):
         token = self._auth()
         headers = {"Authorization": f"Bearer {token}"}
         try:
@@ -231,7 +234,14 @@ class Official021RESTAdapter:
                 if exchange not in EXCHANGE_TO_CODE:
                     continue
                 symbol = row.get("symbol", "").strip().upper()
-                if not symbol or row.get("instrument_type") not in {"STK", "FUTSTK", "FUTIDX", "OPTSTK", "OPTIDX", "IDX"}:
+                if not symbol or row.get("instrument_type") not in {
+                    "STK",
+                    "FUTSTK",
+                    "FUTIDX",
+                    "OPTSTK",
+                    "OPTIDX",
+                    "IDX",
+                }:
                     continue
                 try:
                     token = int(row["token"])
@@ -253,10 +263,14 @@ class Official021RESTAdapter:
                     ),
                 )
             if not loaded:
-                raise Provider021ProtocolError("021 instruments response contained no usable rows")
+                raise Provider021ProtocolError(
+                    "021 instruments response contained no usable rows"
+                )
             self.instruments = loaded
         except UnicodeDecodeError as exc:
-            raise Provider021ProtocolError("021 instruments response is not UTF-8 CSV") from exc
+            raise Provider021ProtocolError(
+                "021 instruments response is not UTF-8 CSV"
+            ) from exc
 
     def _instrument(self, symbol: str) -> Instrument021:
         if not self.instruments:
@@ -272,7 +286,9 @@ class Official021RESTAdapter:
             (platform_order_id, self.provider),
         )
         if not rows:
-            raise Provider021Blocked("021 order mapping is unavailable; reconcile before mutation")
+            raise Provider021Blocked(
+                "021 order mapping is unavailable; reconcile before mutation"
+            )
         return rows[0]
 
     def _order_payload(self, intent: OrderIntent, instrument: Instrument021, *, quantity=None, limit_price=None):
@@ -324,10 +340,15 @@ class Official021RESTAdapter:
                 )
                 self.store.audit(
                     "021_ORDER_MAPPED",
-                    {"order_id": intent.intent_id, "provider_order_id": provider_order_id},
+                    {
+                        "order_id": intent.intent_id,
+                        "provider_order_id": provider_order_id,
+                    },
                 )
         except Exception as exc:
-            raise Provider021WriteUncertain("021 order accepted but mapping was not durably recorded") from exc
+            raise Provider021WriteUncertain(
+                "021 order accepted but mapping was not durably recorded"
+            ) from exc
         self._provider_orders[intent.intent_id] = provider_order_id
         return CanonicalOrder(intent.intent_id, intent, OrderStatus.OPEN)
 
@@ -364,14 +385,24 @@ class Official021RESTAdapter:
                 self._request("GET", f"/orders/{mapping['provider_order_id']}").json()
             )
             if rows:
-                status = STATUS_MAP.get(_text(rows[0].get("status")), OrderStatus.UNKNOWN)
-                if status in {OrderStatus.CANCELLED, OrderStatus.FILLED, OrderStatus.REJECTED}:
+                status = STATUS_MAP.get(
+                    _text(rows[0].get("status")), OrderStatus.UNKNOWN
+                )
+                if status in {
+                    OrderStatus.CANCELLED,
+                    OrderStatus.FILLED,
+                    OrderStatus.REJECTED,
+                }:
                     return
             time.sleep(0.05)
-        raise Provider021WriteUncertain("021 cancellation remains pending; reconciliation required")
+        raise Provider021WriteUncertain(
+            "021 cancellation remains pending; reconciliation required"
+        )
 
     def _local_intent(self, row):
-        order = self.store.rows("SELECT * FROM orders WHERE id=?", (row["platform_order_id"],))
+        order = self.store.rows(
+            "SELECT * FROM orders WHERE id=?", (row["platform_order_id"],)
+        )
         if not order:
             raise Provider021ProtocolError("mapped 021 order has no local intent")
         local = order[0]
@@ -405,12 +436,28 @@ class Official021RESTAdapter:
     def snapshot(self) -> BrokerSnapshot:
         orders = self._orders()
         trades = self._mapped_trades(
-            {row["provider_order_id"]: row for row in self.store.rows("SELECT * FROM broker_order_mappings WHERE provider=?", (self.provider,))}
+            {
+                row["provider_order_id"]: row
+                for row in self.store.rows(
+                    "SELECT * FROM broker_order_mappings WHERE provider=?",
+                    (self.provider,),
+                )
+            }
         )
-        positions = parse_plain_list(self._request("GET", "/portfolio/positions").json())
-        mapped = {row["provider_order_id"]: row for row in self.store.rows("SELECT * FROM broker_order_mappings WHERE provider=?", (self.provider,))}
+        positions = parse_plain_list(
+            self._request("GET", "/portfolio/positions").json()
+        )
+        mapped = {
+            row["provider_order_id"]: row
+            for row in self.store.rows(
+                "SELECT * FROM broker_order_mappings WHERE provider=?", (self.provider,)
+            )
+        }
         canonical_orders = []
-        complete = True
+        # The documented endpoints expose current/today state only. They do not
+        # prove complete cross-day order and fill history, so this snapshot must
+        # not certify reconciliation until that coverage is verified live.
+        complete = False
         for row in orders:
             mapping = mapped.get(_text(row.get("orderId")))
             if mapping is None:
@@ -421,7 +468,9 @@ class Official021RESTAdapter:
             filled = abs(_signed_int(row.get("qtyTraded", 0)))
             if filled > intent.quantity:
                 raise Provider021ProtocolError("021 order reports overfill")
-            canonical_orders.append(CanonicalOrder(intent.intent_id, intent, status, filled))
+            canonical_orders.append(
+                CanonicalOrder(intent.intent_id, intent, status, filled)
+            )
         fills = self._fills_from_trades(trades, mapped)
         position_map = {}
         accounts = {row["account"] for row in mapped.values()}
@@ -433,12 +482,19 @@ class Official021RESTAdapter:
             token = row.get("token")
             symbol = _text(row.get("symbol")) or self._symbol_for_token(exchange, token)
             if symbol and account_id:
-                position_map[(account_id, symbol)] = _signed_int(row.get("netQuantity", 0))
-        return BrokerSnapshot(tuple(canonical_orders), tuple(fills), position_map, complete, time.time())
+                position_map[(account_id, symbol)] = _signed_int(
+                    row.get("netQuantity", 0)
+                )
+        return BrokerSnapshot(
+            tuple(canonical_orders), tuple(fills), position_map, complete, time.time()
+        )
 
     def _symbol_for_token(self, exchange, token):
         for instrument in self.instruments.values():
-            if instrument.token == int(token or 0) and CODE_TO_EXCHANGE.get(instrument.exchange) == exchange:
+            if (
+                instrument.token == int(token or 0)
+                and CODE_TO_EXCHANGE.get(instrument.exchange) == exchange
+            ):
                 return instrument.symbol
         return None
 
@@ -457,7 +513,9 @@ class Official021RESTAdapter:
             intent = self._local_intent(mapping)
             signed = _signed_int(trade.get("quantity"))
             if signed == 0 or (signed > 0) != (intent.side == Side.BUY):
-                raise Provider021ProtocolError("021 trade side does not match mapped intent")
+                raise Provider021ProtocolError(
+                    "021 trade side does not match mapped intent"
+                )
             fills.append(
                 Fill(
                     f"021:{trade_id}",
@@ -476,7 +534,12 @@ class Official021RESTAdapter:
 
     def drain_updates(self) -> list[BrokerUpdate]:
         orders = self._orders()
-        mapped = {row["provider_order_id"]: row for row in self.store.rows("SELECT * FROM broker_order_mappings WHERE provider=?", (self.provider,))}
+        mapped = {
+            row["provider_order_id"]: row
+            for row in self.store.rows(
+                "SELECT * FROM broker_order_mappings WHERE provider=?", (self.provider,)
+            )
+        }
         trades = self._mapped_trades(mapped)
         updates = []
         for row in orders:
@@ -490,12 +553,29 @@ class Official021RESTAdapter:
                 OrderStatus.CANCELLED: BrokerUpdateType.ORDER_CANCELLED,
                 OrderStatus.OPEN: BrokerUpdateType.ORDER_ACCEPTED,
             }.get(status, BrokerUpdateType.ORDER_STATUS)
-            updates.append(BrokerUpdate(f"021:status:{mapping['provider_order_id']}:{status.value}", intent.intent_id, update_type, status, timestamp=float(row.get("lastActivity", time.time()))))
+            updates.append(
+                BrokerUpdate(
+                    f"021:status:{mapping['provider_order_id']}:{status.value}",
+                    intent.intent_id,
+                    update_type,
+                    status,
+                    timestamp=float(row.get("lastActivity", time.time())),
+                )
+            )
         for fill in self._fills_from_trades(trades, mapped):
             if fill.fill_id in self._seen_trade_ids:
                 continue
             self._seen_trade_ids.add(fill.fill_id)
-            updates.append(BrokerUpdate(f"021:fill:{fill.fill_id}", fill.broker_order_id, BrokerUpdateType.FILL, OrderStatus.PARTIALLY_FILLED, fill, fill.timestamp))
+            updates.append(
+                BrokerUpdate(
+                    f"021:fill:{fill.fill_id}",
+                    fill.broker_order_id,
+                    BrokerUpdateType.FILL,
+                    OrderStatus.PARTIALLY_FILLED,
+                    fill,
+                    fill.timestamp,
+                )
+            )
         self.updates = updates
         return list(updates)
 

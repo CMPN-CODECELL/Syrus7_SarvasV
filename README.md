@@ -64,7 +64,7 @@ Use `DATABASE_URL=postgresql:///algoshield_local` for the application. Run the r
 
 ## Current implementation and limits
 
-Mock/replay platform; **021 sandbox integration remains mandatory and incomplete**. FastAPI serves the compiled React/Vite SPA and pushes authenticated account-scoped snapshots through one WebSocket connection. SQLite offline schema v12 stores accounts, durable subscription enablement, policies, marks, approved orders, fills, dispatch/correlation evidence and safety/audit state. Strategy callback failures quarantine only the affected subscription; risk policies and live budgets are durable; Decimal amounts are serialized as strings. Start with `RECOVERING`; explicit reconciliation and resume are required. Configure the DB with `ALGOSHIELD_DB` (default `data/platform.db`); copy `.env.example` to ignored `.env.local` if needed. Process environment overrides `.env.local`, which overrides `.env`. Never put real values in tracked examples.
+Mock/replay remains the verified execution mode; **021 transport is implemented but live-unverified**. FastAPI serves the compiled React/Vite SPA and pushes authenticated account-scoped snapshots through one WebSocket connection. SQLite offline schema v13 stores accounts, durable subscription enablement, policies, marks, approved orders, fills, dispatch/correlation evidence, provider-order mappings and safety/audit state. Strategy callback failures quarantine only the affected subscription; risk policies and live budgets are durable; Decimal amounts are serialized as strings. Start with `RECOVERING`; explicit reconciliation and resume are required. Configure the DB with `ALGOSHIELD_DB` (default `data/platform.db`); copy `.env.example` to ignored `.env.local` if needed. Process environment overrides `.env.local`, which overrides `.env`. Never put real values in tracked examples.
 
 Offline SQLite mode persists external mock evidence separately in `<database>.broker.json`, using atomic file replacement. Restart loads both independent stores, keeps trading RECOVERING, and requires reconciliation/explicit resume. An explicitly injected fresh broker against existing local history still fails closed. Never discard execution history to pretend recovery succeeded. The JSON file is a mock fixture only, not an assumed 021 persistence format.
 
@@ -74,7 +74,17 @@ Kill latches durably and converges through verified cancellation/fill evidence a
 
 This is a local development tool, not a production service. It has a basic durable local login/session boundary and authenticated local WebSocket telemetry, but no production identity provider or arbitrary strategy upload. The documented 021 REST/auth transport, durable order mapping, sampled market provider and fixture tests are now implemented behind an explicit server-side feature flag; they remain live-unverified. Credentials, charges, corrections, complete history and kill semantics are not claimed. Never commit 021 credentials or use the failure lab against live mode. No profitability or live kill SLA claim is made.
 
-Provider selection is explicit: when `ALGOSHIELD_021_ENABLED=true`, 021 is the primary market/broker provider and the dashboard labels it `021 LIVE / REAL MARKET DATA`. When it is false, the safe default is `MOCK / REPLAY`. The system never silently falls back from a failed 021 connection to mock data. The Market Data page's Source card, `market_data.provider`, `market_data.source`, `market_data.label`, and candle `data_source` are the authoritative indicators.
+Provider selection is explicit: when `ALGOSHIELD_021_ENABLED=true`, 021 is the primary market/broker provider and `ALGOSHIELD_MARKET_DATA_PROVIDER` must be `021` (or omitted). The dashboard labels it `021 LIVE / REAL MARKET DATA`. A failed 021 connection fails closed; it never triggers automatic fallback, source mixing, backfill or trading resume. To use Yahoo as the fallback, stop the process and start a fresh mock-broker timeline with `ALGOSHIELD_021_ENABLED=false`, `ALGOSHIELD_MARKET_DATA_PROVIDER=yahoo`, and the `yahoo` dependency extra installed. The default with 021 disabled and no explicit provider is `MOCK / REPLAY`. The Market Data page's Source card, `market_data.provider`, `market_data.source`, `market_data.label`, and candle `data_source` are the authoritative indicators.
+
+PowerShell clean-start Yahoo fallback (set the database path to an isolated SQLite file appropriate for the run):
+
+```powershell
+$env:ALGOSHIELD_021_ENABLED="false"
+$env:ALGOSHIELD_MARKET_DATA_PROVIDER="yahoo"
+$env:ALGOSHIELD_YAHOO_SYMBOLS="TCS.NS,INFY.NS"
+$env:ALGOSHIELD_DB="data/yahoo-fallback.db"
+.\.venv\Scripts\python.exe -m uvicorn backend.api:create_app --factory --host 127.0.0.1 --port 8000 --no-proxy-headers
+```
 
 ## Repository map
 

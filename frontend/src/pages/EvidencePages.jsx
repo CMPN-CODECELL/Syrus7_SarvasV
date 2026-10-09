@@ -518,6 +518,7 @@ export function MarketDataPage(){
   const quotes=Array.isArray(s?.market_data?.latest_quotes)?s.market_data.latest_quotes:[]
   const symbols=[...new Set([
     ...(s?.market_data?.canonical_symbols||[]),
+    ...(s?.market_data?.symbols||[]),
     ...quotes.map(item=>item.symbol),
     ...(s?.candles||[]).map(item=>item.symbol),
     ...(s?.subscriptions||[]).map(item=>item.symbol),

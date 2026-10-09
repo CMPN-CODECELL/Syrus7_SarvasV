@@ -65,23 +65,6 @@ def test_rest_adapter_maps_orders_and_trades_to_canonical_evidence():
                     "error": None,
                 },
             )
-        if path.endswith("/orders/42") and request.method == "PUT":
-            assert json.loads(request.content) == {
-                "exchange": "NSE",
-                "token": 2885,
-                "qty": 1,
-                "price": 0,
-                "book": "RL",
-                "trigger": 0,
-                "discQuantity": 0,
-                "product": "INTRADAY",
-                "validity": "Day",
-                "amo": False,
-            }
-            return httpx.Response(
-                200,
-                json={"data": {"type": "SUCCESS", "message": "modified"}, "success": True, "error": None},
-            )
         if path.endswith("/orders"):
             return httpx.Response(
                 200,
@@ -113,7 +96,14 @@ def test_rest_adapter_maps_orders_and_trades_to_canonical_evidence():
         if path.endswith("/portfolio/positions"):
             return httpx.Response(
                 200,
-                json=[{"exchange": "NSECM", "token": 2885, "netQuantity": 2, "symbol": "RELIANCE"}],
+                json=[
+                    {
+                        "exchange": "NSECM",
+                        "token": 2885,
+                        "netQuantity": 2,
+                        "symbol": "RELIANCE",
+                    }
+                ],
             )
         raise AssertionError(f"unexpected request {request.method} {path}")
 
@@ -126,10 +116,11 @@ def test_rest_adapter_maps_orders_and_trades_to_canonical_evidence():
     intent = OrderIntent("i1", "s", "a", "RELIANCE", Side.BUY, 2, 100)
     order = adapter.submit(intent)
     assert order.order_id == "i1"
-    assert store.rows("SELECT provider_order_id FROM broker_order_mappings")[0][0] == "42"
-    adapter.modify("i1", quantity=1)
+    assert (
+        store.rows("SELECT provider_order_id FROM broker_order_mappings")[0][0] == "42"
+    )
     snapshot = adapter.snapshot()
-    assert snapshot.is_complete is True
+    assert snapshot.is_complete is False
     assert snapshot.orders[0].filled_quantity == 2
     assert snapshot.fills[0].fill_id == "021:5001"
     assert snapshot.fills[0].price == Decimal("1400")

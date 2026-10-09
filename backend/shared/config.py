@@ -48,6 +48,13 @@ def settings():
         if provider not in {"replay", "yahoo", "021"}:
             raise ValueError("market-data provider must be replay, 021 or yahoo")
         result["market_data_provider"] = provider
+    if result["021_enabled"] and result["market_data_provider"] != "021":
+        raise ValueError(
+            "021 live mode requires 021 market data; disable "
+            "ALGOSHIELD_021_ENABLED before selecting Yahoo fallback or replay"
+        )
+    if not result["021_enabled"] and result["market_data_provider"] == "021":
+        raise ValueError("021 market data requires ALGOSHIELD_021_ENABLED=true")
     symbols = os.getenv(
         "ALGOSHIELD_YAHOO_SYMBOLS", values.get("ALGOSHIELD_YAHOO_SYMBOLS")
     )
@@ -55,10 +62,14 @@ def settings():
         result["yahoo_symbols"] = tuple(
             symbol.strip().upper() for symbol in symbols.split(",") if symbol.strip()
         )
-    live_symbols = os.getenv("ALGOSHIELD_021_SYMBOLS", values.get("ALGOSHIELD_021_SYMBOLS"))
+    live_symbols = os.getenv(
+        "ALGOSHIELD_021_SYMBOLS", values.get("ALGOSHIELD_021_SYMBOLS")
+    )
     if live_symbols:
         result["021_symbols"] = tuple(
-            symbol.strip().upper() for symbol in live_symbols.split(",") if symbol.strip()
+            symbol.strip().upper()
+            for symbol in live_symbols.split(",")
+            if symbol.strip()
         )
     trusted_origins = os.getenv(
         "ALGOSHIELD_TRUSTED_ORIGINS", values.get("ALGOSHIELD_TRUSTED_ORIGINS")

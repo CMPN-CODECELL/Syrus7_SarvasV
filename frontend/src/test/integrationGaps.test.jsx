@@ -99,6 +99,31 @@ describe('backend-shaped React projections',()=>{
     expect(screen.getAllByText('Unavailable')).toHaveLength(2)
   })
 
+  it('shows configured 021 stocks and sampled quote evidence without subscriptions',()=>{
+    renderOutlet(<MarketDataPage/>,{snapshot:{
+      ...snapshot,
+      subscriptions:[],
+      candles:[],
+      market_session:{status:'OPEN'},
+      market_data:{
+        label:'021 LIVE / REAL MARKET DATA',
+        connected:true,
+        volume_available:false,
+        symbols:['TCS','INFY'],
+        latest_quotes:[
+          {symbol:'TCS',provider_symbol:'TCS',price:'3200.25',event_timestamp:1791521395,raw_event_timestamp:1791521395,received_at:1791521397,volume_available:false,data_source:'021_LIVE'},
+        ],
+      },
+    }})
+    const selector=screen.getByRole('combobox',{name:'Filter market data by symbol'})
+    expect(within(selector).getByRole('option',{name:'TCS'})).toBeInTheDocument()
+    expect(within(selector).getByRole('option',{name:'INFY'})).toBeInTheDocument()
+    expect(screen.getByText('021 LIVE / REAL MARKET DATA')).toBeInTheDocument()
+    expect(screen.getByText('3200.25')).toBeInTheDocument()
+    expect(screen.getByText('021_LIVE')).toBeInTheDocument()
+    expect(screen.getByText('Unavailable')).toBeInTheDocument()
+  })
+
   it('uses gate, health, Safety Proof verdict, readiness, and canonical financial joins',()=>{
     renderOutlet(<OverviewPage/>)
     const gateCard=screen.getByText('Trading gate').closest('section')

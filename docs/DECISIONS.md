@@ -726,5 +726,7 @@ Status: ACCEPTED
 ### Decision
 Implement the documented 021 REST/auth and sampled market WebSocket paths behind `Broker021Adapter` and `MarketData021Provider`, enabled only by explicit server-side configuration. Load and validate instruments from the documented gzip CSV, encode signed quantities and paise at the provider boundary, and persist a unique `(provider, account, provider_order_id)` mapping before treating an order as usable locally. Poll per-order REST trades for canonical fills; require a non-empty provider `tradeId`. Treat 500/503 writes and incomplete broker evidence as uncertain and fail closed.
 
+When live 021 mode is enabled, 021 is the required primary market source. Yahoo remains an explicit clean-process-start fallback only with live 021 mode disabled. Never switch automatically after a disconnect, mix provider timelines, backfill a gap, or auto-resume trading. The first cumulative-volume observation is a baseline with unavailable volume; only later monotonic deltas may contribute candle volume.
+
 ### Reason and impact
 This converts the documented wire contract into a testable integration without leaking provider details into risk, execution, ledger or UI modules. The official material still does not define charges, corrections, complete history, manual-trade attribution, account mapping, or verified kill semantics, so those remain explicitly unknown; zero charges in the adapter are not a claim that live net P&L is exact. No live order or secret is included in this change.

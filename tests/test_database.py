@@ -25,6 +25,24 @@ def test_environment_precedence_and_local_file(monkeypatch, tmp_path):
     assert settings()["database_url"] == "process-test-value"
 
 
+def test_021_live_mode_requires_021_market_data(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ALGOSHIELD_021_ENABLED", "true")
+    monkeypatch.setenv("ALGOSHIELD_MARKET_DATA_PROVIDER", "yahoo")
+
+    with pytest.raises(ValueError, match="disable ALGOSHIELD_021_ENABLED"):
+        settings()
+
+
+def test_021_market_data_requires_live_mode(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ALGOSHIELD_021_ENABLED", "false")
+    monkeypatch.setenv("ALGOSHIELD_MARKET_DATA_PROVIDER", "021")
+
+    with pytest.raises(ValueError, match="ALGOSHIELD_021_ENABLED=true"):
+        settings()
+
+
 def test_additive_migration_constraints_and_checksum():
     items = list(migrations())
     assert [i[0] for i in items] == [

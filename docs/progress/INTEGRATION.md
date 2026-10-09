@@ -431,6 +431,27 @@ Final delivery adds only this evidence clarification; no production change.
 
 Implemented on `codex/021-integration`: bounded REST/auth transport, gzip instrument validation/cache, paise and signed-quantity encoding, durable provider-order mapping in SQLite and PostgreSQL migrations, asynchronous cancel verification, per-order trade attribution requiring `tradeId`, and sampled market WebSocket ingestion with fail-closed disconnect handling. Added `tests/test_official021_rest.py` with deterministic HTTP fixtures. Focused verification: 35 tests passed; compileall and Ruff passed. No credentialed sandbox call or live order was performed; status remains `IMPLEMENTED_UNVERIFIED`.
 
+## 2026-10-09 — Main integration with explicit Yahoo fallback
+
+Merged `codex/021-integration` into `main` without textual conflicts and reviewed
+the composed provider boundary. Explicit 021 enablement now requires 021 market
+data as the primary source. Yahoo remains available only after a clean process
+restart with 021 disabled; provider failure never switches sources, mixes candle
+timelines, backfills gaps or resumes trading automatically.
+
+The 021 provider now reports actual socket connection state and current sampled
+quotes to existing dashboard telemetry. Its first cumulative-volume observation
+is retained only as a baseline (`quantity=0`, volume unavailable); later monotonic
+deltas may contribute candle volume, while regressions fail closed. Generated
+observation IDs are not represented as exchange trade IDs. Documented today-only
+REST responses remain `BrokerSnapshot.is_complete=False`, so live-unverified
+history cannot certify reconciliation.
+
+Verification: 421 backend tests passed, 1 optional PostgreSQL test skipped; 42
+frontend tests passed across 9 files; Ruff check/format, ESLint, Vite production
+build, documentation link check and `git diff --check` passed. No credentialed
+021/Yahoo call, order, live database access or strategy run occurred.
+
 
 
 

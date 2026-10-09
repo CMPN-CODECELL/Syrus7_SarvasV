@@ -369,7 +369,11 @@ def create_app(platform=None, *, trusted_origins=None):
         )
         return JSONResponse(
             status_code=409,
-            content={"detail": message if message.startswith(safe_messages) else "operation rejected; inspect authorized local audit evidence"},
+            content={
+                "detail": message
+                if message.startswith(safe_messages)
+                else "operation rejected; inspect authorized local audit evidence"
+            },
         )
 
     @app.get("/")

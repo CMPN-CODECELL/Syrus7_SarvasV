@@ -294,7 +294,12 @@ def parse_market_frames(frame: bytes) -> list[MarketObservation021]:
             if len(frame) - offset < 12:
                 raise Provider021ProtocolError("truncated TC1 packet")
             # A snapshot LTPO packet has the documented 5-byte open suffix.
-            length = 17 if len(frame) - offset >= 17 and frame[offset + 12 : offset + 13] == b"o" else 12
+            length = (
+                17
+                if len(frame) - offset >= 17
+                and frame[offset + 12 : offset + 13] == b"o"
+                else 12
+            )
         elif tc == 3:
             if len(frame) - offset < 4:
                 raise Provider021ProtocolError("truncated TC3 packet")

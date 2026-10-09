@@ -6,7 +6,7 @@ Keep checking the last updated time of all the files periodically, and if any fi
 ## LAST UPDATE
 Added Postman Collection of API's at 10:40 am
 
-## Setup before Creating developer account 
+## Setup before Creating developer account
 
 1. Press `Win + R` to open the Run dialog.
 2. Paste the following command (adjusting the Chrome executable path if necessary):
