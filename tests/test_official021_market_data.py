@@ -25,6 +25,7 @@ class FakePlatform:
 
     def tick(self, tick, *, replay):
         self.ticks.append((tick, replay))
+        return True
 
 
 class FakeAdapter:
@@ -103,7 +104,29 @@ def test_implausible_exchange_epoch_uses_receive_time_for_candles(monkeypatch):
     assert telemetry["timestamp_fallbacks"] == 1
     assert telemetry["timestamp_future_fallbacks"] == 1
     assert telemetry["timestamp_past_fallbacks"] == 0
+    assert tick.event_time_status == "FUTURE_FALLBACK"
+    assert telemetry["latest_quotes"][0]["event_timestamp"] == 2_106_901_823
+    assert telemetry["latest_quotes"][0]["normalized_event_timestamp"] == 1_791_529_395
+    assert telemetry["serving_evidence"] == []
     assert provider.telemetry()["errors"] == []
+
+
+def test_reconnect_generation_invalidates_prior_observation_evidence(monkeypatch):
+    platform = FakePlatform()
+    provider = MarketData021Provider(platform, FakeAdapter(), ["TCS"])
+    monkeypatch.setattr(
+        "backend.market_data.official021.time.time", lambda: 1_791_521_395
+    )
+    provider._connected = True
+    provider._symbol_generations["TCS"] = 1
+    provider._emit(observation(timestamp=1_791_521_395), generation=1)
+    assert provider.telemetry()["serving_evidence"][0]["connection_generation"] == 1
+
+    # A reconnect assigns a new generation before it receives any observation.
+    provider._symbol_generations["TCS"] = 2
+    assert provider.telemetry()["serving_evidence"] == []
+    provider._emit(observation(price="101", timestamp=1_791_521_396), generation=1)
+    assert len(platform.ticks) == 1
 
 
 def test_identical_provider_snapshot_is_dropped_before_canonical_tick(monkeypatch):
@@ -218,3 +241,35 @@ def test_live_universe_is_only_pinned_plus_enabled_strategy_symbols():
     platform.store.subscriptions = [{"symbol": "UNKNOWN"}]
     assert provider._resolve_universe() == ("TCS",)
     assert provider.telemetry()["unsupported_symbols"] == ["UNKNOWN"]
+
+
+def test_live_universe_is_empty_without_explicit_demand():
+    provider = MarketData021Provider(FakePlatform(), FakeAdapter(), [])
+    assert provider._resolve_universe() == ()
+    assert provider.start() is False
+    assert provider.telemetry()["health"] == "IDLE"
+
+
+def test_dynamic_demand_change_invalidates_prior_serving_evidence():
+    class StoreStub:
+        enabled = True
+
+        def rows(self, *_args):
+            return [{"symbol": "TCS"}] if self.enabled else []
+
+    platform = FakePlatform()
+    platform.store = StoreStub()
+    provider = MarketData021Provider(platform, FakeAdapter(), [])
+    provider.symbols = ("TCS",)
+    provider._symbol_generations["TCS"] = 3
+    provider._serving_evidence["TCS"] = {
+        "symbol": "TCS",
+        "connection_generation": 3,
+        "evidence_type": "FRESH_VALID_OBSERVATION",
+        "observed_at": 1,
+    }
+
+    platform.store.enabled = False
+    assert provider.refresh_universe() is True
+    assert provider.telemetry()["serving_evidence"] == []
+    assert provider.telemetry()["symbols"] == []

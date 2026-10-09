@@ -22,7 +22,9 @@ class MarketSession:
       fails closed and evaluates to False (CLOSED).
     - Session Status:
       - HALTED: Circuit breaker or manual halt (overrides hours and manual status).
-      - Manual OPEN / CLOSED: Explicit administrative overrides.
+      - Manual CLOSED: Explicit administrative closure.
+      - Manual OPEN: Enables admission only inside scheduled hours when hours
+        are enforced; it remains a full override for explicit offline replay.
       - AUTO: Automatically determined by trading hours when enforce_hours is True,
         or OPEN when enforce_hours is False.
     """
@@ -58,8 +60,10 @@ class MarketSession:
         """Return True if market is currently open for trading, else False."""
         if self._halted:
             return False
-        if self._manual_status is not None:
-            return self._manual_status == "OPEN"
+        if self._manual_status == "CLOSED":
+            return False
+        if self._manual_status == "OPEN" and not self.enforce_hours:
+            return True
         if not self.enforce_hours:
             return True
         if timestamp is None:
@@ -77,8 +81,10 @@ class MarketSession:
         """Return current session status string: HALTED, OPEN, or CLOSED."""
         if self._halted:
             return "HALTED"
-        if self._manual_status is not None:
-            return self._manual_status
+        if self._manual_status == "CLOSED":
+            return "CLOSED"
+        if self._manual_status == "OPEN" and not self.enforce_hours:
+            return "OPEN"
         if not self.enforce_hours:
             return "OPEN"
         if timestamp is None and self.clock is not None:

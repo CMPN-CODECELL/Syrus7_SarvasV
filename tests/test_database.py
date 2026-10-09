@@ -27,6 +27,7 @@ def test_environment_precedence_and_local_file(monkeypatch, tmp_path):
         "broker_write_timeout_seconds": 8.0,
         "reconciliation_timeout_seconds": 10.0,
         "auto_scan_limit": 200,
+        "auto_exchange": "NSECM",
         "auto_max_positions": 3,
         "auto_lookback_updates": 5,
         "auto_entry_momentum": 0.003,
@@ -36,6 +37,14 @@ def test_environment_precedence_and_local_file(monkeypatch, tmp_path):
     }
     monkeypatch.setenv("DATABASE_URL", "process-test-value")
     assert settings()["database_url"] == "process-test-value"
+
+
+def test_auto_exchange_is_explicitly_nse_cash_market(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ALGOSHIELD_AUTO_EXCHANGE", "BSEEQ")
+
+    with pytest.raises(ValueError, match="must be NSECM"):
+        settings()
 
 
 def test_021_live_mode_requires_021_market_data(monkeypatch, tmp_path):

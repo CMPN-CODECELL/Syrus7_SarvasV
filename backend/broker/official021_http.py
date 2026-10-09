@@ -120,6 +120,7 @@ class Official021RESTAdapter:
         client: httpx.Client | None = None,
         transport: httpx.BaseTransport | None = None,
         instrument_cache: str | None = None,
+        instrument_exchange: str | None = None,
     ):
         self.store = store
         self.base_url = (
@@ -139,7 +140,18 @@ class Official021RESTAdapter:
         self.instrument_cache = instrument_cache or os.getenv(
             "ALGOSHIELD_021_INSTRUMENT_CACHE"
         )
+        self.instrument_exchange = (
+            str(instrument_exchange).strip().upper() if instrument_exchange else None
+        )
+        if (
+            self.instrument_exchange is not None
+            and self.instrument_exchange not in EXCHANGE_TO_CODE
+        ):
+            raise ValueError("unsupported configured 021 instrument exchange")
         self.instruments: dict[str, Instrument021] = {}
+        self.instruments_by_symbol_exchange: dict[
+            tuple[str, str], tuple[Instrument021, ...]
+        ] = {}
         self.market_symbols: tuple[str, ...] = ()
         self._provider_orders: dict[str, str] = {}
         self._seen_trade_ids: set[str] = set()
@@ -238,6 +250,7 @@ class Official021RESTAdapter:
         try:
             rows = csv.DictReader(io.StringIO(payload.decode("utf-8-sig")))
             loaded: dict[str, Instrument021] = {}
+            compound: dict[tuple[str, str], list[Instrument021]] = {}
             market_symbols: set[str] = set()
             for row in rows:
                 exchange = row.get("exchange", "").strip()
@@ -273,23 +286,26 @@ class Official021RESTAdapter:
                     tick = max(1, int(row.get("ticksize") or 1))
                 except (TypeError, ValueError, KeyError):
                     continue
-                loaded.setdefault(
+                instrument = Instrument021(
+                    EXCHANGE_TO_CODE[exchange],
+                    token,
                     symbol,
-                    Instrument021(
-                        EXCHANGE_TO_CODE[exchange],
-                        token,
-                        symbol,
-                        product=self.product,
-                        lot_size=lot,
-                        freeze_quantity=freeze,
-                        tick_size_paise=tick,
-                    ),
+                    product=self.product,
+                    lot_size=lot,
+                    freeze_quantity=freeze,
+                    tick_size_paise=tick,
                 )
+                loaded.setdefault(symbol, instrument)
+                if instrument_type == "STK" and exchange in {"NSECM", "BSEEQ"}:
+                    compound.setdefault((symbol, exchange), []).append(instrument)
             if not loaded:
                 raise Provider021ProtocolError(
                     "021 instruments response contained no usable rows"
                 )
             self.instruments = loaded
+            self.instruments_by_symbol_exchange = {
+                key: tuple(values) for key, values in compound.items()
+            }
             self.market_symbols = tuple(
                 sorted(
                     market_symbols,
@@ -304,11 +320,28 @@ class Official021RESTAdapter:
                 "021 instruments response is not UTF-8 CSV"
             ) from exc
 
-    def _instrument(self, symbol: str) -> Instrument021:
+    def _instrument(self, symbol: str, *, exchange: str | None = None) -> Instrument021:
         if not self.instruments:
             self._load_instruments()
+        normalized_symbol = symbol.upper()
+        selected_exchange = (
+            str(exchange).strip().upper() if exchange else self.instrument_exchange
+        )
+        if selected_exchange is not None:
+            matches = self.instruments_by_symbol_exchange.get(
+                (normalized_symbol, selected_exchange), ()
+            )
+            if not matches:
+                raise Provider021Blocked(
+                    f"no eligible 021 {selected_exchange} stock mapping for {symbol}"
+                )
+            if len(matches) != 1:
+                raise Provider021Blocked(
+                    f"ambiguous 021 {selected_exchange} stock mapping for {symbol}"
+                )
+            return matches[0]
         try:
-            return self.instruments[symbol.upper()]
+            return self.instruments[normalized_symbol]
         except KeyError as exc:
             raise Provider021Blocked(f"no 021 instrument mapping for {symbol}") from exc
 
@@ -329,6 +362,19 @@ class Official021RESTAdapter:
                 "021 order mapping is unavailable; reconcile before mutation"
             )
         return rows[0]
+
+    def _instrument_for_mapping(self, mapping, symbol: str) -> Instrument021:
+        """Require a durable order mapping to retain the configured identity."""
+        instrument = self._instrument(symbol)
+        if (
+            CODE_TO_EXCHANGE[instrument.exchange] != _text(mapping["exchange"])
+            or instrument.token != int(mapping["token"])
+            or instrument.product != _text(mapping["product"])
+        ):
+            raise Provider021Blocked(
+                "021 order mapping does not match the configured instrument identity"
+            )
+        return instrument
 
     def _order_payload(
         self,
@@ -485,7 +531,7 @@ class Official021RESTAdapter:
         """Modify a pending order using the provider's complete order payload."""
         mapping = self._mapping(order_id)
         intent = self._local_intent(mapping)
-        instrument = self._instrument(intent.symbol)
+        instrument = self._instrument_for_mapping(mapping, intent.symbol)
         payload = self._order_payload(
             intent, instrument, quantity=quantity, limit_price=limit_price
         )

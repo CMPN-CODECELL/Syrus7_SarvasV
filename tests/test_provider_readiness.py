@@ -75,7 +75,7 @@ def test_connected_but_incomplete_and_missing_subscription_evidence_is_unknown(
     platform.close()
 
 
-def test_fresh_marks_prove_external_subscription_is_serving():
+def test_fresh_generation_scoped_observation_proves_required_symbol_is_serving():
     platform, _ = configured_platform(external=True)
     platform.external_market_data.telemetry = lambda: {
         "provider": "021",
@@ -83,16 +83,81 @@ def test_fresh_marks_prove_external_subscription_is_serving():
         "connected": True,
         "last_received_at": platform.clock(),
         "subscribed_symbols": ["X"],
+        "symbol_generations": {"X": 7},
+        "serving_evidence": [
+            {
+                "symbol": "X",
+                "evidence_type": "FRESH_VALID_OBSERVATION",
+                "connection_generation": 7,
+                "observed_at": platform.clock(),
+            }
+        ],
     }
     assert platform.reliability.reconcile() is True
 
     readiness = platform.provider_readiness("a")
     assert readiness["subscription"] == {
         "status": "VERIFIED",
-        "observed_at": None,
-        "reason_code": "PROVIDER_SUBSCRIPTION_OBSERVED",
+        "observed_at": platform.clock(),
+        "reason_code": "PROVIDER_SERVING_OBSERVATION_VERIFIED",
+        "required_symbols": ["X"],
+        "serving_symbols": ["X"],
     }
     assert readiness["resume"]["eligible"] is True
+    platform.close()
+
+
+def test_connection_and_send_list_alone_do_not_prove_serving():
+    platform, _ = configured_platform(external=True)
+    platform.external_market_data.telemetry = lambda: {
+        "provider": "021",
+        "source": "021_LIVE",
+        "connected": True,
+        "subscribed_symbols": ["X"],
+        "requested_symbols": ["X"],
+        "symbol_generations": {"X": 2},
+        "serving_evidence": [],
+    }
+    assert platform.reliability.reconcile() is True
+    readiness = platform.provider_readiness("a")
+    assert readiness["subscription"]["status"] == "UNKNOWN"
+    assert readiness["resume"]["eligible"] is False
+    platform.close()
+
+
+def test_symbol_a_evidence_does_not_authorize_symbol_b_or_old_generation():
+    platform, _ = configured_platform(external=True)
+    evidence = {
+        "provider": "021",
+        "source": "021_LIVE",
+        "connected": True,
+        "symbol_generations": {"X": 4},
+        "serving_evidence": [
+            {
+                "symbol": "Y",
+                "evidence_type": "FRESH_VALID_OBSERVATION",
+                "connection_generation": 4,
+                "observed_at": platform.clock(),
+            }
+        ],
+    }
+    platform.external_market_data.telemetry = lambda: evidence
+    assert platform.reliability.reconcile() is True
+    assert platform.provider_readiness("a")["subscription"]["status"] == "UNKNOWN"
+
+    evidence["serving_evidence"][0]["symbol"] = "X"
+    evidence["serving_evidence"][0]["connection_generation"] = 3
+    assert platform.provider_readiness("a")["subscription"]["status"] == "UNKNOWN"
+    platform.close()
+
+
+def test_no_execution_demand_is_not_execution_ready():
+    platform = Platform()
+    platform.account("a")
+    assert platform.reliability.reconcile() is True
+    readiness = platform.provider_readiness("a")
+    assert readiness["resume"]["eligible"] is False
+    assert "NO_EXECUTION_DEMAND" in readiness["blocking_reason_codes"]
     platform.close()
 
 

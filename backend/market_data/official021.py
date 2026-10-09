@@ -57,6 +57,9 @@ class MarketData021Provider:
         self._connected_count = 0
         self._last_volume = {}
         self._latest_quotes = {}
+        self._generation_sequence = 0
+        self._symbol_generations = {}
+        self._serving_evidence = {}
         self._last_event_by_symbol = {}
         self._observation_fingerprints = {}
         self._last_received_at = None
@@ -166,6 +169,10 @@ class MarketData021Provider:
         if was_running:
             self.platform.reliability.fail_closed("021_UNIVERSE_CHANGED")
             self.stop()
+        with self._lock:
+            self._serving_evidence.clear()
+            self._latest_quotes.clear()
+            self._symbol_generations.clear()
         self.symbols = next_symbols
         if next_symbols:
             self.start()
@@ -202,6 +209,13 @@ class MarketData021Provider:
                 socket = self._connect(symbols)
                 connected = True
                 with self._lock:
+                    self._generation_sequence += 1
+                    generation = self._generation_sequence
+                    for symbol in symbols:
+                        self._symbol_generations[symbol] = generation
+                        self._serving_evidence.pop(symbol, None)
+                        self._latest_quotes.pop(symbol, None)
+                with self._lock:
                     self._connected_count += 1
                     self._connected = True
                     self.health = "CONNECTED"
@@ -228,7 +242,7 @@ class MarketData021Provider:
                         continue
                     for observation in observations:
                         try:
-                            self._emit(observation)
+                            self._emit(observation, generation=generation)
                         except (ValueError, Provider021Error) as exc:
                             with self._lock:
                                 self.errors.append(
@@ -252,6 +266,10 @@ class MarketData021Provider:
             finally:
                 if connected:
                     with self._lock:
+                        for symbol in symbols:
+                            if self._symbol_generations.get(symbol) == generation:
+                                self._serving_evidence.pop(symbol, None)
+                                self._latest_quotes.pop(symbol, None)
                         self._connected_count = max(0, self._connected_count - 1)
                         self._connected = self._connected_count > 0
                 if socket is not None:
@@ -262,7 +280,7 @@ class MarketData021Provider:
             if connected:
                 attempt = 0
 
-    def _emit(self, observation):
+    def _emit(self, observation, *, generation=None):
         if observation.kind == ObservationKind.HEARTBEAT:
             return
         instrument = next(
@@ -276,6 +294,15 @@ class MarketData021Provider:
         )
         if instrument is None or observation.ltp is None:
             return
+        with self._lock:
+            current_generation = self._symbol_generations.get(instrument.symbol)
+            if generation is None:
+                # Deterministic unit tests can ingest without a socket. Such an
+                # observation is never serving proof because connected is false.
+                generation = current_generation if current_generation is not None else 0
+                self._symbol_generations.setdefault(instrument.symbol, generation)
+            elif current_generation != generation:
+                return
         fingerprint = (
             observation.exchange,
             observation.token,
@@ -308,28 +335,33 @@ class MarketData021Provider:
         received_at = time.time()
         raw_timestamp = observation.exchange_timestamp
         timestamp = raw_timestamp or int(received_at)
+        event_time_status = "VERIFIED"
         # The documented exchange epoch is not consistently applied by the
         # development feed.  Never place a candle in the future or reorder the
         # stream: use receive-time evidence while retaining the raw timestamp.
         skew = timestamp - int(received_at)
         if raw_timestamp is None:
             timestamp = int(received_at)
+            event_time_status = "MISSING_FALLBACK"
             with self._lock:
                 self.timestamp_fallbacks += 1
                 self.timestamp_missing_fallbacks += 1
         elif skew > self.max_timestamp_skew_seconds:
             timestamp = int(received_at)
+            event_time_status = "FUTURE_FALLBACK"
             with self._lock:
                 self.timestamp_fallbacks += 1
                 self.timestamp_future_fallbacks += 1
         elif skew < -self.max_timestamp_skew_seconds:
             timestamp = int(received_at)
+            event_time_status = "PAST_FALLBACK"
             with self._lock:
                 self.timestamp_fallbacks += 1
                 self.timestamp_past_fallbacks += 1
         prior_timestamp = self._last_event_by_symbol.get(instrument.symbol)
         if prior_timestamp is not None and timestamp < prior_timestamp:
             timestamp = max(int(received_at), prior_timestamp + 1)
+            event_time_status = "REORDER_FALLBACK"
             with self._lock:
                 self.timestamp_fallbacks += 1
                 self.timestamp_reorder_fallbacks += 1
@@ -356,6 +388,8 @@ class MarketData021Provider:
             ),
             volume_available=volume_available,
             data_source="021_LIVE",
+            received_at=received_at,
+            event_time_status=event_time_status,
         )
         with self._lock:
             self._observation_fingerprints[fingerprint_key] = fingerprint
@@ -366,18 +400,32 @@ class MarketData021Provider:
                 "symbol": instrument.symbol,
                 "provider_symbol": instrument.symbol,
                 "price": str(observation.ltp),
-                "event_timestamp": timestamp,
+                "event_timestamp": observation.exchange_timestamp,
+                "normalized_event_timestamp": timestamp,
                 "raw_event_timestamp": observation.exchange_timestamp,
                 "received_at": received_at,
+                "connection_generation": generation,
+                "event_time_status": event_time_status,
                 "volume_available": volume_available,
                 "official_open": str(observation.official_open)
                 if observation.official_open is not None
                 else None,
                 "data_source": "021_LIVE",
             }
-        self.platform.tick(tick, replay=False)
+        accepted = self.platform.tick(tick, replay=False)
         with self._lock:
-            self.normalized += 1
+            if accepted is not False and event_time_status == "VERIFIED":
+                self._serving_evidence[instrument.symbol] = {
+                    "symbol": instrument.symbol,
+                    "evidence_type": "FRESH_VALID_OBSERVATION",
+                    "connection_generation": generation,
+                    "observed_at": received_at,
+                    "event_timestamp": timestamp,
+                }
+            else:
+                self._serving_evidence.pop(instrument.symbol, None)
+            if accepted is not False:
+                self.normalized += 1
 
     def telemetry(self):
         with self._lock:
@@ -385,6 +433,9 @@ class MarketData021Provider:
                 "provider": "021",
                 "source": "021_LIVE",
                 "label": "021 LIVE / REAL MARKET DATA",
+                "instrument_exchange": getattr(
+                    self.adapter, "instrument_exchange", None
+                ),
                 "connected": self._connected,
                 "connection_count": self._connected_count,
                 "connected_sockets": self._connected_count,
@@ -398,7 +449,24 @@ class MarketData021Provider:
                 "universe_truncated": self.universe_truncated,
                 "symbols": list(self.symbols),
                 "desired_symbols": list(self.desired_symbols),
-                "subscribed_symbols": list(self.symbols),
+                # The reviewed 021 feed contract exposes no subscription ACK.
+                # Keep this empty rather than relabeling a local send as proof.
+                "subscribed_symbols": [],
+                "requested_symbols": list(self.symbols),
+                "subscription_evidence_semantics": "OBSERVATION_BASED_NOT_PROVIDER_ACK",
+                "symbol_generations": dict(self._symbol_generations),
+                "serving_evidence": [
+                    self._serving_evidence[symbol]
+                    for symbol in sorted(self._serving_evidence)
+                    if self._symbol_generations.get(symbol)
+                    == self._serving_evidence[symbol]["connection_generation"]
+                ],
+                "serving_symbols": sorted(
+                    symbol
+                    for symbol, item in self._serving_evidence.items()
+                    if self._symbol_generations.get(symbol)
+                    == item["connection_generation"]
+                ),
                 "unsupported_symbols": list(self.unsupported_symbols),
                 "canonical_symbols": list(self.symbols),
                 "latest_quotes": [

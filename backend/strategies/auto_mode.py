@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections import deque
+from collections import Counter, deque
 from decimal import Decimal
 from threading import Lock
 
@@ -25,6 +25,7 @@ def _slug(value: str) -> str:
 class AutoMode:
     kind = "auto_adaptive"
     managed_kinds = ("auto_adaptive", "auto_momentum")
+    CAPTURE_LIMIT = 1000
 
     def __init__(
         self,
@@ -37,6 +38,7 @@ class AutoMode:
         take_profit=Decimal("0.01"),
         stop_loss=Decimal("0.005"),
         cooldown_seconds=60,
+        candidate_allowlist=(),
     ):
         self.platform = platform
         self.scan_limit = int(scan_limit)
@@ -46,6 +48,11 @@ class AutoMode:
         self.take_profit = Decimal(take_profit)
         self.stop_loss = Decimal(stop_loss)
         self.cooldown_seconds = int(cooldown_seconds)
+        self.candidate_allowlist = tuple(
+            dict.fromkeys(
+                str(symbol).strip().upper() for symbol in candidate_allowlist if symbol
+            )
+        )
         if self.scan_limit < 1 or self.max_positions < 1 or self.lookback < 2:
             raise ValueError("invalid auto-mode bounds")
         if min(self.entry_momentum, self.take_profit, self.stop_loss) <= 0:
@@ -58,7 +65,17 @@ class AutoMode:
 
     def _catalogue_candidates(self):
         adapter = getattr(self.platform.broker_calls, "adapter", self.platform.broker)
-        if hasattr(adapter, "all_market_symbols"):
+        if self.candidate_allowlist:
+            symbols = self.candidate_allowlist
+            validator = getattr(self.platform, "validate_external_market_symbols", None)
+            if validator is not None:
+                validator(symbols)
+        elif getattr(adapter, "provider", None) == "021":
+            raise ValueError(
+                "live Auto mode requires ALGOSHIELD_AUTO_SYMBOLS; "
+                "catalogue order and freeze quantity are not suitability evidence"
+            )
+        elif hasattr(adapter, "all_market_symbols"):
             symbols = tuple(adapter.all_market_symbols())
         else:
             evidence = self.platform.market_data_evidence()
@@ -79,8 +96,8 @@ class AutoMode:
         symbols = tuple(symbol for symbol in symbols if symbol)
         if len(symbols) <= self.scan_limit:
             return symbols
-        # Provider adapters may rank their catalogue by execution suitability
-        # (021 uses its freeze-quantity metadata as a liquidity proxy).
+        # Offline adapters may expose a deterministic catalogue order. Live 021
+        # never reaches this branch because it requires the reviewed allowlist.
         return symbols[: self.scan_limit]
 
     def start(self, account_id, *, audit_type="AUTO_MODE_STARTED"):
@@ -98,6 +115,9 @@ class AutoMode:
                 "last_order_at": current.get("last_order_at", {}),
                 "last_attempt_at": current.get("last_attempt_at"),
                 "started_at": self.platform.clock(),
+                "funnel": Counter(),
+                "hold_reasons": Counter(),
+                "capture": deque(maxlen=self.CAPTURE_LIMIT),
             }
         with self.platform.store.transaction():
             self.platform.store.audit(
@@ -278,6 +298,8 @@ class AutoMode:
             previous = state["last_action"].get(symbol)
             state["decisions"][symbol] = decision
             state["last_action"][symbol] = action
+            if action == "HOLD":
+                state["hold_reasons"][reason] += 1
             audit = previous != action and action in {"BUY", "SELL"}
         if audit:
             with self.platform.store.transaction():
@@ -316,6 +338,18 @@ class AutoMode:
         for account_id in accounts:
             with self._lock:
                 state = self._states[account_id]
+                state["funnel"]["observations"] += 1
+                state["funnel"]["evaluations"] += 1
+                state["capture"].append(
+                    {
+                        "sequence": state["funnel"]["observations"],
+                        "symbol": tick.symbol,
+                        "price": str(tick.price),
+                        "event_timestamp": tick.event_timestamp,
+                        "received_at": tick.received_at,
+                        "event_time_status": tick.event_time_status,
+                    }
+                )
                 history = state["history"].setdefault(
                     tick.symbol, deque(maxlen=self.lookback)
                 )
@@ -335,6 +369,9 @@ class AutoMode:
                     now,
                 )
                 continue
+
+            with self._lock:
+                state["funnel"]["ready_evaluations"] += 1
 
             opportunities = {
                 symbol: self._strategy_opportunity(values)
@@ -479,6 +516,8 @@ class AutoMode:
             with self._lock:
                 recorded["intent_id"] = intent.intent_id
                 recorded["result"] = "PENDING_RISK"
+                self._states[account_id]["funnel"]["signals"] += 1
+                self._states[account_id]["funnel"]["risk_submissions"] += 1
             intents.append(intent)
         return intents
 
@@ -494,6 +533,95 @@ class AutoMode:
                 return
             record["result"] = "APPROVED" if decision.allowed else "REJECTED"
             record["result_reason"] = decision.reason_code
+            state["funnel"][
+                "risk_admitted" if decision.allowed else "risk_rejected"
+            ] += 1
+
+    def evaluate_capture(self, account_id):
+        """Evaluate ordered captured observations without risk or broker authority."""
+        with self._lock:
+            state = self._states.get(account_id) or {}
+            captured = tuple(state.get("capture") or ())
+            candidate_count = len(state.get("candidates") or ())
+        event_time_statuses = Counter(
+            item.get("event_time_status", "UNKNOWN") for item in captured
+        )
+        minimum_coverage = min(candidate_count, min(20, self.scan_limit))
+        configurations = (
+            ("baseline", self.entry_momentum),
+            ("diagnostic_half_entry", self.entry_momentum / Decimal(2)),
+            ("diagnostic_double_entry", self.entry_momentum * Decimal(2)),
+        )
+        results = []
+        for label, threshold in configurations:
+            histories = {}
+            signal_count = 0
+            cooldown_suppressed = 0
+            last_signal_at = None
+            for item in captured:
+                history = histories.setdefault(
+                    item["symbol"], deque(maxlen=self.lookback)
+                )
+                history.append(Decimal(item["price"]))
+                opportunities = {
+                    symbol: self._strategy_opportunity(tuple(values))
+                    for symbol, values in histories.items()
+                    if len(values) >= self.lookback and values[0] > 0
+                }
+                if (
+                    len(opportunities) < minimum_coverage
+                    or item["symbol"] not in opportunities
+                ):
+                    continue
+                strongest = max(
+                    opportunities, key=lambda symbol: opportunities[symbol][1]
+                )
+                if (
+                    strongest != item["symbol"]
+                    or opportunities[strongest][1] < threshold
+                ):
+                    continue
+                observed_at = item["received_at"] or item["event_timestamp"]
+                if (
+                    last_signal_at is not None
+                    and observed_at - last_signal_at < self.cooldown_seconds
+                ):
+                    cooldown_suppressed += 1
+                    continue
+                signal_count += 1
+                last_signal_at = observed_at
+            results.append(
+                {
+                    "label": label,
+                    "entry_momentum_fraction": str(threshold),
+                    "entry_momentum_percent": str(threshold * Decimal(100)),
+                    "entry_signals": signal_count,
+                    "cooldown_suppressed": cooldown_suppressed,
+                }
+            )
+        return {
+            "mode": "EVALUATION_ONLY",
+            "dispatch_authority": False,
+            "capture_count": len(captured),
+            "capture_limit": self.CAPTURE_LIMIT,
+            "ordered": True,
+            "gaps_known": False,
+            "event_time_status_counts": dict(event_time_statuses),
+            "usable_for_live_threshold_assessment": bool(captured)
+            and set(event_time_statuses) == {"VERIFIED"},
+            "scope": "ENTRY_SIGNALS_ONLY_NO_FILL_OR_EXIT_SIMULATION",
+            "status": (
+                "AVAILABLE"
+                if captured and minimum_coverage > 0
+                else "INSUFFICIENT_CAPTURE"
+            ),
+            "results": results,
+        }
+
+    def market_symbols_for(self, account_id):
+        with self._lock:
+            state = self._states.get(account_id) or {}
+            return tuple(state.get("candidates", ())) if state.get("enabled") else ()
 
     def evidence(self, account_id):
         with self._lock:
@@ -501,6 +629,7 @@ class AutoMode:
             if not state:
                 return {
                     "enabled": False,
+                    "state": "STOPPED",
                     "candidate_count": 0,
                     "evaluated_count": 0,
                     "decisions": [],
@@ -508,14 +637,69 @@ class AutoMode:
                     "selected_strategy": None,
                     "selected_strategy_instance_id": None,
                     "policy": self._policy(),
+                    "funnel": {
+                        key: 0
+                        for key in (
+                            "observations",
+                            "evaluations",
+                            "ready_evaluations",
+                            "signals",
+                            "risk_submissions",
+                            "risk_admitted",
+                            "risk_rejected",
+                            "orders",
+                            "dispatched",
+                            "fills",
+                        )
+                    },
+                    "hold_reasons": {},
                 }
             decisions = sorted(
                 state["decisions"].values(),
                 key=lambda item: (item["observed_at"], item["symbol"]),
                 reverse=True,
             )[:20]
+            ready_symbols = sum(
+                len(values) >= self.lookback
+                for values in state.get("history", {}).values()
+            )
+            funnel = dict(state.get("funnel") or {})
+            strategy_prefix = (
+                f"auto-{hashlib.sha256(account_id.encode()).hexdigest()[:8]}-%"
+            )
+            funnel["orders"] = self.platform.store.rows(
+                "SELECT COUNT(*) AS n FROM orders WHERE account=? AND strategy LIKE ?",
+                (account_id, strategy_prefix),
+            )[0]["n"]
+            funnel["dispatched"] = self.platform.store.rows(
+                "SELECT COUNT(*) AS n FROM orders WHERE account=? "
+                "AND strategy LIKE ? AND dispatch_started=1",
+                (account_id, strategy_prefix),
+            )[0]["n"]
+            funnel["fills"] = self.platform.store.rows(
+                "SELECT COUNT(*) AS n FROM fills WHERE account=? AND strategy LIKE ?",
+                (account_id, strategy_prefix),
+            )[0]["n"]
+            for key in (
+                "observations",
+                "evaluations",
+                "ready_evaluations",
+                "signals",
+                "risk_submissions",
+                "risk_admitted",
+                "risk_rejected",
+            ):
+                funnel.setdefault(key, 0)
             return {
                 "enabled": bool(state["enabled"]),
+                "state": (
+                    "STOPPED"
+                    if not state["enabled"]
+                    else "WARMING_UP"
+                    if ready_symbols
+                    < min(len(state["candidates"]), min(20, self.scan_limit))
+                    else "EVALUATING"
+                ),
                 "candidate_count": len(state["candidates"]),
                 "evaluated_count": len(state["history"]),
                 "started_at": state.get("started_at"),
@@ -526,16 +710,34 @@ class AutoMode:
                 ),
                 "decisions": decisions,
                 "policy": self._policy(),
+                "ready_symbol_count": ready_symbols,
+                "funnel": funnel,
+                "hold_reasons": dict(state.get("hold_reasons") or {}),
+                "capture": {
+                    "count": len(state.get("capture") or ()),
+                    "limit": self.CAPTURE_LIMIT,
+                    "ordered": True,
+                },
             }
 
     def _policy(self):
+        adapter = getattr(self.platform.broker_calls, "adapter", self.platform.broker)
         return {
             "long_only": True,
             "strategy_selection": ["momentum", "breakout", "mean_reversion"],
             "scan_limit": self.scan_limit,
+            "candidate_source": (
+                "CONFIGURED_ALLOWLIST"
+                if self.candidate_allowlist
+                else "OFFLINE_CATALOGUE"
+            ),
+            "candidate_allowlist": list(self.candidate_allowlist),
+            "candidate_exchange": getattr(adapter, "instrument_exchange", None),
             "max_positions": self.max_positions,
             "lookback_updates": self.lookback,
             "entry_momentum": str(self.entry_momentum),
+            "threshold_unit": "fractional_return",
+            "entry_momentum_percent": str(self.entry_momentum * Decimal(100)),
             "take_profit": str(self.take_profit),
             "stop_loss": str(self.stop_loss),
             "cooldown_seconds": self.cooldown_seconds,

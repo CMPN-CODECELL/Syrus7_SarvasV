@@ -61,6 +61,8 @@ class Tick:
     raw_event_timestamp: str | None = None
     volume_available: bool = True
     data_source: str = "UNSPECIFIED"
+    received_at: float | None = None
+    event_time_status: str = "VERIFIED"
 
     def __post_init__(self):
         if (
@@ -81,6 +83,21 @@ class Tick:
             )
             or type(self.volume_available) is not bool
             or not self.data_source
+            or (
+                self.received_at is not None
+                and (
+                    not isinstance(self.received_at, (int, float))
+                    or not isfinite(self.received_at)
+                )
+            )
+            or self.event_time_status
+            not in {
+                "VERIFIED",
+                "MISSING_FALLBACK",
+                "FUTURE_FALLBACK",
+                "PAST_FALLBACK",
+                "REORDER_FALLBACK",
+            }
         ):
             raise ValueError("invalid tick identity/timestamp")
 

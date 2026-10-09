@@ -106,7 +106,7 @@ export function StrategiesPage(){
   return <Page eyebrow="Subscriptions" title="Run one strategy across many stocks" description="Independent strategy ledgers keep each stock isolated. Choose a strategy and stocks once; failures, positions, risk, and P&L stay independent.">
     {error&&<div className="error" role="alert">{error}</div>}
     {success&&<div className="success" role="status"><b>Created {success.count} strategy {success.count===1?'instance':'instances'}.</b><span>{success.symbols.join(', ')}</span></div>}
-    <Card title="Auto mode" meta={auto.enabled?'Scanning provider stocks':'Stopped'}>
+    <Card title="Auto mode" meta={auto.enabled?`${displayName(auto.evaluation_state||auto.state)} · execution ${String(auto.execution_state||'blocked').toLowerCase()}`:'Stopped'}>
       <p>Automatically compares momentum, breakout, and mean-reversion evidence across a bounded set of broker-supported stocks, selects the strongest qualified stock-and-strategy combination, and manages explicit exits. Every order still passes platform risk and broker reconciliation.</p>
       <div className="metric-grid compact">
         <div><span>Stocks scanned</span><b>{auto.candidate_count}</b></div>
@@ -115,7 +115,11 @@ export function StrategiesPage(){
         <div><span>Entry / profit / stop</span><b>{pct(auto.policy?.entry_momentum)} / {pct(auto.policy?.take_profit)} / {pct(auto.policy?.stop_loss)}</b></div>
         <div><span>021 order admission</span><b>{exposure?.status||gate||'UNKNOWN'}</b></div>
       </div>
-      {exposure?.status==='BLOCKED'&&<div className="error" role="status"><b>021 BUY/SELL is currently blocked.</b> <span>{(readiness?.blocking_reasons||[exposure.reason_code]).join(' · ')}</span></div>}
+      <div className="metric-grid compact" aria-label="Automatic trading funnel">
+        {Object.entries(auto.funnel||{}).map(([key,value])=><div key={key}><span>{displayName(key)}</span><b>{value}</b></div>)}
+      </div>
+      {exposure?.status==='BLOCKED'&&<div className="error" role="status"><b>021 BUY/SELL is currently blocked.</b> <span>{(auto.blocking_reasons||readiness?.blocking_reason_codes||[exposure.reason_code]).join(' · ')}</span></div>}
+      {Object.keys(auto.hold_reasons||{}).length>0&&<div className="warning"><b>HOLD reasons</b><span>{Object.entries(auto.hold_reasons).map(([reason,count])=>`${reason} (${count})`).join(' · ')}</span></div>}
       <div className="success strategy-explanation"><b>Selected instance</b><span>{auto.selected_strategy_instance_id?`${auto.selected_strategy_instance_id} · ${auto.selected_symbol} · ${displayName(auto.selected_strategy)}`:'Auto creates the selected attribution instance after enough provider stocks are warmed and compared.'}</span></div>
       <div className="warning"><b>Profit is not guaranteed.</b><span>Auto mode can lose money. It stays long-only, holds when evidence is insufficient, and cannot trade while the safety gate is not RUNNING. Stopping auto mode prevents new automatic decisions; it does not sell existing positions.</span></div>
       <button className={auto.enabled?'':'primary'} disabled={!!pending} onClick={()=>setAutoMode(!auto.enabled)}>{pending==='auto'?'Working…':auto.enabled?'Stop auto mode':'Start auto mode'}</button>

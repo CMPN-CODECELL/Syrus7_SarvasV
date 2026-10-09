@@ -115,6 +115,33 @@ def test_auto_mode_never_bypasses_stopped_global_gate():
             "SELECT payload FROM audit WHERE type='RISK_DECISION' ORDER BY sequence DESC LIMIT 1"
         )[0]["payload"]
         assert "GLOBAL_GATE" in decision
+        evidence = platform.auto_mode.evidence("account-a")
+        assert evidence["funnel"]["signals"] == 1
+        assert evidence["funnel"]["risk_rejected"] == 1
+        assert evidence["funnel"]["orders"] == 0
+    finally:
+        platform.close()
+
+
+def test_auto_capture_evaluation_is_bounded_ordered_and_has_no_dispatch_authority():
+    platform, clock = running_platform()
+    try:
+        platform.auto_mode.start("account-a")
+        for index, price in enumerate((100, 100, 100)):
+            tick(platform, clock, "BBB", price, index)
+        for index, price in enumerate((100, 101, 103)):
+            tick(platform, clock, "AAA", price, index)
+
+        report = platform.auto_mode.evaluate_capture("account-a")
+        assert report["mode"] == "EVALUATION_ONLY"
+        assert report["dispatch_authority"] is False
+        assert report["ordered"] is True
+        assert report["capture_count"] == 6
+        assert [item["label"] for item in report["results"]] == [
+            "baseline",
+            "diagnostic_half_entry",
+            "diagnostic_double_entry",
+        ]
     finally:
         platform.close()
 
@@ -128,6 +155,34 @@ def test_auto_mode_compares_momentum_breakout_and_mean_reversion():
         assert selected == "mean_reversion"
         assert score == scores["mean_reversion"]
         assert set(scores) == {"momentum", "breakout", "mean_reversion"}
+    finally:
+        platform.close()
+
+
+def test_live_auto_requires_explicit_bounded_allowlist():
+    platform, _clock = running_platform()
+    try:
+        platform.broker.provider = "021"
+        try:
+            platform.auto_mode.start("account-a")
+        except ValueError as exc:
+            assert "ALGOSHIELD_AUTO_SYMBOLS" in str(exc)
+        else:
+            raise AssertionError("live Auto unexpectedly used catalogue ordering")
+    finally:
+        platform.close()
+
+
+def test_auto_allowlist_bounds_candidate_demand():
+    platform = Platform(auto_symbols=("BBB", "AAA"), auto_scan_limit=1)
+    platform.account("account-a")
+    platform.strategies.subscribe("account-a", "seed-a", "momentum", "AAA")
+    platform.strategies.subscribe("account-a", "seed-b", "momentum", "BBB")
+    try:
+        evidence = platform.auto_mode.start("account-a")
+        assert evidence["candidate_count"] == 1
+        assert platform.auto_mode.market_symbols_for("account-a") == ("BBB",)
+        assert evidence["policy"]["candidate_source"] == "CONFIGURED_ALLOWLIST"
     finally:
         platform.close()
 

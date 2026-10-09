@@ -211,6 +211,7 @@ def create_app(platform=None, *, trusted_origins=None, cookie_secure=None):
             access_token=config.get("021_token"),
             product=config["021_product"],
             instrument_cache=config.get("021_instrument_cache"),
+            instrument_exchange=config["auto_exchange"],
             read_timeout=config["broker_read_timeout_seconds"],
             write_timeout=config["broker_write_timeout_seconds"],
         )
@@ -241,20 +242,16 @@ def create_app(platform=None, *, trusted_origins=None, cookie_secure=None):
         auto_take_profit=config["auto_take_profit"],
         auto_stop_loss=config["auto_stop_loss"],
         auto_cooldown_seconds=config["auto_cooldown_seconds"],
+        auto_symbols=config.get("auto_symbols", ()),
+        enforce_market_hours=bool(config.get("021_enabled")),
     )
     if platform is None and config.get("market_data_provider") == "021":
         if not isinstance(broker, Broker021Adapter):
             raise RuntimeError("021 market data requires ALGOSHIELD_021_ENABLED=true")
-        symbols = config.get("021_symbols")
-        if not symbols:
-            # The catalogue is the source of truth when no explicit universe is
-            # configured.  The provider applies 021's connection/instrument
-            # limits and reports any truncation in telemetry.
-            symbols = broker.all_market_symbols()
-            if not symbols:
-                raise RuntimeError(
-                    "021 instrument catalogue contains no cash-equity symbols"
-                )
+        # This is an explicit pinned/watchlist demand only. Auto candidates and
+        # enabled strategy subscriptions are added dynamically by the provider;
+        # an empty configuration must not subscribe the whole catalogue.
+        symbols = config.get("021_symbols", ())
         engine.configure_external_market_data(
             MarketData021Provider(
                 engine,
@@ -273,7 +270,6 @@ def create_app(platform=None, *, trusted_origins=None, cookie_secure=None):
     async def lifespan(app):
         try:
             if platform is None:
-                engine.auto_mode.restore()
                 if engine.external_market_data is not None:
                     engine.start_external_market_data()
             yield
@@ -745,6 +741,11 @@ def create_app(platform=None, *, trusted_origins=None, cookie_secure=None):
     def auto_mode(request: Request):
         user = require_user(request)
         return financial_json(engine.auto_mode.evidence(user["account_id"]))
+
+    @app.get("/api/auto-mode/evaluation")
+    def auto_mode_evaluation(request: Request):
+        user = require_user(request)
+        return financial_json(engine.auto_mode.evaluate_capture(user["account_id"]))
 
     @app.post("/api/auto-mode/start")
     def start_auto_mode(request: Request):

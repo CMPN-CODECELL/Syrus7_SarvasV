@@ -111,6 +111,28 @@ def settings():
             for symbol in live_symbols.split(",")
             if symbol.strip()
         )
+    auto_symbols = os.getenv(
+        "ALGOSHIELD_AUTO_SYMBOLS", values.get("ALGOSHIELD_AUTO_SYMBOLS")
+    )
+    if auto_symbols:
+        result["auto_symbols"] = tuple(
+            dict.fromkeys(
+                symbol.strip().upper()
+                for symbol in auto_symbols.split(",")
+                if symbol.strip()
+            )
+        )
+    auto_exchange = (
+        os.getenv(
+            "ALGOSHIELD_AUTO_EXCHANGE",
+            values.get("ALGOSHIELD_AUTO_EXCHANGE", "NSECM"),
+        )
+        .strip()
+        .upper()
+    )
+    if auto_exchange != "NSECM":
+        raise ValueError("ALGOSHIELD_AUTO_EXCHANGE must be NSECM")
+    result["auto_exchange"] = auto_exchange
     result["021_max_timestamp_skew_seconds"] = _positive_float(
         values, "ALGOSHIELD_021_MAX_TIMESTAMP_SKEW_SECONDS", 10
     )

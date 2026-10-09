@@ -58,6 +58,8 @@ class Platform:
         auto_take_profit=0.01,
         auto_stop_loss=0.005,
         auto_cooldown_seconds=60,
+        auto_symbols=(),
+        enforce_market_hours=False,
     ):
         self.clock = clock
         self.demo_enabled = demo_enabled
@@ -84,7 +86,9 @@ class Platform:
             not self.risk.kill_requested.is_set()
             and self.risk.strategy_state(strategy) == "RUNNING"
         )
-        self.market_session = MarketSession(clock=clock)
+        self.market_session = MarketSession(
+            clock=clock, enforce_hours=bool(enforce_market_hours)
+        )
         self.reliability = Reliability(
             self.store,
             self.broker_calls,
@@ -122,7 +126,9 @@ class Platform:
             take_profit=auto_take_profit,
             stop_loss=auto_stop_loss,
             cooldown_seconds=auto_cooldown_seconds,
+            candidate_allowlist=auto_symbols,
         )
+        self.reliability.required_symbols_provider = self.required_market_symbols
         self.demo_count = 0
         self._simulation_cursor = {}
         self._simulation_seq = 0
@@ -252,6 +258,12 @@ class Platform:
         """Symbols needed for Auto, exposure management, and open orders."""
         required = list(self.auto_mode.market_symbols())
         required.extend(
+            row["symbol"]
+            for row in self.store.rows(
+                "SELECT DISTINCT symbol FROM subscriptions WHERE enabled=1"
+            )
+        )
+        required.extend(
             position.symbol
             for (
                 account,
@@ -265,6 +277,35 @@ class Platform:
             for row in self.store.rows(
                 "SELECT DISTINCT symbol FROM orders "
                 "WHERE status NOT IN ('FILLED','CANCELLED','REJECTED')"
+            )
+        )
+        return tuple(dict.fromkeys(symbol.upper() for symbol in required if symbol))
+
+    def account_required_market_symbols(self, account_id):
+        """Return only this account's current execution-relevant demand."""
+        required = list(self.auto_mode.market_symbols_for(account_id))
+        required.extend(
+            row["symbol"]
+            for row in self.store.rows(
+                "SELECT symbol FROM subscriptions WHERE account=? AND enabled=1",
+                (account_id,),
+            )
+        )
+        required.extend(
+            symbol
+            for (
+                account,
+                _strategy,
+                symbol,
+            ), position in self.ledger.positions().items()
+            if account == account_id and position.net_quantity != 0
+        )
+        required.extend(
+            row["symbol"]
+            for row in self.store.rows(
+                "SELECT DISTINCT symbol FROM orders WHERE account=? "
+                "AND status NOT IN ('FILLED','CANCELLED','REJECTED')",
+                (account_id,),
             )
         )
         return tuple(dict.fromkeys(symbol.upper() for symbol in required if symbol))
@@ -430,10 +471,10 @@ class Platform:
                 # but must not make a live ingestion loop crash or overwrite
                 # the last accepted market mark.
                 if str(exc).startswith("conflicting duplicate"):
-                    return
+                    return False
                 raise
             if not accepted:
-                return
+                return False
             self._metric_counter("ticks_processed_total")
             self._simulation_cursor[tick.symbol] = max(
                 self._simulation_cursor.get(tick.symbol, 0),
@@ -446,7 +487,8 @@ class Platform:
                 "price": str(tick.price),
                 "event_timestamp": tick.event_timestamp,
                 "raw_event_timestamp": tick.raw_event_timestamp,
-                "received_at": time.time(),
+                "received_at": tick.received_at or time.time(),
+                "event_time_status": tick.event_time_status,
                 "volume_available": tick.volume_available,
                 "data_source": tick.data_source,
             }
@@ -509,6 +551,7 @@ class Platform:
         self._metric_observe(
             "tick_processing_latency_ms", (time.perf_counter() - started) * 1000
         )
+        return True
 
     def _official_strategy_intents(self, tick, provider_telemetry):
         """Evaluate documented 021 policies from provider-neutral evidence."""
@@ -997,6 +1040,8 @@ class Platform:
                 if self.external_market_data is not None and not connected
                 else "NO_VALID_OBSERVATIONS"
             )
+        if self._broker_stream is not None:
+            market_data["order_stream"] = self._broker_stream.telemetry()
         return market_data
 
     def provider_readiness(self, account_id: str, market_data=None):
@@ -1004,6 +1049,7 @@ class Platform:
         adapter = getattr(self.broker_calls, "adapter", self.broker)
         return self.reliability.readiness_projection(
             account_id=account_id,
+            symbols=self.account_required_market_symbols(account_id),
             market_data=market_data or self.market_data_evidence(),
             external_market_data=self.external_market_data is not None,
             broker_connected=getattr(adapter, "connected", None),
@@ -1324,10 +1370,23 @@ class Platform:
                 )
 
             market_data = self.market_data_evidence(account_id)
+            provider_readiness = (
+                self.provider_readiness(account_id, market_data)
+                if account_id is not None
+                else None
+            )
             auto_evidence = (
                 self.auto_mode.evidence(account_id) if account_id is not None else None
             )
             if auto_evidence is not None:
+                exposure = provider_readiness["actions"]["new_exposure"]
+                auto_evidence["evaluation_state"] = auto_evidence["state"]
+                auto_evidence["execution_state"] = (
+                    "AUTHORIZED" if exposure["status"] == "ALLOWED" else "BLOCKED"
+                )
+                auto_evidence["blocking_reasons"] = list(
+                    provider_readiness.get("blocking_reason_codes") or ()
+                )
                 decisions_by_symbol = {
                     row["symbol"]: row for row in auto_evidence["decisions"]
                 }
@@ -1403,11 +1462,7 @@ class Platform:
                 "strategy_errors": strategy_errors,
                 "market_data": market_data,
                 "auto_mode": auto_evidence,
-                "provider_readiness": (
-                    self.provider_readiness(account_id, market_data)
-                    if account_id is not None
-                    else None
-                ),
+                "provider_readiness": provider_readiness,
                 "market_session": self.market_session.to_dict(self.clock()),
                 "audit": audit_rows,
                 "kill": kill_data,

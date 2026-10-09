@@ -928,3 +928,79 @@ The demo shows genuine strategy intents, risk decisions and 021 responses. A
 provider rejection is visible as rejection, an accepted order remains open
 until provider lifecycle evidence arrives, and portfolio/P&L changes only from
 unique REST trade fills. This does not promise execution or profit.
+
+## DEC-040 — Explicit Auto demand and generation-scoped 021 serving evidence
+
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Context
+
+The live composition requested the entire cash catalogue when no watchlist or
+trading demand existed, and Auto inherited catalogue order ranked by freeze
+quantity. Observed catalogue values included a sentinel freeze quantity, so
+neither ordering nor that field proved liquidity or execution suitability.
+Readiness also combined a connected socket and locally sent symbol list with a
+fresh mark, without tying the evidence to a connection generation. Provider
+timestamps frequently required receive-time fallback, which could make unknown
+event freshness look current.
+
+### Decision
+
+Supersede the candidate-ranking paragraph of DEC-039 and the serving-evidence
+sentence of DEC-038. Live Auto requires an explicit bounded
+`ALGOSHIELD_AUTO_SYMBOLS` allowlist. With no explicit watchlist, enabled
+strategy, exposure, open order, or enabled Auto candidate, the 021 market
+provider stays idle. Connectivity and sent/requested symbols are never serving
+proof. Current 021 readiness accepts only a fresh valid mapped-instrument
+observation tied to its current connection generation; it is labelled
+observation evidence, not provider acknowledgement. Reconnect or dynamic
+universe rebuild invalidates prior serving evidence. Invalid/missing provider
+event time is retained separately from receive time and cannot establish live
+freshness. No provider fact, reconciliation event, or restart enables Auto or
+resumes execution automatically.
+
+Live composition enforces the existing Asia/Kolkata `[09:15, 15:30)` schedule.
+Manual OPEN cannot extend live admission outside that schedule, while explicit
+offline replay retains unenforced-hours behavior. Cancellation and separately
+verified emergency-reduction contracts are unchanged.
+
+### Impact
+
+Activation produces bounded and reviewable demand, while readiness remains
+instrument- and generation-specific. Activity may remain zero when event time,
+snapshot coverage, reconciliation, gate state, strategy conditions, or provider
+execution evidence is unavailable. That is an explicit block, not a reason to
+weaken safety or manufacture orders.
+
+## DEC-041 — Exchange-qualified Auto instrument selection
+
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Context
+
+The 021 catalogue can contain the same symbol on NSECM and BSEEQ. A symbol-only
+cache using the first encountered row made catalogue order an accidental
+execution decision. A reviewed Auto allowlist therefore did not itself prove
+which provider instrument would be subscribed or ordered.
+
+### Decision
+
+Live Auto is explicitly configured with `ALGOSHIELD_AUTO_EXCHANGE=NSECM`.
+Catalogue loading retains every eligible cash-stock row under the compound
+`(symbol, exchange)` identity. A candidate is valid only when exactly one
+documented `STK` row matches that identity. Missing or duplicate matches fail
+closed; there is no first-row or BSEEQ fallback. The selected current-catalogue
+token supplies both market subscription and order construction, and durable
+order mutation additionally verifies the stored exchange/token/product identity.
+The existing symbol-only path remains for compatible mock/replay and legacy
+callers that do not opt into the live Auto exchange policy.
+
+### Impact
+
+Reordering NSE/BSE catalogue rows cannot change the selected live Auto
+instrument. Daily token changes come from the configured catalogue rather than
+source constants. This decision does not resolve or alter provider
+UCC/account/order-ID attribution, reconciliation completeness, or execution
+authorization.
