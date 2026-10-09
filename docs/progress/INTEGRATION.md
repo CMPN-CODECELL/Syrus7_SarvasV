@@ -5,6 +5,26 @@
 - Status: BLOCKED
 - Last updated: 2026-10-09 Asia/Kolkata
 
+## 2026-10-09 — Subscription-free Yahoo quote visibility
+
+- Fixed a verified display gap where Yahoo ticks advanced aggregate telemetry but
+  an authenticated trader with no strategy subscriptions saw zero stocks. The
+  account projection correctly removed subscription-scoped candles, while the UI
+  incorrectly used subscriptions as its only symbol inventory.
+- Yahoo telemetry now publishes the configured provider symbols, canonical symbol
+  mappings and one bounded latest-accepted quote row per configured symbol. Prices
+  remain decimal strings; raw timestamps are retained; missing quotes remain null;
+  volume remains unavailable. The UI shows these rows independently from completed
+  candles and derives its filter from provider, quote, candle and subscription
+  symbols.
+- Account scoping for strategies, orders, positions and financial evidence is
+  unchanged. No replay mixing, backfill, feed failover, trading resume or financial
+  calculation was added.
+- Validation: 404 backend tests passed with one environment-gated PostgreSQL skip;
+  58 focused backend tests and 12 focused React tests passed; all 41 React tests,
+  Ruff, ESLint, Vite production build, TypeScript and documentation checks passed.
+  The already-running server requires a restart to load this uncommitted change.
+
 ## 2026-10-09 — Multi-stock branch integration
 
 - Integrated the branch's authenticated atomic `POST /api/subscriptions/batch`

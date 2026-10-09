@@ -73,6 +73,32 @@ describe('backend-shaped React projections',()=>{
     expect(screen.getByText('YAHOO_EXTERNAL_QUOTES')).toBeInTheDocument()
   })
 
+  it('shows configured Yahoo stocks and current quotes without strategy subscriptions',()=>{
+    renderOutlet(<MarketDataPage/>,{snapshot:{
+      ...snapshot,
+      subscriptions:[],
+      candles:[],
+      market_session:{status:'OPEN'},
+      market_data:{
+        label:'YAHOO EXTERNAL QUOTES / MOCK EXECUTION',
+        connected:true,
+        volume_available:false,
+        canonical_symbols:['TCS','INFY'],
+        latest_quotes:[
+          {symbol:'TCS',provider_symbol:'TCS.NS',price:'2190.80',event_timestamp:1791521395,raw_event_timestamp:'1791521395000',received_at:1791521397,volume_available:false,data_source:'YAHOO_EXTERNAL_QUOTES'},
+          {symbol:'INFY',provider_symbol:'INFY.NS',price:null,event_timestamp:null,raw_event_timestamp:null,received_at:null,volume_available:false,data_source:'YAHOO_EXTERNAL_QUOTES'},
+        ],
+      },
+    }})
+    const selector=screen.getByRole('combobox',{name:'Filter market data by symbol'})
+    expect(within(selector).getByRole('option',{name:'TCS'})).toBeInTheDocument()
+    expect(within(selector).getByRole('option',{name:'INFY'})).toBeInTheDocument()
+    expect(screen.getByText('TCS.NS')).toBeInTheDocument()
+    expect(screen.getByText('2190.80')).toBeInTheDocument()
+    expect(screen.getByText('INFY.NS')).toBeInTheDocument()
+    expect(screen.getAllByText('Unavailable')).toHaveLength(2)
+  })
+
   it('uses gate, health, Safety Proof verdict, readiness, and canonical financial joins',()=>{
     renderOutlet(<OverviewPage/>)
     const gateCard=screen.getByText('Trading gate').closest('section')

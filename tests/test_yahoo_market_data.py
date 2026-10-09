@@ -135,6 +135,44 @@ def test_duplicate_detection_is_bounded_and_not_claimed_as_trade_identity():
     assert all(replay is False for _, replay in platform.ticks)
 
 
+def test_account_snapshot_exposes_configured_symbols_and_latest_quotes_without_subscriptions():
+    platform = Platform()
+    provider = YahooMarketDataProvider(platform)
+    try:
+        platform.account("trader")
+        platform.configure_external_market_data(provider)
+        assert provider.ingest_payload(CAPTURED_TCS, received_at=1791521395)
+
+        market_data = platform.snapshot("trader")["market_data"]
+        assert market_data["canonical_symbols"] == ["TCS", "INFY"]
+        assert market_data["symbols"] == ["TCS.NS", "INFY.NS"]
+        assert market_data["latest_quotes"] == [
+            {
+                "symbol": "TCS",
+                "provider_symbol": "TCS.NS",
+                "price": "2190.8",
+                "event_timestamp": 1791521395,
+                "raw_event_timestamp": "1791521395000",
+                "received_at": 1791521395,
+                "volume_available": False,
+                "data_source": SOURCE,
+            },
+            {
+                "symbol": "INFY",
+                "provider_symbol": "INFY.NS",
+                "price": None,
+                "event_timestamp": None,
+                "raw_event_timestamp": None,
+                "received_at": None,
+                "volume_available": False,
+                "data_source": SOURCE,
+            },
+        ]
+        assert platform.snapshot("trader")["subscriptions"] == []
+    finally:
+        platform.close()
+
+
 def test_overflow_disconnect_and_staleness_fail_closed_without_resuming():
     platform = FakePlatform()
     provider = YahooMarketDataProvider(platform, clock=lambda: 100, stale_after=5)
