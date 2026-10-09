@@ -32,24 +32,11 @@ orders, cooldowns or missing thresholds. The provider retains symbols needed by
 open positions/orders. Auto mode is disabled on restart; its transient rankings
 are not recovery authority and profitability is never claimed.
 
-The dashboard derives account scope from a valid HttpOnly server-side session;
-strategy and order endpoints reject caller-supplied account IDs. In explicit
-demo-role mode, the session names one of two configured durable database
-principals (Trader or Operator) selected without credentials. Operator authority
-is still joined from `operator_grants` on every request. Because role selection
-is not authentication, configuration refuses demo-role mode on a branch named
-`production`. This is a debugging boundary, not production identity.
+The dashboard route requires a valid HttpOnly local session cookie. Registration assigns the durable trading account identity; strategy subscription/start/stop endpoints derive account ownership from that verified session and reject caller-supplied account IDs. This is the bootstrap identity boundary, not a claim of Neon Auth or production authentication readiness.
 
 ## Frontend boundary
 
-The React/Vite application lives in `frontend/`. `AuthProvider` discovers or
-selects the demo role session, `TelemetryProvider` owns the single scoped
-WebSocket plus bounded reconnect and snapshot fallback, and the shared API
-client always includes session credentials. React renders backend values and
-sends commands; it performs no risk, P&L, reconciliation, or kill-success
-calculation. Vite proxies backend routes only during development. Production
-contains no Node server: a multi-stage image builds static assets and FastAPI
-serves `frontend/dist`, with API/WebSocket routes registered before SPA fallback.
+The React/Vite application lives in `frontend/`. `AuthProvider` owns session discovery, `TelemetryProvider` owns the single authenticated WebSocket plus bounded reconnect and snapshot fallback, and the shared API client always includes session credentials. React renders backend values and sends commands; it performs no risk, P&L, reconciliation, or kill-success calculation. Vite proxies backend routes only during development. Production contains no Node server: a multi-stage image builds static assets and FastAPI serves `frontend/dist`, with API/WebSocket routes registered before SPA fallback.
 
 ## Execution and concurrency
 

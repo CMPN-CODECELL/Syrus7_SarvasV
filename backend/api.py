@@ -183,44 +183,15 @@ class LoginRequest(BaseModel):
         return value
 
 
-class DemoRoleRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    role: str
-
-    @field_validator("role")
-    @classmethod
-    def normalize_role(cls, value):
-        role = value.strip().lower()
-        if role not in {"trader", "operator"}:
-            raise ValueError("role must be Trader or Operator")
-        return role
-
-
 def financial_json(value):
     return JSONResponse(content=jsonable_encoder(value, custom_encoder={Decimal: str}))
 
 
-def create_app(
-    platform=None,
-    *,
-    trusted_origins=None,
-    cookie_secure=None,
-    demo_role_mode=None,
-):
+def create_app(platform=None, *, trusted_origins=None, cookie_secure=None):
     config = (
         settings()
         if platform is None
-        else {
-            "sqlite_path": ":memory:",
-            "database_url": "",
-            "secure_cookie": False,
-            "demo_role_mode": False,
-            "demo_trader_username": "demo_trader",
-            "demo_trader_account": "acc_demo_trader",
-            "demo_operator_username": "demo_operator",
-            "demo_operator_account": "acc_demo_operator",
-        }
+        else {"sqlite_path": ":memory:", "database_url": "", "secure_cookie": False}
     )
     broker = None
     application_store = None
@@ -283,9 +254,7 @@ def create_app(
         # safety gate during catalogue-wide fan-out.
         symbols = config.get("021_symbols", ())
         if not broker.all_market_symbols():
-            raise RuntimeError(
-                "021 instrument catalogue contains no cash-equity symbols"
-            )
+            raise RuntimeError("021 instrument catalogue contains no cash-equity symbols")
         engine.configure_external_market_data(
             MarketData021Provider(
                 engine,
@@ -316,23 +285,6 @@ def create_app(
 
     app = FastAPI(title="AlgoShield mock control plane", lifespan=lifespan)
     app.state.platform = engine
-    demo_role_mode = (
-        config.get("demo_role_mode", False)
-        if demo_role_mode is None
-        else bool(demo_role_mode)
-    )
-    demo_roles = {
-        "trader": {
-            "username": config.get("demo_trader_username", "demo_trader"),
-            "account_id": config.get("demo_trader_account", "acc_demo_trader"),
-            "is_operator": False,
-        },
-        "operator": {
-            "username": config.get("demo_operator_username", "demo_operator"),
-            "account_id": config.get("demo_operator_account", "acc_demo_operator"),
-            "is_operator": True,
-        },
-    }
     cookie_secure = (
         config.get("secure_cookie", False) if cookie_secure is None else cookie_secure
     )
@@ -452,7 +404,7 @@ def create_app(
 
     @app.get("/")
     def dashboard(request: Request):
-        if not demo_role_mode and not engine.auth.verify_token(request_token(request)):
+        if not engine.auth.verify_token(request_token(request)):
             return RedirectResponse("/login", status_code=303)
         if not (frontend_dist / "index.html").is_file():
             raise HTTPException(
@@ -462,8 +414,6 @@ def create_app(
 
     @app.get("/login")
     def login_page():
-        if demo_role_mode:
-            return RedirectResponse("/", status_code=303)
         if not (frontend_dist / "index.html").is_file():
             raise HTTPException(
                 503, "React build missing; run npm --prefix frontend run build"
@@ -472,8 +422,6 @@ def create_app(
 
     @app.get("/register")
     def register_page():
-        if demo_role_mode:
-            return RedirectResponse("/", status_code=303)
         if not (frontend_dist / "index.html").is_file():
             raise HTTPException(
                 503, "React build missing; run npm --prefix frontend run build"
@@ -482,8 +430,6 @@ def create_app(
 
     @app.post("/api/auth/register", status_code=201)
     def register(body: RegisterRequest, response: Response):
-        if demo_role_mode:
-            raise HTTPException(404, "registration is disabled in demo role mode")
         try:
             res = engine.auth.register(body.username, body.password)
             set_session_cookie(response, res["token"])
@@ -501,8 +447,6 @@ def create_app(
 
     @app.post("/api/auth/login")
     def login(body: LoginRequest, response: Response, request: Request):
-        if demo_role_mode:
-            raise HTTPException(404, "sign-in is disabled in demo role mode")
         # Use peer identity only; configure uvicorn --no-proxy-headers.
         peer = request.client.host if request.client else "unknown"
         ticket = app.state.login_limiter.acquire(peer)
@@ -530,8 +474,6 @@ def create_app(
 
     @app.post("/api/auth/logout")
     def logout(request: Request, response: Response):
-        if demo_role_mode:
-            raise HTTPException(404, "sign-out is disabled in demo role mode")
         token = request_token(request)
         if token:
             engine.auth.logout(token)
@@ -542,31 +484,7 @@ def create_app(
 
     @app.get("/api/auth/me")
     def current_user(request: Request):
-        return {"user": require_user(request), "demo_role_mode": demo_role_mode}
-
-    @app.post("/api/demo-role")
-    def select_demo_role(body: DemoRoleRequest, request: Request, response: Response):
-        if not demo_role_mode:
-            raise HTTPException(404, "demo role mode is disabled")
-        current_token = request_token(request)
-        if current_token:
-            engine.auth.logout(current_token)
-        principal = demo_roles[body.role]
-        try:
-            selected = engine.auth.select_demo_role(
-                body.role,
-                username=principal["username"],
-                account_id=principal["account_id"],
-                is_operator=principal["is_operator"],
-            )
-        except ValueError as exc:
-            raise HTTPException(409, str(exc)) from None
-        set_session_cookie(response, selected["token"])
-        return {
-            "user": selected["user"],
-            "role": selected["role"],
-            "demo_role_mode": True,
-        }
+        return {"user": require_user(request)}
 
     @app.get("/health")
     def health():

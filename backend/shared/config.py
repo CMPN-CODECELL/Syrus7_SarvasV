@@ -24,13 +24,6 @@ def _bounded_int(values, name: str, default: int, minimum: int, maximum: int) ->
     return value
 
 
-def _boolean(values, name: str, default: bool = False) -> bool:
-    raw = os.getenv(name, values.get(name, str(default))).strip().lower()
-    if raw not in {"true", "false"}:
-        raise ValueError(f"{name} must be true or false")
-    return raw == "true"
-
-
 def settings():
     # Environment wins; ignored files never enter frontend state or diagnostics.
     values = dict(dotenv_values(".env")) | dict(dotenv_values(".env.local"))
@@ -39,45 +32,7 @@ def settings():
         "sqlite_path": os.getenv("ALGOSHIELD_DB", values.get("ALGOSHIELD_DB"))
         or "data/platform.db",
         "021_enabled": False,
-        "demo_role_mode": _boolean(values, "ALGOSHIELD_DEMO_ROLE_MODE"),
-        "demo_trader_username": os.getenv(
-            "ALGOSHIELD_DEMO_TRADER_USERNAME",
-            values.get("ALGOSHIELD_DEMO_TRADER_USERNAME", "demo_trader"),
-        ).strip(),
-        "demo_trader_account": os.getenv(
-            "ALGOSHIELD_DEMO_TRADER_ACCOUNT",
-            values.get("ALGOSHIELD_DEMO_TRADER_ACCOUNT", "acc_demo_trader"),
-        ).strip(),
-        "demo_operator_username": os.getenv(
-            "ALGOSHIELD_DEMO_OPERATOR_USERNAME",
-            values.get("ALGOSHIELD_DEMO_OPERATOR_USERNAME", "demo_operator"),
-        ).strip(),
-        "demo_operator_account": os.getenv(
-            "ALGOSHIELD_DEMO_OPERATOR_ACCOUNT",
-            values.get("ALGOSHIELD_DEMO_OPERATOR_ACCOUNT", "acc_demo_operator"),
-        ).strip(),
     }
-    if not all(
-        result[key]
-        for key in (
-            "demo_trader_username",
-            "demo_trader_account",
-            "demo_operator_username",
-            "demo_operator_account",
-        )
-    ):
-        raise ValueError("demo role usernames and accounts cannot be blank")
-    if result["demo_trader_username"] == result["demo_operator_username"]:
-        raise ValueError("demo Trader and Operator usernames must differ")
-    neon_branch = os.getenv("NEON_BRANCH", values.get("NEON_BRANCH", "")).strip()
-    if (
-        result["demo_role_mode"]
-        and result["database_url"]
-        and neon_branch.lower() == "production"
-    ):
-        raise ValueError(
-            "demo role mode cannot provision identities on the production database"
-        )
     enabled_021 = (
         os.getenv(
             "ALGOSHIELD_021_ENABLED", values.get("ALGOSHIELD_021_ENABLED", "false")

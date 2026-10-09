@@ -21,22 +21,6 @@ Operators still receive only their account's financial and identity projection.
 Global gate/health/verdict, kill result/timing, and aggregate diagnostics may be
 shown without exposing another account's private evidence.
 
-## Demo Trader/Operator mode (DEC-042)
-
-`ALGOSHIELD_DEMO_ROLE_MODE=true` removes signup/sign-in/sign-out from the demo
-UI and enables `POST /api/demo-role` for exactly `trader` or `operator`. The
-server owns the configurable usernames/account IDs, creates deliberately
-password-disabled durable principals, issues an HttpOnly session, and continues
-to derive operator authority from `operator_grants` on every request. The
-browser cannot submit an account ID or `is_operator` value.
-
-This is convenience, not authentication: anyone who can reach the demo can
-select Operator. Configuration therefore refuses this mode when `DATABASE_URL`
-is set and `NEON_BRANCH=production`. Use SQLite or a dedicated non-production
-Neon branch, restrict network access, and never share 021/database secrets with
-the browser. Ordinary password registration/login remains available only when
-demo-role mode is disabled for compatibility tests and non-demo deployments.
-
 ## Offline SQLite provisioning
 
 Register the intended user, stop the backend, then run:
