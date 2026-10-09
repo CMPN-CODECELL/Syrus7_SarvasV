@@ -322,7 +322,7 @@ Every broker adapter (including `MockBrokerAdapter` and the eventual `Broker021A
 - Safety Proof and execution traces are server-built, read-only projections of persisted evidence. Missing evidence is reported as `UNKNOWN`, never inferred as safe.
 - Reconciliation reports include position differences and recovered fill identifiers. Recovery never manufactures fills.
 - Kill certificates retain stage timings and final broker/virtual evidence. A successful certificate still requires verified flat state within the deadline.
-- Operational metrics are bounded, process-local diagnostics and are not financial truth. SafetyBench uses an isolated SQLite/mock platform and is disabled for PostgreSQL and non-mock providers.
+- Operational metrics are bounded, process-local diagnostics and are not financial truth. SafetyBench uses a fresh isolated in-memory SQLite/mock platform for every case; it is safe to run while the current account uses PostgreSQL or 021. Failure injection remains local mock-only.
 - Failure injection remains local mock-only. No endpoint claims real 021 connectivity while provider details remain unknown.
 
 ## React presentation contract

@@ -279,7 +279,7 @@ def test_operator_injection_refused_for_non_mock_and_errors_do_not_leak(monkeypa
             assert client.post("/api/failure-lab/partial").status_code == 409
             assert (
                 client.post("/api/safety-bench/run", json={"iterations": 1}).status_code
-                == 409
+                == 200
             )
 
             def fail():

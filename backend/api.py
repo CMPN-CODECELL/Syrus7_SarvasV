@@ -781,7 +781,11 @@ def create_app(platform=None, *, trusted_origins=None):
     @app.post("/api/safety-bench/run")
     def run_safety_bench(body: SafetyBenchRequest, request: Request):
         user = require_operator(request)
-        engine.require_offline_demo()
+        # SafetyBench creates a fresh in-memory SQLite Platform for every case
+        # (see SafetyBench.run). It must not inspect or mutate the current
+        # provider, so it remains safe to run while the account is connected
+        # to the 021 virtual exchange. Failure Lab keeps the separate
+        # current-platform mock-only guard because it injects into that state.
         return account_response(user, engine.safety_bench.run(body.iterations))
 
     @app.get("/api/safety-bench/latest")
