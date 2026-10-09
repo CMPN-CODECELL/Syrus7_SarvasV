@@ -108,6 +108,19 @@ Produce a gap inventory with `current code location | doc expectation | proof/te
 
 ## Current disposition after approved remediation (2026-10-09)
 
+### Round 2 next work after DEC-027
+
+1. Obtain authenticated 021 identity/event/history/fee fixtures before real
+   adapter mapping, corrections or fee adjustments (DEFERRED — DEPENDENCY).
+2. Run isolated PostgreSQL migration/transaction/restart coverage when an
+   explicitly authorized test DB is available (UNVERIFIED; no production tests).
+3. Verify deployment TLS/secure-cookie/identity/ingress policy and browser smoke
+   under a fixed commit (BLOCKED — NEEDS DECISION for production deployment).
+
+Current mock fixes and exact tests: [Round 2 audit](ROUND2_INTEGRATION_AUDIT.md).
+No additional financial cache, phase replay or candle rewrite is authorized by
+the member proposals; performance work needs measurement first.
+
 - B01/B03: IMPLEMENTED_VERIFIED in offline/mock validation; see `progress/INTEGRATION.md` for the exact implementation SHA and checks. Global operator authorization, response leakage and stale telemetry test are repaired.
 - B02/B04/B05/B08: existing executable mock suites pass; no migrations were rewritten and no accounting/kill/runtime feature was rebuilt. Provider-specific corrections and consistency require sponsor evidence.
 - B06: BLOCKED; no isolated PostgreSQL URL/server is available. Migration 011/provisioning on PostgreSQL is IMPLEMENTED_UNVERIFIED.

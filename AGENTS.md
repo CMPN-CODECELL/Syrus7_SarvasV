@@ -6,9 +6,8 @@
 Before changing code, agents MUST read, in order:
 1. `docs/PROJECT_TRUTH.md` — short product, architecture and authority map.
 2. `docs/IMPLEMENTATION_DELTA.md` — actual gap-first task order and release blockers.
-3. `docs/REQUIREMENTS_TRACEABILITY.md` — PS-06 requirement/test/evidence mapping.
-4. `docs/RESEARCH_DECISIONS.md` — research verdicts, rejected claims and 021 unknowns.
-5. Task-specific `docs/CONTRACTS.md`, `docs/ARCHITECTURE.md`, `docs/SAFETY_INVARIANTS.md`, `docs/DECISIONS.md`, `docs/TESTING.md`, `docs/021_API_UNKNOWN.md` and relevant source/tests.
+3. Task-specific `docs/CONTRACTS.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY_OPERATIONS.md`, `docs/SAFETY_INVARIANTS.md`, `docs/DECISIONS.md`, `docs/021_API_UNKNOWN.md` and relevant source/tests.
+4. `docs/TESTING.md` before validation. Consult `docs/REQUIREMENTS_TRACEABILITY.md` for requirement changes and `docs/RESEARCH_DECISIONS.md` for research provenance; historical member reports are optional evidence, never task authority.
 
 Status rule: history/progress/research files are **not** proof of the current checkout. Use actual code and test results to label `VERIFIED_CURRENT_COMMIT`; use `REPORTED_IMPLEMENTED` otherwise.
 
@@ -33,7 +32,7 @@ After the baseline reading order above, read:
 6. If touching execution/risk/recovery, also read `docs/SAFETY_INVARIANTS.md`.
 7. If touching tests, read `docs/TESTING.md`.
 8. If touching 021 integration, read `docs/021_API_UNKNOWN.md`.
-9. Read `docs/DECISIONS.md` and `docs/PHASE_PLAN.md` for current choices, assumptions and incomplete features.
+9. Read relevant accepted entries in `docs/DECISIONS.md`; current incomplete features live in `docs/IMPLEMENTATION_DELTA.md`. `docs/PHASE_PLAN.md` redirects to history.
 
 Do not invent missing 021 API details. Unknown sponsor/API behavior must remain behind adapters and be marked as assumptions or TODOs.
 
@@ -154,7 +153,7 @@ A change is complete only when:
 Use one backend worker. This is mock/replay only; do not claim sandbox completion. SQLite schema v12 supports offline mock/replay; Neon PostgreSQL is the accepted durable persistence layer. Real API details are absent. Read README for exact run/test commands and restart limitations. Never discard durable history to fake reconciliation. Preserve user-provided requirements even when the original sponsor statement is missing.
 
 ## Persistent progress and decisions
-Before work: read canonical docs, relevant `docs/progress/MEMBER_N.md` and `docs/progress/INTEGRATION.md`, relevant ACCEPTED entries in `docs/DECISIONS.md`, and current code/tests.
+Before work: read canonical task docs, relevant ACCEPTED entries in `docs/DECISIONS.md`, and current code/tests. Consult `docs/progress/INTEGRATION.md` for recent evidence; member logs are optional task-specific handoffs, not mandatory startup reading.
 During work: respect ownership/contracts, record significant architectural changes, never invent 021 behavior and never expose secrets.
 After a meaningful implementation task: run relevant tests, update each affected member progress file, update INTEGRATION.md for cross-module changes, update decisions when needed, and report blockers. Never claim DONE unless implementation exists and relevant tests pass. Keep logs concise.
 

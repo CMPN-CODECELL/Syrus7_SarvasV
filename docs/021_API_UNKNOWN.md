@@ -2,6 +2,13 @@
 
 Do not assume answers until sponsor documentation or mentoring confirms them.
 
+DEC-027's [broker identity contract](CONTRACTS.md) requires provider/account-scoped
+mapping, durable restart/cancel translation and canonical snapshot normalization.
+Mock identity collision rejection is verified; real 021 mapping is not implemented.
+Referenced corrections/busts and independent fee revisions remain unsupported
+until replacement/delta/ordering/identity/session semantics and fixtures arrive.
+No benchmark's FIX/IBKR/Kite fields establish 021 behavior.
+
 ## Market data
 - How are raw ticks delivered?
 - REST, WebSocket, or both?

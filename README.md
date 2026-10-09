@@ -20,7 +20,7 @@ python -m venv .venv
 python -m pip install -e ".[dev]"
 npm --prefix frontend ci
 npm --prefix frontend run build
-python -m uvicorn backend.api:create_app --factory --host 127.0.0.1 --port 8000
+python -m uvicorn backend.api:create_app --factory --host 127.0.0.1 --port 8000 --no-proxy-headers
 ```
 
 Open http://127.0.0.1:8000, register or sign in, explicitly provision the intended operator as described below, and click **Run replay** from that operator session. Registration assigns a trading account ID from the authenticated username; the dashboard never asks users to type or choose it. Four built-in strategies consume completed candles concurrently in one serialized event loop: a 3/5 EMA crossover, five-period mean reversion, a 5-minute range breakout and 14-period RSI reversal. The demo stops after replay and displays actual signals, orders, unique fills, charges, virtual positions, market-data counters and audit events. The dashboard supports strategy subscription and durable per-strategy start/stop controls. Click **Kill all** to cancel, flatten and verify. API docs: http://127.0.0.1:8000/docs.

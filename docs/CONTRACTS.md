@@ -19,13 +19,54 @@ Canonical executable definitions: `backend/shared/contracts.py`. Documentation d
 - `BrokerSnapshot`: orders/fills history and positions keyed by `(account_id,symbol)`, is_complete (defaults False), observed_at (optional provider UTC epoch time). Mock explicitly attests completeness. Query completion time is used if no provider timestamp exists; stale/uncertain/incomplete evidence blocks reconciliation. Real adapters must attest complete paginated history for the configured platform scope and keep provider-specific identity mapping inside the adapter.
 - `KillCertificate`: status, elapsed_seconds, open_orders, broker_positions, virtual_positions_flat, reason. Unknown open count = -1, never verified safe.
 
+## Broker identity boundary (DEC-027)
+
+Platform order identity is the globally unique `OrderIntent.intent_id`, persisted
+as orders.id and retained through cancellation, recovery and restart. Canonical
+order/update/fill references use that platform identity, despite the historical
+`Fill.broker_order_id` field name. Current in-process/HTTP mocks use the same ID
+externally. An identical retry is idempotent at the adapter; reusing an ID for a
+different intent/account is rejected without changing the original order.
+Platform UNKNOWN submissions are never automatically retried.
+
+A real adapter must resolve the compound `(provider, account, broker_order_id)`
+to the platform ID; a raw broker string must never be an unrestricted alternate
+lookup. Broker execution dedupe similarly requires provider/account scope if
+raw execution IDs are not globally unique. Reject conflicting mappings, foreign
+accounts, unknown IDs and unattributed executions; retain ambiguity and fail
+closed. Do not map by symbol, quantity or timestamp similarity.
+
+Persist a verified mapping before consuming dependent events; retain it over
+restart. Cancellation translates platform ID to its matching scoped provider ID.
+Events and complete snapshots normalize back to the same platform ID before
+domain verification. Snapshot completeness, identity, executed quantity and
+fill economics are independently checked. Missing mapping cannot certify safety.
+No provider field, persistence schema or API is invented here; real mapping
+implementation remains DEFERRED — DEPENDENCY on the authenticated 021 contract.
+The tested mocks need no extra nullable broker-ID column or migration.
+
+## Financial event capability boundary
+
+| Evidence | Current support | Safety behavior |
+|---|---|---|
+| Unique attributed fill, attached nonnegative Decimal charges | Supported mock canonical contract | One fill-derived financial effect |
+| Exact duplicate fill | Supported | Idempotent, no second charge/position effect |
+| Conflicting duplicate economics | Supported containment | Preserve original; fail closed, no silent overwrite |
+| Referenced execution correction or trade bust | Unsupported; 021 unknown | No automatic economics adjustment or invented replacement fill; quarantine/hold at future adapter boundary |
+| Standalone later fee revision | Unsupported; 021 unknown | No final-live-net-P&L certification; require verified normalized evidence and a new accepted model |
+| Missing execution history/unknown identity | Supported containment | Reconciliation cannot verify; no synthetic balancing fill |
+
+Corrections require replacement-versus-delta rules, target identity, causal
+ordering, session/fee treatment and replay fixtures before implementation.
+Synthetic demo fees are not a statutory fee model.
+
 ## Interfaces and state transitions
 
 `MarketDataProvider.ticks() -> Iterable[Tick]`.
 `BrokerAdapter.submit(intent) -> CanonicalOrder`, `cancel(order_id)`, `snapshot() -> BrokerSnapshot`.
 Mock exposes `execute(...)` for deterministic fill injection; it is not part of the real broker interface. 021 adapter placeholders raise NotImplementedError.
 
-Order: RESERVED -> OPEN / REJECTED / UNKNOWN; OPEN -> PARTIALLY_FILLED -> FILLED, or CANCELLED. Late evidenced executions may increase executed quantity after cancel; full evidence produces FILLED. Snapshot confirmation resolves UNKNOWN. Order statuses never create financial state without fills.
+Order: RESERVED -> OPEN / REJECTED / UNKNOWN; OPEN -> PARTIALLY_FILLED -> FILLED, or CANCELLED. Authoritative zero-fill rejection may move OPEN to REJECTED; filled rejection is forbidden. Late evidenced executions may increase executed quantity after cancel; full evidence produces FILLED. Snapshot confirmation resolves UNKNOWN. Order statuses never create financial state without fills.
 
 Global: RECOVERING -> STOPPED after successful reconciliation -> RUNNING (or explicit REDUCE_ONLY) after resume; uncertainty -> UNCERTAIN; kill -> KILLING -> KILLED or UNCERTAIN. Health: RECOVERING / HEALTHY / DEGRADED / DRIFTED. REDUCE_ONLY admits only a non-reversing close with zero pending exposure for that strategy/symbol. Runtime.enabled is actual callback state, not broker connectivity proof.
 

@@ -237,4 +237,86 @@ Neon CLI 8.0.11 installed. Requested project/branch not yet authenticated/linked
   - No 021 sandbox, remote Neon, production database or browser-driver access.
     No lockfile or generated frontend artifact changed.
 
+## 2026-10-09 (Asia/Calcutta) — DEC-027 targeted Round 2 integration
+
+Start `dev`: de126deb3af6fb26e6142ace54515fc2f2d9a4be, tracking origin/dev.
+Implementation: **89ea651990383ee640207a0bbebf85f10523e386**. Checks below ran
+against the exact source/test content committed there; only docs changed after
+the full run. Fresh fetch retained origin/main dd21746 and local main 8e5ee50;
+no main mutation/merge/push. A new unrelated feature/multi-stock-strategies remote
+appeared on final fetch and was not integrated. Member patches remain unavailable.
+
+Initial work included the earlier exploratory test and untracked research/audit.
+The four newly supplied member reports were read, preserved verbatim and adopted
+only where dev evidence showed gaps. No wholesale member branch merge. The
+ROUND2_RESEARCH_UPDATE backup was externally checksum verified before work.
+
+| Feature | Status / owner | Next |
+|---|---|---|
+| Zero-fill rejection and broker identity collisions | VERIFIED IMPLEMENTED, Member 2 | Real provider mapping depends on sponsor contract |
+| Origin, versioned password, login limiter/headers/audit | VERIFIED IMPLEMENTED, Member 3 | Deployment TLS/secure cookie/identity/ingress verification |
+| Filled/requested and candle-linked signal display | VERIFIED IMPLEMENTED, Member 4 | Browser-driver smoke |
+| Decimal ledger, risk/kill/UNKNOWN/recovery/candles/callback bounds, DEC-026 | VERIFIED EXISTING, Members 1–4 | Preserve; external fixture validation |
+| Correction/bust and later fee revisions | DEFERRED — DEPENDENCY, Members 1/2 | Define authenticated event semantics; no speculative adjustments |
+| PostgreSQL/021 | UNVERIFIED / DEFERRED — DEPENDENCY | Explicit isolated DB and sponsor sandbox evidence |
+
+Changed production: execution transition; mock collision check; API Origin and
+login handling; shared auth/KDF and browser_security helper; config and .env.example;
+Docker disables forwarded header trust; React Orders/Strategies evidence. No
+financial formula, candle strategy, migration, dependency or lockfile change.
+Tests: broker updates (3 new cases), adapter contracts (2 providers), round2
+security (16 cases), React evidence (2 cases). Conftest supplies a trusted browser
+Origin to existing workflows; negative security tests override it explicitly.
+
+Environment: Windows PowerShell, Python 3.13.1, Node 23.6.0, npm 10.9.2.
+Node 23 remains outside several locked package engine declarations; no dependency
+installation/change was performed in this round. Only isolated SQLite/mock/replay.
+
+| Executed command | Exact result |
+|---|---|
+| python -m pytest -q -p no:cacheprovider --basetemp=data/round2-baseline --tb=short | 351 passed, 1 skipped; 85.85s (before new tests/code) |
+| python -m pytest -q tests/test_broker_updates.py -k authoritative --basetemp=data/round2-red-fixed --tb=short | Before fix: 1 failed, 1 passed; genuine OPEN rejection defect only |
+| python -m pytest -q tests/test_round2_security.py --basetemp=data/round2-security-red --tb=short | Before fix: 9 failed, 5 passed |
+| npm.cmd --prefix frontend run test -- --run src/test/round2Evidence.test.jsx | Before display patch: 2 failed |
+| python -m pytest -q tests/test_broker_adapter_contract.py -k collision --basetemp=data/round2-identity-red --tb=short | Before collision fix: 2 failed |
+| Same collision selection, --basetemp=data/round2-identity-green | 2 passed, 22 deselected |
+| python -m pytest -q tests/test_round2_security.py tests/test_broker_updates.py tests/test_auth.py --basetemp=data/round2-focused --tb=short | 29 passed, 14.45s |
+| python -m pytest -q tests/test_round2_security.py tests/test_broker_updates.py tests/test_execution_state_machine.py tests/test_cancellation.py tests/test_operator_authority.py --basetemp=data/round2-cross --tb=short | 95 passed, 47.75s |
+| python -m pytest -q -p no:cacheprovider --basetemp=data/round2-final --tb=short | **372 passed, 1 PostgreSQL skipped, 128.46s** |
+| python -m ruff check . | Passed |
+| python -m ruff format --check . | Initial check identified 2 touched files; after formatting: passed, 95 files already formatted |
+| npm.cmd --prefix frontend run test | **30 passed, 7 files**, 16.57s (baseline 28/6 files) |
+| npm.cmd --prefix frontend run lint | Passed |
+| npm.cmd --prefix frontend run build | Passed; 37 modules, ignored assets only |
+| npm.cmd run check | Passed |
+| python -m scripts.rehearsal_runner (PYTHONIOENCODING=utf-8) | **7/7 passed**; observed mock kill SUCCESS 0.18s |
+| python scripts/check_docs.py | Before 42 / after 47 Markdown files; zero broken local file links |
+| git diff --check before research staging | Passed |
+| git diff --cached --check after research staging | Reports pre-existing hard-break trailing spaces/EOF blank lines in four verbatim member reports; preserved intentionally |
+| git diff --cached --check excluding docs/Member-1.md and docs/member-{2,3,4}.md | Passed for all authored changes and archives; no conflict markers |
+| Staged artifact/credential-pattern review | No DB/env/generated/private-key/credential-URL findings; no migration or lock changes |
+
+PostgreSQL skipped because no explicitly isolated test URL was configured; no
+production/Neon access, schema mutation or sandbox execution. Do not treat mock
+charges, corrections containment or kill latency as live 021 certification.
+
+Documentation: DEC-027 appended; current authority/security/contracts/traceability/
+testing/backlog and relevant member handoffs synchronized. Four historical files
+were moved with git mv into docs/archive/2026-10-09 with original-path redirects
+and repaired relative links. Inventory is in archive/README; research reports and
+all decision/progress history retained. Startup no longer mandates member logs.
+
+Residual risks: process-local limiter resets on restart and proxy peers may share
+capacity; origin does not authenticate nonbrowser clients; production TLS/secure
+cookies/identity/audit retention/public-registration limits need deployment work.
+Real scoped provider mapping, corrections/late fees require sponsor evidence.
+Ledger caching remains deferred pending measured workload. Browser smoke is
+UNVERIFIED. Next three tasks are the sponsor contract, isolated PG validation and
+deployment/browser validation recorded in IMPLEMENTATION_DELTA.
+
+Post-commit security check at 89ea651: `python -m pytest -q
+tests/test_round2_security.py --basetemp=data/round2-committed-security --tb=short`
+passed **16 tests in 8.50s**. Research whitespace is a source-formatting note,
+not a product regression; no original research text was rewritten to hide it.
+
 

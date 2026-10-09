@@ -314,6 +314,11 @@ Member 4 tasks 1 through 8 are 100% complete and fully verified. User workflows 
 
 ## 2026-10-09 — Telemetry and scoped workflow follow-up
 
+DEC-027 follow-up: Orders shows actual filled/requested quantities (missing is
+Unknown); Strategies shows existing account-scoped candle-linked signals.
+Two behavioral tests added, frontend 30 passed across 7 files; lint/build pass.
+No candle algorithm, financial calculation or telemetry provider changed.
+
 - Replaced the stale Python assertion tied to the former `setSnapshot` identifier.
   Behavioral Vitest tests remain authoritative for account switch/logout, HTTP
   401, WebSocket 1008, stale socket closure and snapshot clearing.
