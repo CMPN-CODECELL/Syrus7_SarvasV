@@ -65,6 +65,23 @@ def test_rest_adapter_maps_orders_and_trades_to_canonical_evidence():
                     "error": None,
                 },
             )
+        if path.endswith("/orders/42") and request.method == "PUT":
+            assert json.loads(request.content) == {
+                "exchange": "NSE",
+                "token": 2885,
+                "qty": 1,
+                "price": 0,
+                "book": "RL",
+                "trigger": 0,
+                "discQuantity": 0,
+                "product": "INTRADAY",
+                "validity": "Day",
+                "amo": False,
+            }
+            return httpx.Response(
+                200,
+                json={"data": {"type": "SUCCESS", "message": "modified"}, "success": True, "error": None},
+            )
         if path.endswith("/orders"):
             return httpx.Response(
                 200,
@@ -110,6 +127,7 @@ def test_rest_adapter_maps_orders_and_trades_to_canonical_evidence():
     order = adapter.submit(intent)
     assert order.order_id == "i1"
     assert store.rows("SELECT provider_order_id FROM broker_order_mappings")[0][0] == "42"
+    adapter.modify("i1", quantity=1)
     snapshot = adapter.snapshot()
     assert snapshot.is_complete is True
     assert snapshot.orders[0].filled_quantity == 2

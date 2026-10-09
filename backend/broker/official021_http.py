@@ -30,6 +30,7 @@ from backend.broker.official021 import (
     classify_http_error,
     paise_to_rupees,
     parse_envelope,
+    parse_order_frame,
     parse_plain_list,
 )
 from backend.shared.contracts import (
@@ -55,6 +56,18 @@ STATUS_MAP = {
     "SentForModification": OrderStatus.OPEN,
     "SentForCancellation": OrderStatus.OPEN,
     "AcceptedForAMO": OrderStatus.OPEN,
+}
+
+ORDER_FRAME_STATUS = {
+    1: OrderStatus.PARTIALLY_FILLED,  # trade evidence only; REST supplies tradeId
+    2: OrderStatus.OPEN,
+    3: OrderStatus.REJECTED,
+    4: OrderStatus.OPEN,
+    5: OrderStatus.OPEN,
+    6: OrderStatus.UNKNOWN,
+    7: OrderStatus.CANCELLED,
+    8: OrderStatus.UNKNOWN,
+    9: OrderStatus.OPEN,
 }
 
 
@@ -262,15 +275,20 @@ class Official021RESTAdapter:
             raise Provider021Blocked("021 order mapping is unavailable; reconcile before mutation")
         return rows[0]
 
-    def submit(self, intent: OrderIntent) -> CanonicalOrder:
-        instrument = self._instrument(intent.symbol)
-        price = 0 if intent.order_type == "MARKET" else int(intent.limit_price * 100)
-        if price and price % instrument.tick_size_paise:
-            raise Provider021Blocked("limit price is not aligned to 021 tick size")
-        payload = {
+    def _order_payload(self, intent: OrderIntent, instrument: Instrument021, *, quantity=None, limit_price=None):
+        requested_quantity = intent.quantity if quantity is None else quantity
+        instrument.validate_quantity(requested_quantity)
+        if intent.order_type == "MARKET":
+            price = 0
+        else:
+            value = intent.limit_price if limit_price is None else limit_price
+            price = int(value * 100)
+            if price <= 0 or price % instrument.tick_size_paise:
+                raise Provider021Blocked("limit price is not aligned to 021 tick size")
+        return {
             "exchange": _request_exchange(CODE_TO_EXCHANGE[instrument.exchange]),
             "token": instrument.token,
-            "qty": intent.quantity * intent.side.sign,
+            "qty": requested_quantity * intent.side.sign,
             "price": price,
             "book": "RL",
             "trigger": 0,
@@ -279,6 +297,10 @@ class Official021RESTAdapter:
             "validity": "Day",
             "amo": False,
         }
+
+    def submit(self, intent: OrderIntent) -> CanonicalOrder:
+        instrument = self._instrument(intent.symbol)
+        payload = self._order_payload(intent, instrument)
         response = self._request("POST", "/orders", json=payload, write=True)
         data = parse_envelope(response.json())
         if not isinstance(data, dict) or not data.get("orderId"):
@@ -308,6 +330,21 @@ class Official021RESTAdapter:
             raise Provider021WriteUncertain("021 order accepted but mapping was not durably recorded") from exc
         self._provider_orders[intent.intent_id] = provider_order_id
         return CanonicalOrder(intent.intent_id, intent, OrderStatus.OPEN)
+
+    def modify(self, order_id: str, *, quantity: int, limit_price: Decimal | None = None) -> None:
+        """Modify a pending order using the provider's complete order payload."""
+        mapping = self._mapping(order_id)
+        intent = self._local_intent(mapping)
+        instrument = self._instrument(intent.symbol)
+        payload = self._order_payload(
+            intent, instrument, quantity=quantity, limit_price=limit_price
+        )
+        response = self._request(
+            "PUT", f"/orders/{mapping['provider_order_id']}", json=payload, write=True
+        )
+        data = parse_envelope(response.json())
+        if not isinstance(data, dict) or str(data.get("type", "")).upper() not in {"SUCCESS", "OK"}:
+            raise Provider021ProtocolError("021 modify response was not successful")
 
     def cancel(self, order_id: str, timeout: float | None = None) -> None:
         mapping = self._mapping(order_id)
@@ -474,3 +511,35 @@ class Official021RESTAdapter:
         if not isinstance(data, dict) or not data.get("token"):
             raise Provider021ProtocolError("021 ephemeral-key response omitted token")
         return str(data["token"])
+
+    def connect_order_websocket(self):
+        """Open the documented order stream; REST remains the fill authority."""
+        from websockets.sync.client import connect
+
+        token = self.ephemeral_key()
+        url = self.base_url.replace("https://", "wss://").replace("http://", "ws://")
+        url = url.replace("/api/developer-api/v1", "/api/developer/websocket/orders")
+        return connect(f"{url}?token={token}")
+
+    def parse_order_update(self, frame: bytes) -> BrokerUpdate | None:
+        """Normalize one order frame without manufacturing a fill from WS data."""
+        event = parse_order_frame(frame)
+        mapping = self.store.rows(
+            "SELECT * FROM broker_order_mappings WHERE provider=? AND provider_order_id=?",
+            (self.provider, event.order_id),
+        )
+        if not mapping:
+            return None
+        row = mapping[0]
+        status = ORDER_FRAME_STATUS[event.status_code]
+        update_type = {
+            OrderStatus.REJECTED: BrokerUpdateType.ORDER_REJECTED,
+            OrderStatus.CANCELLED: BrokerUpdateType.ORDER_CANCELLED,
+        }.get(status, BrokerUpdateType.ORDER_STATUS)
+        return BrokerUpdate(
+            f"021:ws:{event.order_id}:{event.status_code}:{event.signed_quantity}",
+            row["platform_order_id"],
+            update_type,
+            status,
+            timestamp=time.time(),
+        )
