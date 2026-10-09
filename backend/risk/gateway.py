@@ -51,18 +51,28 @@ class RiskGateway:
 
     def authorize_dispatch(self, intent, row):
         if row["emergency"]:
-            return self.state == GlobalTradingState.KILLING and self.safety.get(
-                "kill_latched", False
-            )
-        return (
-            not self.kill_requested.is_set()
-            and not self.safety.get("kill_latched", False)
-            and self.state
-            in {GlobalTradingState.RUNNING, GlobalTradingState.REDUCE_ONLY}
-        )
+            reason = self._emergency_dispatch_block_reason(intent, row)
+            if reason:
+                self.store.audit(
+                    "EMERGENCY_DISPATCH_BLOCKED",
+                    {"order_id": intent.intent_id, "reason": reason},
+                )
+                return False
+            return True
+        if (
+            self.kill_requested.is_set()
+            or self.safety.get("kill_latched", False)
+            or self.state
+            not in {GlobalTradingState.RUNNING, GlobalTradingState.REDUCE_ONLY}
+        ):
+            return False
+        unsafe = self.evidence_gate(intent)
+        if unsafe:
+            return False
+        return True
 
     def authorize_emergency(self, intent):
-        with self.store.transaction() as db:
+        with self.store.lock, self.store.transaction() as db:
             q = self.ledger.quantity(
                 intent.account_id, intent.strategy_instance_id, intent.symbol
             )
@@ -102,6 +112,62 @@ class RiskGateway:
                 ),
             )
             return decision
+
+    def _emergency_dispatch_block_reason(self, intent, row):
+        """Reprove a reserved emergency order is still a bounded local reduction.
+
+        This runs at the serialized dispatch boundary.  A cancelled order can
+        still receive a late fill, so the proof made by ``authorize_emergency``
+        must not be reused after reservation.  Only this reservation is
+        excluded from competing exposure; every other non-terminal order for
+        the attributed strategy/symbol, including UNKNOWN, blocks dispatch.
+        """
+        broker = getattr(self.manager, "broker", None)
+        adapter = getattr(broker, "adapter", broker)
+        if self.state != GlobalTradingState.KILLING:
+            return "EMERGENCY_GATE_NOT_KILLING"
+        if not self.safety.get("kill_latched", False):
+            return "EMERGENCY_KILL_NOT_LATCHED"
+        if getattr(adapter, "connected", True) is False:
+            return "EMERGENCY_BROKER_DISCONNECTED"
+        if getattr(broker, "unsettled", False) or getattr(broker, "uncertain", False):
+            return "EMERGENCY_BROKER_EVIDENCE_UNSETTLED"
+        if (
+            row["id"],
+            row["strategy"],
+            row["account"],
+            row["symbol"],
+            row["side"],
+            row["quantity"],
+        ) != (
+            intent.intent_id,
+            intent.strategy_instance_id,
+            intent.account_id,
+            intent.symbol,
+            intent.side.value,
+            intent.quantity,
+        ):
+            return "EMERGENCY_RESERVATION_MISMATCH"
+        q = self.ledger.quantity(
+            intent.account_id, intent.strategy_instance_id, intent.symbol
+        )
+        if q * intent.side.sign >= 0:
+            return "EMERGENCY_NOT_REDUCING"
+        if intent.quantity > abs(q):
+            return "EMERGENCY_RESIDUAL_INSUFFICIENT"
+        pending = self.store.rows(
+            "SELECT id FROM orders WHERE account=? AND strategy=? AND symbol=? "
+            "AND id<>? AND status NOT IN ('FILLED','CANCELLED','REJECTED')",
+            (
+                intent.account_id,
+                intent.strategy_instance_id,
+                intent.symbol,
+                intent.intent_id,
+            ),
+        )
+        if pending:
+            return "EMERGENCY_COMPETING_EXPOSURE"
+        return ""
 
     @property
     def state(self):
@@ -376,6 +442,9 @@ class RiskGateway:
                 "RISK_STALE_MARKET_DATA": "REJECTED — STALE MARKET DATA: Feed age exceeds 15-second freshness threshold",
                 "RISK_MARKET_HALTED": "REJECTED — MARKET HALTED: Market trading is currently halted",
                 "RISK_MARKET_CLOSED": "REJECTED — MARKET CLOSED: Market session is closed",
+                "RISK_BROKER_DISCONNECTED": "REJECTED — BROKER DISCONNECTED: Broker connection is offline",
+                "RISK_PROVIDER_SUBSCRIPTION_UNAVAILABLE": "REJECTED — PROVIDER SUBSCRIPTION UNAVAILABLE: Provider subscription evidence is unverified",
+                "RISK_UNKNOWN_ORDERS_PRESENT": "REJECTED — UNKNOWN ORDERS PRESENT: Account has unresolved unknown orders",
             }
             return reject(
                 unsafe,

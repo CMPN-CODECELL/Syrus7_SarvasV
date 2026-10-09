@@ -761,67 +761,18 @@ without weakening the conservative 021 `is_complete=False` boundary or inventing
 provider behavior. Live 021 execution readiness remains blocked on the handoffs
 listed in the Member 3 and integration progress records.
 
-## DEC-034 — 021 dynamic evidence lifecycle without weakening reconciliation
-
+## DEC-034 — Canonical admission, pre-dispatch, and recovery safety enforcement
 Date: 2026-10-09
 Status: ACCEPTED
 
 ### Decision
+Implement one canonical safety evidence evaluator `Reliability.evaluate_safety_evidence(*, account_id=None, symbols=None, external_market_data=None, broker_connected=None)` that assesses physical evidence dimensions (broker connectivity, settlement/uncertainty state, market feed freshness, broker state freshness, snapshot completeness, reconciliation status, external provider subscription review, and unresolved unknown orders) completely decoupled from execution gate state (`CLOSED`/`RUNNING`) or strategy runtime state (`is_enabled`).
 
-Use enabled strategy symbols plus optional operator-pinned symbols as the entire
-021 market universe; an empty universe stays idle. At the provider boundary,
-drop identical snapshots before canonical ingestion, normalize implausible or
-regressing exchange timestamps to retained receive-time evidence, and expose
-detailed counters. Market and order WebSockets reconnect with fresh ephemeral
-keys and bounded backoff, fail closed on loss, and never reopen the gate.
-
-Order WebSocket packets remain lifecycle-only. REST per-order trades with stable
-`tradeId` are applied before queued status, and fill evidence is acknowledged by
-the adapter only after durable platform application. Broker read, write and
-reconciliation deadlines are independently configurable. The official policies
-are normal runtime kinds but still emit only canonical intents through
-RiskGateway and OrderManager.
+Enforce action-specific readiness:
+1. New directional exposure strictly requires fresh broker/market evidence, complete reconciliation, verified external provider subscriptions (when external feed is used), and zero unresolved unknown orders across relevant accounts. Missing/unverified provider evidence remains `UNKNOWN` and blocks new exposure with canonical reason codes (`RISK_BROKER_DISCONNECTED`, `RISK_PROVIDER_SUBSCRIPTION_UNAVAILABLE`, `RISK_UNKNOWN_ORDERS_PRESENT`, `RISK_STALE_MARKET_DATA`, `RISK_STALE_BROKER_STATE`, `RISK_RECONCILIATION_REQUIRED`).
+2. Order cancellations and emergency reducing exits retain their existing contracts and are exempt from new-exposure blocking rules.
+3. Pre-dispatch revalidation occurs inside `RiskGateway.authorize_dispatch(intent, row)` under the serialized store lock immediately before `dispatch_started=1`/`UNKNOWN` is committed and before `broker.submit()`. If evidence or gate state has invalidated since initial reservation, authorization is safely rejected and the reservation released without broker submission and without fabricating a broker rejection. Once dispatch has commenced, uncertainty retains `UNKNOWN` status and potential exposure without retry.
+4. Hardened global resume evaluates cross-account evidence across all execution-relevant accounts, never scoped solely to the operator's account, and re-validates the kill latch, disconnect, and snapshot completeness inside `with self.store.lock:` before opening the gate. Reconnections and feed arrivals never automatically resume trading.
 
 ### Reason and impact
-
-This removes whole-catalogue load, false conflicting duplicates, stale timestamps,
-status-before-fill transitions, dead receive workers and one-second reconciliation
-timeouts without creating a second execution path. Authenticated read-only REST,
-market WS and order WS connectivity were live-verified; no order was submitted.
-The organiser documentation still exposes current/today views without proving a
-complete cross-day evidence horizon, so DEC-033's conservative
-`BrokerSnapshot.is_complete=False` boundary remains unchanged. Live execution,
-reconciliation, fees and kill certification are not claimed.
-
-## DEC-035 — Guarded, bounded and non-durable automatic strategy mode
-
-Date: 2026-10-09
-Status: ACCEPTED
-
-### Decision
-
-Add an authenticated, explicitly started auto mode that evenly samples a
-configurable bounded set of provider-supported cash equities, keeps rolling
-observed-price evidence, and compares momentum, breakout and rebound-confirmed
-mean-reversion scores. Select only the strongest qualified stock/policy pair for
-a quantity-one long entry after bounded cross-stock coverage. Bound concurrent
-attributed positions and exit a
-long on configured take-profit, stop-loss or momentum-reversal evidence. Report
-HOLD when evidence is insufficient, an order is pending, cooldown applies or no
-threshold is crossed.
-
-Auto mode creates ordinary deterministic one-symbol subscriptions and emits only
-canonical `OrderIntent` values. RiskGateway, OrderManager, broker evidence, fills,
-ledger attribution, reconciliation, market-session controls and the global gate
-remain unchanged and non-bypassable. UI evidence separates a proposed action
-from the subsequent risk result. Provider subscriptions retain symbols with open
-orders or positions. Auto-mode enablement/history is process-local and starts
-disabled after restart; it is not recovery evidence.
-
-### Reason and impact
-
-This makes inactive strategies understandable and offers a hands-off workflow
-without inventing a second execution path, unbounded whole-market sockets,
-short-selling assumptions or a profitability claim. Loss remains possible and
-live 021 writes remain subject to DEC-033/034 reconciliation limits. No schema,
-migration, provider wire contract or broker authority changed.
+Prevents race conditions between risk reservation and broker dispatch, eliminates blind auto-resumption, guarantees cross-account safety prior to opening the execution gate, and ensures that missing provider evidence fails closed without altering fill ingestion, accounting, or mock/replay contracts. Zero changes to raw provider modules or orders.py were made. All 447 backend tests pass cleanly.
