@@ -103,3 +103,34 @@ def test_proof_expires_and_never_reads_as_live_after_restart(tmp_path):
     p = Platform(path)
     assert p.snapshot()["safety"]["position_comparison"]["status"] == "UNKNOWN"
     p.store.close()
+
+
+def test_failure_lab_custom_parameters_and_metadata():
+    p = Platform()
+    with TestClient(create_app(p)) as client:
+        authenticate(client, p, "failure-lab", "params-user")
+        res = client.get("/api/failure-lab/scenarios")
+        assert res.status_code == 200
+        body = res.json()
+        assert "details" in body
+        assert "partial" in body["details"]
+        partial_meta = body["details"]["partial"]
+        assert "what_it_does" in partial_meta
+        assert len(partial_meta["steps"]) >= 3
+        assert len(partial_meta["parameters"]) >= 2
+
+        # Run with custom parameters
+        run_res = client.post(
+            "/api/failure-lab/partial",
+            json={"order_quantity": 50, "fill_quantity": 20},
+        )
+        assert run_res.status_code == 200
+        run_body = run_res.json()
+        assert run_body["status"] == "PASS"
+        assert run_body["evidence"]["filled"] == 20
+        assert run_body["parameters_used"]["order_quantity"] == 50
+        assert run_body["parameters_used"]["fill_quantity"] == 20
+        assert "simple_evidence" in run_body
+        assert "explanation" in run_body
+        assert "20 shares" in run_body["explanation"]
+    p.store.close()

@@ -5,6 +5,13 @@
 - Status: BLOCKED
 - Last updated: 2026-10-09 Asia/Kolkata
 
+## 2026-10-09 — Atomic multi-stock strategy orchestration
+
+- Added authenticated `POST /api/subscriptions/batch` without changing the one-instance/one-symbol schema or the existing single-subscription endpoint. Up to 20 normalized unique symbols are preflighted and inserted with durable evidence in one transaction; any ID collision creates zero rows and returns the conflicting IDs.
+- Preserved server-derived account ownership and per-instance indicator state, callback quarantine, risk, execution attribution, positions, P&L and start/stop controls. Replay continues to derive all enabled symbols from ordinary subscription rows.
+- Replaced the React single-symbol form with one form for one or many stocks: comma paste, chips/removal, deterministic ID preview, one request, in-flight status, exact backend-confirmed success and explicit atomic-conflict messaging. Added kind/symbol/state table filters, Overview active-stock/instance counts and Market Data symbol filtering.
+- Added focused Python and Vitest regression suites for batch contract, atomicity, symbol routing, stop/failure isolation, replay/candles and financial attribution. Full validation: 360 Python tests passed / 1 environment-gated PostgreSQL test skipped; 35 React tests, ESLint, Ruff, format check and Vite production build passed. An isolated browser smoke created RELIANCE, TCS and ABC.NS atomically, rendered all three READY rows and produced no console warnings/errors. No database migration, dependency, broker adapter or production/live-provider behavior changed.
+
 ## 2026-10-09 — React contract, telemetry, and action-rejection verification
 
 - Aligned Overview and Safety Proof with verified backend fields (`gate`, `health`, `verdict`,
@@ -44,6 +51,7 @@
   gaps and bounded queue behavior remain unresolved and must fail closed. No production
   yfinance or 021 adapter claim is made.
 
+- 2026-10-09: Failure Lab Dynamic Metadata, Parameter Customization & Live Execution Tracker Integration. Wired backend `SCENARIO_METADATA` schema into `GET /api/failure-lab/scenarios` and custom parameter parsing in `POST /api/failure-lab/{scenario}` across all 27 mock tests. Integrated dynamic configuration panel, animated execution progression visualizer, and plain-English explanations with key evidence metrics in the React frontend. Fixed Python 3.14 executor context compatibility in `BoundedStrategyExecutor`. Full suite: 312 backend tests passed, 17 frontend tests passed; dist build clean.
 - 2026-10-08: Member 4 Strategy Callback Lock-Free Bounded Execution. Moved `StrategyRuntime.on_candle` execution in `Platform.tick` strictly outside `self.store.lock`. Added bounded thread pool execution (`BoundedStrategyExecutor`) with daemon worker threads, configurable timeout (`callback_timeout=0.5s`), and bounded concurrency (`Semaphore`). Timed-out subscriptions are durably quarantined (`enabled=0`, `STRATEGY_CALLBACK_FAILED` with `TimeoutError`) while healthy strategies continue uninterrupted. Implemented subscription run generation tracking: late callback completions after timeout, stop/re-enable, global stop, or kill are discarded with zero state or order mutations. Ensured candidate indicator state is only committed if originating run is still valid. Workers receive no store locks or broker authority. Documented trusted callback limits: threads provide latency isolation, not an arbitrary-code security sandbox. 226 passed / 1 PostgreSQL skipped; Ruff and format clean.
 - 2026-10-07 21:25 Asia/Kolkata: Member 4 Advancements Integration. Completed pluggable strategy & candle interval registry (with RSI reversal strategy), market session hours & feed freshness gate coordination, standalone mock market data streaming feed API, and real-time SSE telemetry push. 173 tests passed / 1 PostgreSQL skipped; Ruff and TypeScript clean.
 
@@ -65,6 +73,8 @@
 - Local PostgreSQL 18 application/test databases have migrations 001/002 applied; persistent-store startup and rollback-only integration behavior pass without production data.
 
 ## Current Integration State
+
+- 2026-10-08 Failure Lab UX handoff: preserved backend scenario discovery and exact evidence contracts while replacing the React page's raw-result-first flow with mock-scope education, per-scenario trader language, an honest in-flight state, and verdict-first results. Technical evidence remains available without being presented as the primary user outcome. Validation: 17 frontend tests, ESLint/build, and 11 Failure Lab API/integration tests passed. Live 021 behavior remains unclaimed.
 - PostgreSQL centralized Store implementation and scoped additive migrations 001/002 are locally verified; remote Neon connectivity remains unverified.
 - Requested Neon project muddy-tooth-14996153 / production intended, not yet verified linked.
 - neon.ts and hello.ts match requested infrastructure policy; hello is not the trading backend.
@@ -212,5 +222,3 @@ Neon CLI 8.0.11 installed. Requested project/branch not yet authenticated/linked
     - Vitest frontend tests: 14 passed across 4 test suites.
     - Deterministic rehearsal runner: all 7 scenarios passed with zero errors.
     - Ruff check, Ruff format, ESLint, and TypeScript (`npm run check`) all clean.
-
-

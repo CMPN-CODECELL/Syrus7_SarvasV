@@ -586,3 +586,22 @@ The operational surface now spans independent workflows that need routing, share
 
 ### Impact
 `frontend/src` becomes the UI source, `frontend/dist` remains generated and ignored, legacy login/register pages are removed, and direct-route refresh requires a completed frontend build. Backend-only environments receive an explicit 503 build instruction when assets are absent.
+
+## DEC-027 — Atomic multi-stock subscription orchestration
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Context
+Traders need to apply one strategy kind to several stocks without manually repeating subscription creation. The existing safety and accounting model is explicitly keyed by strategy instance and symbol, so changing one subscription row to own many symbols would couple indicator state, failure handling, risk and P&L and weaken existing invariants.
+
+### Decision
+Keep one strategy instance equal to one symbol. Add authenticated `POST /api/subscriptions/batch` as an orchestration boundary that normalizes up to 20 unique symbols, generates deterministic instance IDs, checks all collisions, and inserts all ordinary subscription rows and audit evidence in one database transaction. A failure creates no rows. In-memory generations and instance locks are initialized only after commit. The React form uses this endpoint for both one-stock and multi-stock creation and displays only backend-confirmed outcomes.
+
+### Reason
+This provides a simple trader workflow while preserving per-instance candle state, callback quarantine, risk decisions, broker attribution, ledger keys, start/stop control and reconciliation behavior.
+
+### Impact
+No schema or broker/provider contract changes. Existing `POST /api/subscriptions` remains compatible. Replay already discovers unique enabled subscription symbols. Live 021 symbol-subscription behavior remains unknown and is not inferred.
+
+### Alternatives
+A symbols array or JSON column on one subscription was rejected because it creates shared failure and accounting state. Repeated frontend calls were rejected because they can partially succeed. A second multi-symbol execution model was rejected because it duplicates existing contracts.

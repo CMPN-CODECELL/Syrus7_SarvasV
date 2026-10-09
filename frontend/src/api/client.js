@@ -8,7 +8,8 @@ async function request(path, options={}) {
   if (!response.ok) {
     if (response.status===401) window.dispatchEvent(new Event('algoshield:unauthorized'))
     const detail=typeof data==='object' ? data.detail : data
-    throw new ApiError(detail||`Request failed (${response.status})`,response.status,detail)
+    const message=typeof detail==='string' ? detail : detail?.message||detail?.code||`Request failed (${response.status})`
+    throw new ApiError(message,response.status,detail)
   }
   if (path.startsWith('/api/') && !type.includes('application/json')) {
     throw new ApiError('Backend returned a non-JSON API response. Restart the FastAPI server and try again.',502,'INVALID_API_RESPONSE')

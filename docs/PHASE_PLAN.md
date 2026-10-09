@@ -15,6 +15,8 @@ Member 2 completed in mock/replay (T1–T5): authoritative state-machine invaria
 Member 3: durable kill/health latch, bounded kill orchestration, feed/broker freshness, external position quarantine, policy persistence and live opposing-close semantics.
 Member 4 completed in mock/replay: callback exception isolation with durable quarantine, fully idempotent bounded symbol-scoped tick dedupe, audited fail-closed tick rejection, full indicator warm-up, 3/5 EMA momentum, five-period mean reversion, 5-minute breakout, RSI reversal, exact-decimal API projection, session-derived subscription ownership, durable per-strategy controls and responsive backend-evidence dashboard. Remaining external work: authoritative 021 normalization, reconnect/backfill, exchange-session/freshness fixtures and production identity-provider integration.
 
+Multi-stock subscription orchestration is implemented for mock/replay: a user can select one strategy kind and up to 20 stocks, and one authenticated atomic request creates independent single-symbol instances. Dashboard counts, filtering, replay symbol discovery and failure isolation use those normal rows. This does not claim a live market-data subscription capability; the authoritative 021 provider contract remains blocked.
+
 Exit: failures preserve invariants after process restarts and event reorderings; no safety state silently resets; all UI health assertions backed by fresh evidence.
 
 ## 021 sandbox integration

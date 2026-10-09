@@ -18,6 +18,8 @@ Additional coverage: concurrent reservations, opposite pending exposure, rate-wi
 
 Member 4 coverage in `test_member4.py`: 3/5 EMA signal, five-candle EMA/mean-reversion warm-up, 5-minute breakout, callback fault quarantine, risk rejection for stopped strategies, durable start/stop state, additive SQLite v1-to-v2 upgrade, exact-decimal API projection, normalized account/subscription APIs, symbol-scoped bounded tick dedupe including mark idempotence, audited late-tick failure, dashboard structure and production-database replay guard.
 
+Multi-stock coverage in `test_multi_stock_subscriptions.py` verifies authentication and session ownership, normalization/deduplication, deterministic symbol slugs, the 20-symbol bound, unknown kinds, all-or-nothing collision behavior, same-kind multi-symbol execution, symbol routing, stop/failure isolation, replay generation for every selected symbol, and strategy+symbol financial attribution. `multiStockStrategies.test.jsx` verifies comma entry, chips/removal, ID preview, single batch submission, pending/success output, and atomic conflict messaging.
+
 ## Required extensions before live integration
 
 Adapter contract tests for real status/event mapping; snapshot completeness/pagination; stale ticks/marks; cancel/fill race from an asynchronous broker; bounded kill deadlines; durable kill latch; policy/session restart persistence; charge corrections; kill SAFE_LATE; unknown/manual orders; property tests for ledger replay and reservation invariants. Member 4 still requires authoritative 021 normalization, reconnect/backfill and exchange-session fixtures.

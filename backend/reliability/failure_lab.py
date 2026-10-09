@@ -11,6 +11,10 @@ from backend.shared.contracts import (
     Tick,
     RiskPolicy,
 )
+from backend.reliability.failure_lab_meta import (
+    SCENARIO_METADATA,
+    build_simple_explanation,
+)
 
 SCENARIOS = {
     "partial",
@@ -47,13 +51,44 @@ class FailureLab:
     def __init__(self, platform):
         self.platform = platform
 
-    def run(self, scenario):
+    def _cleanup_previous_faults(self, scenario):
+        p = self.platform
+        if scenario != "reconnect":
+            p.broker.connected = True
+            adapter = getattr(p.broker_calls, "adapter", p.broker)
+            adapter.connected = True
+
+        if scenario != "clear_drift":
+            p.broker.external_positions.pop(("failure-lab", "INJECTED"), None)
+            p.broker.persist()
+
+        p.broker.reject_next = False
+        p.broker.timeout_after_accept = False
+        if hasattr(p.broker, "updates"):
+            p.broker.updates.clear()
+
+        with p.store.transaction() as db:
+            db.execute("DELETE FROM account_risk_policies WHERE account='failure-lab'")
+
+        p.reliability.safety.set("kill_latched", False)
+        p.risk.kill_requested.clear()
+
+        if scenario not in {"reconnect", "clear_drift", "disconnect"}:
+            try:
+                p.reliability.reconcile()
+                p.reliability.resume()
+            except Exception:
+                pass
+
+    def run(self, scenario, params=None):
         started_at = self.platform.clock()
         timer = perf_counter()
+        params = params or {}
         p = self.platform
         p.require_offline_demo()
         if scenario not in SCENARIOS:
             raise ValueError("unknown failure scenario")
+        self._cleanup_previous_faults(scenario)
         decisions, evidence = [], {}
         if scenario == "disconnect":
             p.disconnect_broker()
@@ -63,6 +98,11 @@ class FailureLab:
 
         elif scenario == "clear_drift":
             p.broker.external_positions.pop(("failure-lab", "INJECTED"), None)
+            p.broker.persist()
+            p.reliability.reconcile()
+        elif scenario == "drift":
+            injected_qty = int(params.get("injected_quantity", 7))
+            p.broker.external_positions[("failure-lab", "INJECTED")] = injected_qty
             p.broker.persist()
             p.reliability.reconcile()
         else:
@@ -98,21 +138,31 @@ class FailureLab:
                 )
 
             if scenario in {"partial", "kill_partial"}:
-                i = submit("partial", 100)
-                p.ingest(execute(i, 40))
+                order_qty = int(params.get("order_quantity", 100))
+                fill_qty = int(params.get("fill_quantity", 40))
+                i = submit("partial", order_qty)
+                p.ingest(execute(i, fill_qty))
+                evidence["order_quantity"] = order_qty
+                evidence["filled"] = fill_qty
                 if scenario == "kill_partial":
                     evidence["kill"] = p.kill()
             elif scenario == "rejection":
+                order_qty = int(params.get("order_quantity", 5))
                 p.broker.reject_next = True
-                submit("reject", 5)
+                submit("reject", order_qty)
             elif scenario == "position_limit":
-                i = submit("filled", 80)
-                p.ingest(execute(i, 80))
-                submit("pending", 20)
-                submit("blocked", 10)
+                init_fill = int(params.get("initial_fill", 80))
+                pend_qty = int(params.get("pending_quantity", 20))
+                block_qty = int(params.get("blocked_quantity", 10))
+                i = submit("filled", init_fill)
+                p.ingest(execute(i, init_fill))
+                submit("pending", pend_qty)
+                submit("blocked", block_qty)
             elif scenario in {"duplicate_fill", "conflicting_fill", "missed_fill"}:
-                i = submit("fill", 10)
-                f = execute(i, 4)
+                order_qty = int(params.get("order_quantity", 10))
+                fill_qty = int(params.get("fill_quantity", 4))
+                i = submit("fill", order_qty)
+                f = execute(i, fill_qty)
                 if scenario == "missed_fill":
                     evidence["quantity_before_recovery"] = p.ledger.quantity(
                         "failure-lab", strategy, "LAB"
@@ -128,30 +178,45 @@ class FailureLab:
                     else:
                         try:
                             p.ingest(replace(f, price=Decimal("101")))
-                        except ValueError:
+                        except Exception:
                             evidence["conflict_rejected"] = True
             elif scenario == "unknown_submission":
+                order_qty = int(params.get("order_quantity", 10))
                 p.broker.timeout_after_accept = True
-                i = submit("unknown", 10)
+                i = submit("unknown", order_qty)
                 evidence["order_id"] = i.intent_id
             elif scenario == "spam":
-                p.risk.policies[strategy] = RiskPolicy(max_orders_per_minute=2)
-                for n in range(4):
+                max_opm = int(params.get("max_orders_per_minute", 2))
+                num_orders = int(params.get("orders_sent", 4))
+                p.risk.policies[strategy] = RiskPolicy(max_orders_per_minute=max_opm)
+                for n in range(num_orders):
                     submit(str(n), 1)
             elif scenario == "account_risk":
-                p.risk.account_policies.set("failure-lab", AccountRiskPolicy(1, 100))
-                submit("account-net", 2)
+                acc_net = int(params.get("account_net_limit", 1))
+                order_qty = int(params.get("order_quantity", 2))
+                p.risk.account_policies.set(
+                    "failure-lab", AccountRiskPolicy(acc_net, 100)
+                )
+                submit("account-net", order_qty)
                 evidence["blocked"] = decisions[-1].reason_code
             elif scenario == "opposing_gross_exposure":
-                p.risk.account_policies.set("failure-lab", AccountRiskPolicy(100, 1))
-                submit("account-gross", 2)
+                acc_gross = int(params.get("account_gross_limit", 1))
+                order_qty = int(params.get("order_quantity", 2))
+                p.risk.account_policies.set(
+                    "failure-lab", AccountRiskPolicy(100, acc_gross)
+                )
+                submit("account-gross", order_qty)
                 evidence["blocked"] = decisions[-1].reason_code
             elif scenario == "concurrent_position_race":
                 from concurrent.futures import ThreadPoolExecutor
 
-                p.risk.policies[strategy] = RiskPolicy(max_position=100)
+                max_pos = int(params.get("max_position", 100))
+                order_sz = int(params.get("order_size", 60))
+                p.risk.policies[strategy] = RiskPolicy(max_position=max_pos)
                 with ThreadPoolExecutor(max_workers=2) as pool:
-                    futures = [pool.submit(submit, f"race-{n}", 60) for n in range(2)]
+                    futures = [
+                        pool.submit(submit, f"race-{n}", order_sz) for n in range(2)
+                    ]
                     for future in futures:
                         future.result()
                 evidence["allowed"] = sum(decision.allowed for decision in decisions)
@@ -162,6 +227,7 @@ class FailureLab:
                 submit("stale-broker", 1)
                 evidence["blocked"] = decisions[-1].reason_code
             elif scenario == "invalid_price":
+                limit_p = Decimal(str(params.get("limit_price", 10000)))
                 intent = OrderIntent(
                     f"{strategy}:invalid-price",
                     strategy,
@@ -171,14 +237,16 @@ class FailureLab:
                     1,
                     p.clock(),
                     order_type="LIMIT",
-                    limit_price=Decimal("10000"),
+                    limit_price=limit_p,
                 )
                 decisions.append(p.risk.submit(intent))
                 evidence["blocked"] = decisions[-1].reason_code
             elif scenario == "limit_lowered_below_position":
-                filled_intent = submit("existing", 80)
-                p.ingest(execute(filled_intent, 80))
-                p.risk.policies[strategy] = RiskPolicy(max_position=50)
+                cur_pos = int(params.get("current_position", 80))
+                lowered = int(params.get("lowered_limit", 50))
+                filled_intent = submit("existing", cur_pos)
+                p.ingest(execute(filled_intent, cur_pos))
+                p.risk.policies[strategy] = RiskPolicy(max_position=lowered)
                 submit("increase", 1)
                 reducing_intent = OrderIntent(
                     f"{strategy}:reduce",
@@ -193,14 +261,16 @@ class FailureLab:
                 evidence["increase_blocked"] = decisions[-2].reason_code
                 evidence["reduce_allowed"] = decisions[-1].allowed
             elif scenario == "daily_loss_mark_breach":
+                loss_lim = Decimal(str(params.get("daily_loss_limit", 1)))
+                drop_p = Decimal(str(params.get("drop_price", 90)))
                 filled_intent = submit("loss-position", 1)
                 p.ingest(execute(filled_intent, 1))
-                p.risk.policies[strategy] = RiskPolicy(max_daily_loss=Decimal("1"))
+                p.risk.policies[strategy] = RiskPolicy(max_daily_loss=loss_lim)
                 p.tick(
                     Tick(
                         "LAB",
                         int(p.clock()) + 1,
-                        Decimal("90"),
+                        drop_p,
                         0,
                         strategy + ":loss-mark",
                     )
@@ -208,12 +278,14 @@ class FailureLab:
                 submit("loss-blocked", 1)
                 evidence["blocked"] = decisions[-1].reason_code
             elif scenario == "late_fill_after_cancel":
-                order_intent = submit("late", 10)
-                p.ingest(execute(order_intent, 4))
+                init_fill = int(params.get("initial_fill", 4))
+                late_fill = int(params.get("late_fill", 2))
+                order_intent = submit("late", init_fill + late_fill + 4)
+                p.ingest(execute(order_intent, init_fill))
                 p.cancel(order_intent.intent_id)
                 late = p.broker.execute(
                     order_intent.intent_id,
-                    2,
+                    late_fill,
                     Decimal("100"),
                     p.clock(),
                     allow_late=True,
@@ -223,8 +295,10 @@ class FailureLab:
                     "SELECT filled FROM orders WHERE id=?", (order_intent.intent_id,)
                 )[0]["filled"]
             elif scenario == "kill_late_fill":
-                order_intent = submit("kill-late", 10)
-                p.ingest(execute(order_intent, 4))
+                order_qty = int(params.get("order_quantity", 10))
+                fill_qty = int(params.get("fill_quantity", 4))
+                order_intent = submit("kill-late", order_qty)
+                p.ingest(execute(order_intent, fill_qty))
                 evidence["kill"] = p.kill()
             elif scenario == "broker_failure_during_kill":
                 p.broker.connected = False
@@ -264,13 +338,16 @@ class FailureLab:
                     p.store.audit("FAILURE_LAB_STALE_FEED", {"symbol": "LAB"})
                 submit("stale", 1)
             elif scenario == "drift":
-                p.broker.external_positions[("failure-lab", "INJECTED")] = 7
+                injected_qty = int(params.get("injected_quantity", 7))
+                p.broker.external_positions[("failure-lab", "INJECTED")] = injected_qty
                 p.broker.persist()
                 p.reliability.reconcile()
             elif scenario == "broker_update":
-                i = submit("broker-upd", 100)
+                order_qty = int(params.get("order_quantity", 100))
+                fill_qty = int(params.get("fill_quantity", 40))
+                i = submit("broker-upd", order_qty)
                 p.sync_broker_updates()
-                execute(i, 40)
+                execute(i, fill_qty)
                 synced = p.sync_broker_updates()
                 evidence["order_id"] = i.intent_id
                 evidence["synced_updates_count"] = len(synced)
@@ -278,7 +355,9 @@ class FailureLab:
                     "failure-lab", strategy, "LAB"
                 )
             elif scenario == "disconnect_recovery":
-                i = submit("disc-rec", 100)
+                order_qty = int(params.get("order_quantity", 100))
+                fill_qty = int(params.get("fill_quantity", 40))
+                i = submit("disc-rec", order_qty)
                 evidence["before_disconnect"] = {
                     "order_id": i.intent_id,
                     "status": "OPEN",
@@ -291,12 +370,12 @@ class FailureLab:
                 }
                 adapter = getattr(p.broker_calls, "adapter", p.broker)
                 adapter.connected = True
-                adapter.execute(i.intent_id, 40, Decimal("100"), p.clock())
+                adapter.execute(i.intent_id, fill_qty, Decimal("100"), p.clock())
                 adapter.connected = False
                 evidence["broker_truth"] = {
                     "order_id": i.intent_id,
                     "status": "PARTIALLY_FILLED",
-                    "filled": 40,
+                    "filled": fill_qty,
                 }
                 rec = p.reconnect_broker()
                 evidence["reconciliation_result"] = rec["reconciled"]
@@ -318,17 +397,29 @@ class FailureLab:
                 "broker_update",
             }:
                 p.reliability.reconcile()
-        with p.store.transaction():
+        with p.store.transaction() as db:
+            db.execute("DELETE FROM account_risk_policies WHERE account='failure-lab'")
             p.store.audit("FAILURE_LAB", {"scenario": scenario, "evidence": evidence})
         proof = p.safety_proof.build()
-        passed = self._passed(scenario, decisions, evidence, p)
+        passed = self._passed(scenario, decisions, evidence, p, params=params)
         p._metric_counter("failure_lab_runs")
         p._metric_counter("failure_lab_passes" if passed else "failure_lab_failures")
+        meta = SCENARIO_METADATA.get(scenario, {})
+        explanation_data = build_simple_explanation(
+            scenario, passed, evidence, decisions, params, p
+        )
         return {
             "scenario": scenario,
             "status": "PASS" if passed else "FAIL",
             "started_at": started_at,
             "duration_ms": (perf_counter() - timer) * 1000,
+            "title": meta.get("title", scenario.replace("_", " ").title()),
+            "summary": explanation_data["summary"],
+            "what_it_does": meta.get("what_it_does", ""),
+            "steps": meta.get("steps", []),
+            "explanation": explanation_data["explanation"],
+            "simple_evidence": explanation_data["simple_evidence"],
+            "parameters_used": params,
             "expected": [
                 "Platform contains the injected failure without bypassing risk."
             ],
@@ -340,12 +431,17 @@ class FailureLab:
         }
 
     @staticmethod
-    def _passed(scenario, decisions, evidence, platform):
+    def _passed(scenario, decisions, evidence, platform, params=None):
+        params = params or {}
         latest_orders = platform.store.rows(
             "SELECT status,filled FROM orders ORDER BY created DESC,id DESC LIMIT 3"
         )
+        fill_qty_default_40 = int(params.get("fill_quantity", 40))
         checks = {
-            "partial": lambda: bool(latest_orders) and latest_orders[0]["filled"] == 40,
+            "partial": lambda: (
+                bool(latest_orders)
+                and latest_orders[0]["filled"] == fill_qty_default_40
+            ),
             "kill_partial": lambda: (
                 getattr(evidence.get("kill"), "status", None)
                 in {"SUCCESS", "SAFE_LATE"}
@@ -363,7 +459,8 @@ class FailureLab:
             ),
             "missed_fill": lambda: (
                 evidence.get("quantity_before_recovery") == 0
-                and evidence.get("quantity_after_recovery") == 4
+                and evidence.get("quantity_after_recovery")
+                == int(params.get("fill_quantity", 4))
             ),
             "unknown_submission": lambda: (
                 bool(latest_orders) and latest_orders[0]["status"] == "UNKNOWN"
@@ -371,6 +468,8 @@ class FailureLab:
             "spam": lambda: (
                 [decision.reason_code for decision in decisions]
                 == ["ALLOWED", "ALLOWED", "RISK_RATE_LIMIT", "RISK_RATE_LIMIT"]
+                if not params
+                else any(d.reason_code == "RISK_RATE_LIMIT" for d in decisions)
             ),
             "account_risk": lambda: (
                 evidence.get("blocked") == "RISK_ACCOUNT_NET_POSITION"
@@ -392,7 +491,10 @@ class FailureLab:
             "daily_loss_mark_breach": lambda: (
                 evidence.get("blocked") == "RISK_MAX_DAILY_LOSS"
             ),
-            "late_fill_after_cancel": lambda: evidence.get("filled") == 6,
+            "late_fill_after_cancel": lambda: (
+                evidence.get("filled")
+                == int(params.get("initial_fill", 4)) + int(params.get("late_fill", 2))
+            ),
             "kill_late_fill": lambda: (
                 getattr(evidence.get("kill"), "status", None)
                 in {"SUCCESS", "SAFE_LATE"}
@@ -416,9 +518,11 @@ class FailureLab:
             ),
             "drift": lambda: platform.reliability.report.get("verified") is False,
             "clear_drift": lambda: platform.reliability.report.get("verified") is True,
-            "broker_update": lambda: evidence.get("executed_quantity") == 40,
+            "broker_update": lambda: (
+                evidence.get("executed_quantity") == fill_qty_default_40
+            ),
             "disconnect_recovery": lambda: (
-                evidence.get("recovered_fill_quantity") == 40
+                evidence.get("recovered_fill_quantity") == fill_qty_default_40
             ),
         }
         check = checks.get(scenario)

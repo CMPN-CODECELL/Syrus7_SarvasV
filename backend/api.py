@@ -21,11 +21,17 @@ from starlette.websockets import WebSocketDisconnect
 
 from backend.platform import Platform
 from backend.broker.http_adapter import HTTPMockBrokerAdapter
-from backend.reliability.failure_lab import FailureLab, SCENARIOS
+from backend.reliability.failure_lab import FailureLab, SCENARIOS, SCENARIO_METADATA
 from backend.shared.config import settings
 from backend.shared.contracts import AccountRiskPolicy, RiskPolicy, StrategyState
 from backend.shared.postgres import PostgresStore
 from backend.shared.presentation import AccountResponseScope
+from backend.strategies.runtime import (
+    MAX_BATCH_SYMBOLS,
+    MAX_INSTANCE_PREFIX_LENGTH,
+    SubscriptionBatchConflict,
+    normalize_subscription_symbols,
+)
 
 
 class AccountRequest(BaseModel):
@@ -66,6 +72,44 @@ class SubscriptionRequest(BaseModel):
         value = value.strip().upper()
         if not value:
             raise ValueError("symbol is required")
+        return value
+
+
+class BatchSubscriptionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str
+    symbols: list[str]
+    instance_prefix: str | None = None
+
+    @field_validator("kind")
+    @classmethod
+    def normalize_kind(cls, value):
+        value = value.strip().lower()
+        if not value:
+            raise ValueError("strategy kind is required")
+        return value
+
+    @field_validator("symbols")
+    @classmethod
+    def normalize_symbols(cls, value):
+        normalized = normalize_subscription_symbols(value)
+        if len(normalized) > MAX_BATCH_SYMBOLS:
+            raise ValueError(f"no more than {MAX_BATCH_SYMBOLS} symbols are allowed")
+        return normalized
+
+    @field_validator("instance_prefix")
+    @classmethod
+    def normalize_prefix(cls, value):
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("instance prefix cannot be blank")
+        if len(value) > MAX_INSTANCE_PREFIX_LENGTH:
+            raise ValueError(
+                f"instance prefix must be at most {MAX_INSTANCE_PREFIX_LENGTH} characters"
+            )
         return value
 
 
@@ -484,6 +528,32 @@ def create_app(platform=None):
             raise HTTPException(409, "strategy instance exists") from None
         return engine.snapshot(user["account_id"])["subscriptions"]
 
+    @app.post("/api/subscriptions/batch", status_code=201)
+    def subscribe_batch(body: BatchSubscriptionRequest, request: Request):
+        user = require_user(request)
+        try:
+            created = engine.strategies.subscribe_many(
+                user["account_id"],
+                body.kind,
+                body.symbols,
+                body.instance_prefix,
+            )
+        except SubscriptionBatchConflict as exc:
+            raise HTTPException(
+                409,
+                {
+                    "code": "SUBSCRIPTION_BATCH_CONFLICT",
+                    "existing": exc.existing,
+                },
+            ) from None
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        return {
+            "created": created,
+            "count": len(created),
+            "symbols": [row["symbol"] for row in created],
+        }
+
     @app.get("/api/subscriptions")
     def subscriptions(request: Request):
         user = require_user(request)
@@ -597,12 +667,22 @@ def create_app(platform=None):
     @app.get("/api/failure-lab/scenarios")
     def failure_lab_scenarios(request: Request):
         require_user(request)
-        return {"scenarios": sorted(SCENARIOS)}
+        return {
+            "scenarios": sorted(SCENARIOS),
+            "details": SCENARIO_METADATA,
+        }
 
     @app.post("/api/failure-lab/{scenario}")
-    def failure_lab(scenario: str, request: Request):
+    async def failure_lab(scenario: str, request: Request):
         user = require_operator(request)
-        return account_response(user, FailureLab(engine).run(scenario))
+        params = {}
+        try:
+            body = await request.body()
+            if body:
+                params = json.loads(body.decode("utf-8"))
+        except Exception:
+            params = {}
+        return account_response(user, FailureLab(engine).run(scenario, params=params))
 
     @app.post("/api/reconcile")
     def reconcile(request: Request):
