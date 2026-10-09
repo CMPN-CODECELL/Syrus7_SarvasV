@@ -76,4 +76,14 @@ def settings():
     )
     if trusted_origins is not None:
         result["trusted_origins"] = trusted_origins
+    secure_cookie = (
+        os.getenv(
+            "ALGOSHIELD_SECURE_COOKIE", values.get("ALGOSHIELD_SECURE_COOKIE", "false")
+        )
+        .strip()
+        .lower()
+    )
+    if secure_cookie not in {"true", "false"}:
+        raise ValueError("ALGOSHIELD_SECURE_COOKIE must be true or false")
+    result["secure_cookie"] = secure_cookie == "true"
     return result

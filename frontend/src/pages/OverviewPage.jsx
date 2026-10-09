@@ -2,7 +2,7 @@ import { useOutletContext } from 'react-router-dom'
 import { useState } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { api } from '../api/client'
-import { Card, DataTable, Empty, Money, Page, Readiness, Status } from '../components/UI'
+import { Card, DataTable, Empty, EvidenceView, Money, Page, Readiness, Status } from '../components/UI'
 import { strategyRows } from '../domain/snapshot'
 import { CandleChart } from '../components/CandleChart'
 
@@ -61,6 +61,7 @@ export function OverviewPage(){
         {s.gate!=='RUNNING'&&<p className="gate-explanation">New exposure is blocked: {String(blockReason).replaceAll('_',' ').toLowerCase()}. Reconciliation and explicit operator resume are required when broker evidence is available.</p>}
         <p className="muted">{s.market_data?.accepted_ticks??0} accepted · {s.market_data?.duplicate_ticks??0} duplicate · {s.market_data?.rejected_observations??0} rejected. Feed age: {s.market_data?.feed_age_seconds==null?'unavailable':`${Math.floor(s.market_data.feed_age_seconds)}s`}.</p>
       </Card>
+      <Card title="Provider readiness evidence" meta="Connected is not execution-ready"><EvidenceView value={{subscription:readiness.subscription,snapshot_coverage:readiness.snapshot_coverage,market_freshness:readiness.market_freshness,broker_freshness:readiness.broker_freshness,reconciliation:readiness.reconciliation,unknown_order_count:readiness.unknown_order_count,resume:readiness.resume,actions:readiness.actions}} /></Card>
     </div>
     <div className="stat-grid">
       <Card title="Trading gate"><Status value={s.gate}/><p>{isKillLatched?'Kill switch is latched. Reconcile, then use the verified operator reset.':'New exposure follows the global gate.'}</p></Card>
@@ -71,6 +72,7 @@ export function OverviewPage(){
       <Card title="Strategy instances"><strong>{s.subscriptions?.length??0}</strong><p>independent symbol-level ledgers</p></Card>
     </div>
     <Card title="Portfolio overview" meta="Derived from authenticated strategy positions"><div className="stat-grid"><div><span className="muted">Open positions</span><strong>{activePositions}</strong></div><div><span className="muted">Gross quantity</span><strong>{openQuantity}</strong></div><div><span className="muted">Net P&amp;L</span><Money value={portfolioPnl}/></div></div><p className="muted">Funds, margin, holdings, IPO and GTT balances require provider endpoints that are not part of the documented 021 developer API.</p></Card>
+    <Card title="Historical kill certificate" meta="Historical evidence; not current flatness"><EvidenceView value={s.kill||null}/></Card>
     <div className="grid two">
       <Card title="Subscribed strategies" meta={`${s.subscriptions?.length||0} configured`}>
         <DataTable rows={rows} columns={[

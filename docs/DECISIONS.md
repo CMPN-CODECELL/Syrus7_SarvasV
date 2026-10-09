@@ -776,3 +776,13 @@ Enforce action-specific readiness:
 
 ### Reason and impact
 Prevents race conditions between risk reservation and broker dispatch, eliminates blind auto-resumption, guarantees cross-account safety prior to opening the execution gate, and ensures that missing provider evidence fails closed without altering fill ingestion, accounting, or mock/replay contracts. Zero changes to raw provider modules or orders.py were made. All 447 backend tests pass cleanly.
+
+## DEC-035 — Explicit cookie transport and no URL credentials
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Decision
+Local HTTP explicitly uses `ALGOSHIELD_SECURE_COOKIE=false`; deployment behind approved TLS must explicitly set it to `true`. Login and logout use matching cookie attributes. The server is started with one worker and `--no-proxy-headers`; it does not trust arbitrary forwarded headers. SSE and WebSocket reject URL query tokens, accepting only the authenticated session cookie or an explicit Bearer credential where the transport supports it. Browser WebSocket uses its same-site cookie and Origin policy; native browser WebSocket cannot attach an arbitrary Authorization header.
+
+### Reason and impact
+URL credentials leak through browser history, logs, and referrers. Explicit configuration prevents a local development default from silently asserting TLS transport or proxy trust. This does not invent a production origin, proxy allowlist, or identity provider, and does not alter account-scoped server authorization.

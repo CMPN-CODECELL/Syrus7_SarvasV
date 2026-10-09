@@ -154,6 +154,16 @@ describe('backend-shaped React projections',()=>{
     expect(within(missing).queryByText('99')).not.toBeInTheDocument()
   })
 
+  it('renders readiness uncertainty and historical kill evidence without relabelling it',()=>{
+    renderOutlet(<OverviewPage/>,{snapshot:{...snapshot,provider_readiness:{subscription:{status:'UNKNOWN',reason_code:'PROVIDER_SUBSCRIPTION_EVIDENCE_UNAVAILABLE'},snapshot_coverage:{status:'UNKNOWN',reason_code:'SNAPSHOT_COVERAGE_UNKNOWN'},market_freshness:{status:'STALE'},broker_freshness:{status:'UNKNOWN'},reconciliation:{status:'UNKNOWN'},unknown_order_count:3,resume:{required:true,eligible:false},actions:{new_exposure:{status:'BLOCKED'}}},kill:{status:'SAFE_LATE',elapsed_seconds:11,open_orders:2,virtual_positions_flat:false,broker_positions:{'acc_a/TCS':3}}}})
+    expect(screen.getByText('Provider readiness evidence')).toBeInTheDocument()
+    expect(screen.getByText('Historical kill certificate')).toBeInTheDocument()
+    expect(screen.getByText('SAFE_LATE')).toBeInTheDocument()
+    expect(screen.queryByText('SUCCESS')).not.toBeInTheDocument()
+    expect(screen.getAllByText('UNKNOWN').length).toBeGreaterThan(1)
+    expect(screen.getAllByText('3').length).toBeGreaterThan(0)
+  })
+
   it('keeps missing, invalid, zero, and exact decimal money distinct',()=>{
     const {rerender}=render(<Money value={undefined}/>)
     expect(screen.getByText('—')).toBeInTheDocument()

@@ -185,11 +185,11 @@ def financial_json(value):
     return JSONResponse(content=jsonable_encoder(value, custom_encoder={Decimal: str}))
 
 
-def create_app(platform=None, *, trusted_origins=None):
+def create_app(platform=None, *, trusted_origins=None, cookie_secure=None):
     config = (
         settings()
         if platform is None
-        else {"sqlite_path": ":memory:", "database_url": ""}
+        else {"sqlite_path": ":memory:", "database_url": "", "secure_cookie": False}
     )
     broker = None
     application_store = None
@@ -237,7 +237,9 @@ def create_app(platform=None, *, trusted_origins=None):
             # limits and reports any truncation in telemetry.
             symbols = broker.all_market_symbols()
             if not symbols:
-                raise RuntimeError("021 instrument catalogue contains no cash-equity symbols")
+                raise RuntimeError(
+                    "021 instrument catalogue contains no cash-equity symbols"
+                )
         engine.configure_external_market_data(
             MarketData021Provider(
                 engine,
@@ -265,6 +267,9 @@ def create_app(platform=None, *, trusted_origins=None):
 
     app = FastAPI(title="AlgoShield mock control plane", lifespan=lifespan)
     app.state.platform = engine
+    cookie_secure = (
+        config.get("secure_cookie", False) if cookie_secure is None else cookie_secure
+    )
     if trusted_origins is None:
         import os
 
@@ -356,7 +361,7 @@ def create_app(platform=None, *, trusted_origins=None):
             value=token,
             httponly=True,
             samesite="strict",
-            secure=False,
+            secure=bool(cookie_secure),
             max_age=engine.auth.token_ttl_seconds,
             path="/",
         )
@@ -454,7 +459,9 @@ def create_app(platform=None, *, trusted_origins=None):
         token = request_token(request)
         if token:
             engine.auth.logout(token)
-        response.delete_cookie(session_cookie, path="/")
+        response.delete_cookie(
+            session_cookie, path="/", samesite="strict", secure=bool(cookie_secure)
+        )
         return {"status": "logged_out"}
 
     @app.get("/api/auth/me")
@@ -479,7 +486,7 @@ def create_app(platform=None, *, trusted_origins=None):
         request: Request,
         max_events: int | None = Query(None, ge=1),
     ):
-        token = request.query_params.get("token") or request_token(request)
+        token = request_token(request)
         user = engine.auth.verify_token(token)
         if not user:
             raise HTTPException(401, "authentication required")
@@ -537,11 +544,7 @@ def create_app(platform=None, *, trusted_origins=None):
         ):
             await websocket.close(code=1008, reason="untrusted browser origin")
             return
-        token = (
-            websocket.cookies.get(session_cookie)
-            or websocket.query_params.get("token")
-            or ""
-        )
+        token = websocket.cookies.get(session_cookie) or ""
         if not token:
             auth_header = websocket.headers.get("authorization", "")
             if auth_header.startswith("Bearer "):
@@ -833,7 +836,9 @@ def create_app(platform=None, *, trusted_origins=None):
         if not engine.demo_enabled:
             # Live 021 state is never mutated by synthetic scenarios. Run the
             # same FailureLab contract against a fresh in-memory mock sandbox.
-            sandbox = Platform(":memory:", broker=MockBrokerAdapter(), demo_enabled=True)
+            sandbox = Platform(
+                ":memory:", broker=MockBrokerAdapter(), demo_enabled=True
+            )
             target = sandbox
         try:
             result = FailureLab(target).run(scenario, params=params)
