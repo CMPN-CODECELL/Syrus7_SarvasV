@@ -401,10 +401,13 @@ class MarketData021Provider:
                 "subscribed_symbols": list(self.symbols),
                 "unsupported_symbols": list(self.unsupported_symbols),
                 "canonical_symbols": list(self.symbols),
-                "latest_quotes": [
-                    self._latest_quotes[symbol]
-                    for symbol in sorted(self._latest_quotes)
-                ],
+                "latest_quotes": sorted(
+                    self._latest_quotes.values(),
+                    key=lambda quote: (
+                        -float(quote.get("received_at") or 0),
+                        quote.get("symbol") or "",
+                    ),
+                ),
                 "last_received_at": self._last_received_at,
                 "last_event_timestamp": self._last_event_timestamp,
                 "last_raw_event_timestamp": self._last_raw_event_timestamp,

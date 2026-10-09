@@ -87,6 +87,24 @@ def test_connected_telemetry_reflects_socket_state_not_thread_presence():
     assert provider.telemetry()["connected"] is False
 
 
+def test_latest_quotes_are_ordered_by_most_recent_receive_time():
+    provider = MarketData021Provider(FakePlatform(), FakeAdapter(), ["TCS"])
+    provider._latest_quotes = {
+        "A_FIRST_ALPHABETICALLY": {
+            "symbol": "A_FIRST_ALPHABETICALLY",
+            "received_at": 10.0,
+        },
+        "Z_MOST_RECENT": {"symbol": "Z_MOST_RECENT", "received_at": 20.0},
+    }
+
+    quotes = provider.telemetry()["latest_quotes"]
+
+    assert [quote["symbol"] for quote in quotes] == [
+        "Z_MOST_RECENT",
+        "A_FIRST_ALPHABETICALLY",
+    ]
+
+
 def test_implausible_exchange_epoch_uses_receive_time_for_candles(monkeypatch):
     platform = FakePlatform()
     provider = MarketData021Provider(platform, FakeAdapter(), ["TCS"])

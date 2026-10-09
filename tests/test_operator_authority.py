@@ -53,6 +53,48 @@ def test_private_identifiers_cannot_relabel_global_safety_truth():
         p.close()
 
 
+def test_owned_compound_identifier_is_not_redacted_by_foreign_substring():
+    p = Platform()
+    try:
+        p.account("owner")
+        p.account("other")
+        p.strategies.subscribe("other", "breakout", "breakout", "PRIVATE")
+        p.strategies.subscribe(
+            "owner", "owner:breakout", "breakout", "OWNER_SYMBOL"
+        )
+        with p.store.transaction() as db:
+            db.execute(
+                "INSERT INTO orders(id,strategy,account,symbol,side,quantity,created,status,filled,emergency,dispatch_started) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    "owner:breakout:trace-1",
+                    "owner:breakout",
+                    "owner",
+                    "OWNER_SYMBOL",
+                    "BUY",
+                    1,
+                    1.0,
+                    "FILLED",
+                    1,
+                    0,
+                    1,
+                ),
+            )
+        scope = AccountResponseScope(p.store, "owner")
+
+        result = scope.project(
+            {
+                "strategy_instance_id": "owner:breakout",
+                "trace_id": "owner:breakout:trace-1",
+            }
+        )
+
+        assert result["strategy_instance_id"] == "owner:breakout"
+        assert result["trace_id"] == "owner:breakout:trace-1"
+    finally:
+        p.close()
+
+
 @pytest.mark.parametrize("method,path,body", GLOBAL_ACTIONS)
 def test_global_mutations_require_explicit_grant_without_side_effects(
     method, path, body

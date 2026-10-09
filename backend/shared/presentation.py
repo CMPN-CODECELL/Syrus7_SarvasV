@@ -187,6 +187,13 @@ class AccountResponseScope:
                 return value if self.owners.get(value) == self.account_id else _OMIT
             if self.owners.get(value, self.account_id) != self.account_id:
                 return _OMIT
+            # A current-account identifier can legitimately contain a shorter
+            # identifier owned by another account (for example
+            # ``acc_ramp:breakout`` while another account owns ``breakout``).
+            # Exact durable ownership takes precedence over the conservative
+            # embedded-identifier scan.
+            if self.owners.get(value) == self.account_id:
+                return value
             if self.foreign_pattern and self.foreign_pattern.search(value):
                 return "[redacted]"
         return value

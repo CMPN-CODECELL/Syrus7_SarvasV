@@ -1110,7 +1110,7 @@ class Platform:
                 ]
                 audit_rows = []
                 for r in self.store.rows(
-                    "SELECT * FROM audit ORDER BY sequence DESC LIMIT 100"
+                    "SELECT * FROM audit ORDER BY sequence DESC LIMIT 5000"
                 ):
                     try:
                         p = (
