@@ -103,6 +103,17 @@ def test_tc3_offsets_and_order_trade_event_remain_unidentified():
     assert event.is_trade_without_identity is True
 
 
+def test_zero_quote_fields_are_idle_market_observations_not_protocol_errors():
+    frame = bytearray(220)
+    struct.pack_into(">HHI", frame, 0, 3, 1, 2885)
+    struct.pack_into(">I", frame, 216, 10)
+
+    observation = parse_market_frame(bytes(frame))
+
+    assert observation.ltp is None
+    assert observation.official_open is None
+
+
 def test_time_strategy_persists_once_per_session_and_bounds_exit():
     store = Store()
     store.db.execute("INSERT INTO accounts VALUES ('a')")
