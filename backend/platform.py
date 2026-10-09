@@ -24,6 +24,7 @@ from backend.shared.auth import AuthService
 from backend.shared.contracts import GlobalTradingState as Gate, OrderStatus, Side, Tick
 from backend.shared.store import Store
 from backend.strategies.runtime import StrategyRuntime
+from backend.strategies.auto_mode import AutoMode
 
 
 def _contract_dict(value):
@@ -42,6 +43,16 @@ class Platform:
         clock=time.time,
         store=None,
         demo_enabled=True,
+        broker_read_timeout=8.0,
+        broker_write_timeout=8.0,
+        reconciliation_timeout=10.0,
+        auto_scan_limit=200,
+        auto_max_positions=3,
+        auto_lookback=5,
+        auto_entry_momentum=0.003,
+        auto_take_profit=0.01,
+        auto_stop_loss=0.005,
+        auto_cooldown_seconds=60,
     ):
         self.clock = clock
         self.demo_enabled = demo_enabled
@@ -55,7 +66,12 @@ class Platform:
             )
         )
         self.ledger = Ledger(self.store)
-        self.broker_calls = BrokerSession(self.broker)
+        self.broker_calls = BrokerSession(
+            self.broker,
+            read_timeout=broker_read_timeout,
+            write_timeout=broker_write_timeout,
+            reconciliation_timeout=reconciliation_timeout,
+        )
         self.orders = OrderManager(self.store, self.broker_calls, self.ledger)
         self.risk = RiskGateway(self.store, self.ledger, self.orders, clock)
         self.strategies = StrategyRuntime(self.store)
@@ -92,6 +108,16 @@ class Platform:
         self._candle_count_cache = {}
         self._restore_closed_candles("replay")
         self.auth = AuthService(self.store)
+        self.auto_mode = AutoMode(
+            self,
+            scan_limit=auto_scan_limit,
+            max_positions=auto_max_positions,
+            lookback=auto_lookback,
+            entry_momentum=auto_entry_momentum,
+            take_profit=auto_take_profit,
+            stop_loss=auto_stop_loss,
+            cooldown_seconds=auto_cooldown_seconds,
+        )
         self.demo_count = 0
         self._simulation_cursor = {}
         self._simulation_seq = 0
