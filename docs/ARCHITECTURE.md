@@ -1,5 +1,9 @@
 # Architecture
 
+## Official 021 boundary (2026-10-09)
+
+`backend/broker/official021.py` is the provider-only normalization boundary for exchange/token instruments, integer paise, signed provider quantities, response shapes, HTTP uncertainty, and strict TC1/TC3/TC4/TC8 binary evidence. Sampled market snapshots are observations, not raw trades. An order-WS trade event has no documented `tradeId` and cannot create a canonical Fill; per-order REST trade evidence and cumulative-quantity agreement are required. `Broker021Adapter` is constructible only as an OFF-by-default fail-closed shell; live transport remains blocked. Mandatory strategy policies in `backend/strategies/official021.py` emit canonical intents only and are not yet wired into runtime composition.
+
 Current operational boundaries and dependency gates are in [TEAM_EXECUTION_PLAN](TEAM_EXECUTION_PLAN.md). Member 1 owns persistence/accounting, Member 2 provider contracts/execution, Member 3 shared security/reliability integration, Member 4 frontend/feed consumers. SQLite mock evidence does not prove PostgreSQL or live-provider behavior.
 
 ## Goal and flow

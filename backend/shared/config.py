@@ -9,7 +9,18 @@ def settings():
         "database_url": os.getenv("DATABASE_URL", values.get("DATABASE_URL")) or "",
         "sqlite_path": os.getenv("ALGOSHIELD_DB", values.get("ALGOSHIELD_DB"))
         or "data/platform.db",
+        "021_enabled": False,
     }
+    enabled_021 = (
+        os.getenv(
+            "ALGOSHIELD_021_ENABLED", values.get("ALGOSHIELD_021_ENABLED", "false")
+        )
+        .strip()
+        .lower()
+    )
+    if enabled_021 not in {"true", "false"}:
+        raise ValueError("ALGOSHIELD_021_ENABLED must be true or false")
+    result["021_enabled"] = enabled_021 == "true"
     # The HTTP mock is an explicit local integration dependency.  Keep this
     # optional so existing callers/config tests remain backwards compatible.
     mock_broker_url = os.getenv("MOCK_BROKER_URL", values.get("MOCK_BROKER_URL"))

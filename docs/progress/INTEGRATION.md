@@ -1,5 +1,9 @@
 # Integration Progress
 
+## 2026-10-09 — Official 021-03 gap-only fixture integration
+
+Work started from `main` `2490e82a4f6c1dc60ab8cc8d61f0523899dc80de` after fetch; `dev` diverged and was not merged. A temporary local feature branch was created during inspection, then the uncommitted work was moved back to `main` at the owner's explicit request before commit. Before push, remote main advanced to `da609f4`; the checkpoint was normally rebased, preserving upstream multi-stock DEC-030 and assigning this change DEC-031. Added the supplied canonical contract/blueprint, strict 021 price/quantity/instrument/response and TC1/TC3/TC4/TC8 normalization, a live-disabled adapter shell, and isolated durable-once mandatory strategy policies. Focused evidence: `29 passed`; affected regression: `99 passed`; post-rebase Python suite: `408 passed, 1 isolated PostgreSQL skipped`; seven mock rehearsals passed with measured mock kill `0.17s`. Ruff, format, docs links and diff checks passed. No live REST/WS, credentials, sandbox writes, PG, migration, fees, or kill claim. Runtime/provider composition and sponsor-dependent identity/history semantics remain blocked.
+
 ## Current Status
 - Phase: integrated mock/replay hardening with optional supervised Yahoo quote evidence
 - Status: BLOCKED

@@ -706,3 +706,15 @@ No schema or broker/provider contract changes. Existing `POST /api/subscriptions
 
 ### Alternatives
 A symbols array or JSON column on one subscription was rejected because it creates shared failure and accounting state. Repeated frontend calls were rejected because they can partially succeed. A second multi-symbol execution model was rejected because it duplicates existing contracts.
+
+## DEC-031 — Official 021-03 normalization and conservative strategy policies
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Decision
+Treat `docs/021/OFFICIAL_API_CONTRACT.md` as the canonical official wire detail and `docs/021/INTEGRATION_BLUEPRINT.md` as the 021-specific implementation order. Normalize paise, signed provider quantity, instruments, HTTP uncertainty and strict TC1/TC3/TC4/TC8 frames behind the provider boundary. Market packets are sampled observations; order-WS trade events without documented `tradeId` never become fills. Keep the adapter and live transport OFF by default.
+
+Implement isolated policies for the mandatory 09:15/15:15 INTRADAY strategy and 1%-from-official-open strategy with application-managed 5% WAP exits. Persist trigger identity before emitting each canonical intent, use attributed residual fills for exits, and fail closed on stale/ambiguous evidence. Runtime composition remains a separate gate and cannot be claimed from policy fixture tests.
+
+### Reason and impact
+The official source removes earlier endpoint/packet uncertainty but leaves trade association scope, complete history, charges, account mapping, opposing close behavior and live kill feasibility unresolved. This smallest slice makes documented transformations executable without inventing those semantics or weakening existing RiskGateway, ledger, reconciliation or mock behavior. No schema, migration, dependency, live credential, broker write, or remote database change is included.

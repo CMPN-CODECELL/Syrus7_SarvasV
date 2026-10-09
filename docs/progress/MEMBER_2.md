@@ -1,5 +1,7 @@
 # Member 2 Progress
 
+- 2026-10-09: Official 021 wire normalization added behind an OFF-by-default adapter boundary: instruments, signed quantity, paise, response/error classification, TC1/TC3/TC4/TC8 strict parsing. Order-WS trade evidence cannot create Fill without REST identity. Fixture-verified only; transport, durable mapping and sandbox remain blocked.
+
 ## Ownership
 Broker & Order Execution; canonical responsibilities: ../TEAM_OWNERSHIP.md, Member 2.
 

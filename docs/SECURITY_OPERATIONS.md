@@ -1,5 +1,9 @@
 # Security operations
 
+## 021 credentials and mode boundary
+
+`ALGOSHIELD_021_ENABLED` defaults to `false` and accepts only literal `true`/`false`. Current composition does not enable a live transport even when true; the adapter raises a fail-closed blocker. Future UCC/password/OTP, bearer tokens and ephemeral WebSocket keys are server-only process secrets and must never enter frontend state, audit payloads, fixtures or Git. A login invalidates the previous bearer token, so one bounded server-side owner per UCC must control refresh. No production identity, remote database, or broker write is authorized by local operator provisioning.
+
 Git direct-push permission is separate from application operator authority. DEC-028 makes PRs optional and retains server-side permissions. No GitHub access grants or protection changes were made. Deployment Origin/proxy verification remains a task in [TEAM_EXECUTION_PLAN](TEAM_EXECUTION_PLAN.md).
 
 ## Authorization policy

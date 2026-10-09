@@ -67,7 +67,17 @@ Synthetic demo fees are not a statutory fee model.
 
 `MarketDataProvider.ticks() -> Iterable[Tick]`.
 `BrokerAdapter.submit(intent) -> CanonicalOrder`, `cancel(order_id)`, `snapshot() -> BrokerSnapshot`.
-Mock exposes `execute(...)` for deterministic fill injection; it is not part of the real broker interface. 021 adapter placeholders raise NotImplementedError.
+Mock exposes `execute(...)` for deterministic fill injection; it is not part of the real broker interface. `Broker021Adapter` is OFF by default and blocks all live mutations. Its fixture-tested wire normalizer does not constitute a network transport or sandbox verification.
+
+### Official 021 normalization and strategy policy
+
+- Prices cross the adapter as positive integer paise and canonical money remains `Decimal`; unrepresentable sub-paise prices and tick-size violations are rejected.
+- Canonical quantity is positive plus `Side`; 021 request quantity is signed only at the provider boundary. Lot/freeze/product/exchange constraints are validated before encoding.
+- TC1/TC3 market packets are sampled snapshot observations. Their official open is distinct from the first observed candle open; no exchange trade ID or raw-tick volume is invented.
+- TC4/TC8 order trade packets carry order ID but no documented trade ID. They are provisional evidence and never directly construct a Fill.
+- Time strategy policy: entry only in 09:15â€“09:15:59 IST with no late catch-up; at/after 15:15 only a fill-attributed residual may close, bounded by fresh compatible account square-off evidence.
+- Open-breakout policy: one entry/session at 1% from verified official open. TP/SL is application-managed at 5% from fill WAP; an open entry order, stale evidence, missing WAP, or ambiguous residual suppresses exit generation.
+- Trigger records are durable audit events and prevent repeat session dispatch after restart. Every produced value is an `OrderIntent`; RiskGateway remains mandatory.
 
 Order: RESERVED -> OPEN / REJECTED / UNKNOWN; OPEN -> PARTIALLY_FILLED -> FILLED, or CANCELLED. Authoritative zero-fill rejection may move OPEN to REJECTED; filled rejection is forbidden. Late evidenced executions may increase executed quantity after cancel; full evidence produces FILLED. Snapshot confirmation resolves UNKNOWN. Order statuses never create financial state without fills.
 

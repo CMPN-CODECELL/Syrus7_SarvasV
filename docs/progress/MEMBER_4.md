@@ -1,5 +1,7 @@
 # Member 4 Progress
 
+- 2026-10-09: Added isolated 021-03 time and official-open breakout decision policies with durable once/session triggers, stale/UNKNOWN gating, fill-WAP/residual exits and no direct broker authority. Fixture-verified only; runtime/provider composition and the custom-strategy 15:15 exit remain incomplete.
+
 ## Ownership
 Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Member 4.
 
