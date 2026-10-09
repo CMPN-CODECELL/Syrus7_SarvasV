@@ -21,6 +21,16 @@ def settings():
     if enabled_021 not in {"true", "false"}:
         raise ValueError("ALGOSHIELD_021_ENABLED must be true or false")
     result["021_enabled"] = enabled_021 == "true"
+    for key, env_name in (
+        ("021_base_url", "ALGOSHIELD_021_BASE_URL"),
+        ("021_username", "ALGOSHIELD_021_USERNAME"),
+        ("021_password", "ALGOSHIELD_021_PASSWORD"),
+        ("021_token", "ALGOSHIELD_021_TOKEN"),
+        ("021_instrument_cache", "ALGOSHIELD_021_INSTRUMENT_CACHE"),
+    ):
+        value = os.getenv(env_name, values.get(env_name))
+        if value:
+            result[key] = value.strip()
     # The HTTP mock is an explicit local integration dependency.  Keep this
     # optional so existing callers/config tests remain backwards compatible.
     mock_broker_url = os.getenv("MOCK_BROKER_URL", values.get("MOCK_BROKER_URL"))
@@ -32,8 +42,8 @@ def settings():
     )
     if provider:
         provider = provider.strip().lower()
-        if provider not in {"replay", "yahoo"}:
-            raise ValueError("market-data provider must be replay or yahoo")
+        if provider not in {"replay", "yahoo", "021"}:
+            raise ValueError("market-data provider must be replay, 021 or yahoo")
         result["market_data_provider"] = provider
     symbols = os.getenv(
         "ALGOSHIELD_YAHOO_SYMBOLS", values.get("ALGOSHIELD_YAHOO_SYMBOLS")
@@ -41,6 +51,11 @@ def settings():
     if symbols:
         result["yahoo_symbols"] = tuple(
             symbol.strip().upper() for symbol in symbols.split(",") if symbol.strip()
+        )
+    live_symbols = os.getenv("ALGOSHIELD_021_SYMBOLS", values.get("ALGOSHIELD_021_SYMBOLS"))
+    if live_symbols:
+        result["021_symbols"] = tuple(
+            symbol.strip().upper() for symbol in live_symbols.split(",") if symbol.strip()
         )
     trusted_origins = os.getenv(
         "ALGOSHIELD_TRUSTED_ORIGINS", values.get("ALGOSHIELD_TRUSTED_ORIGINS")

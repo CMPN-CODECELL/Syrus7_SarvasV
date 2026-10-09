@@ -100,8 +100,10 @@ class Platform:
         """Attach one explicit source before any timeline has been ingested."""
         if self.candles.accepted_ticks or self._replay_thread:
             raise ValueError("market-data source cannot change after ingestion starts")
-        if not isinstance(self.broker, (MockBrokerAdapter, HTTPMockBrokerAdapter)):
-            raise ValueError("Yahoo quotes are restricted to mock execution")
+        if not isinstance(self.broker, (MockBrokerAdapter, HTTPMockBrokerAdapter)) and not getattr(
+            provider, "supports_live_broker", False
+        ):
+            raise ValueError("external market data source is not compatible with this broker")
         self.external_market_data = provider
 
     def start_external_market_data(self):
@@ -111,7 +113,11 @@ class Platform:
             raise ValueError("replay and Yahoo market data cannot run together")
         # Starting a network feed never reopens execution. An operator must
         # separately reconcile/resume after fresh evidence exists.
-        self.reliability.fail_closed("YAHOO_FEED_STARTING")
+        self.reliability.fail_closed(
+            "021_FEED_STARTING"
+            if getattr(self.external_market_data, "supports_live_broker", False)
+            else "YAHOO_FEED_STARTING"
+        )
         return self.external_market_data.start()
 
     def stop_external_market_data(self):

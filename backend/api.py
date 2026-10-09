@@ -21,11 +21,14 @@ from starlette.websockets import WebSocketDisconnect
 
 from backend.platform import Platform
 from backend.market_data.yahoo import YahooMarketDataProvider
+from backend.market_data.official021 import MarketData021Provider
+from backend.broker.adapters import Broker021Adapter
 from backend.broker.http_adapter import HTTPMockBrokerAdapter
 from backend.reliability.failure_lab import FailureLab, SCENARIOS, SCENARIO_METADATA
 from backend.shared.config import settings
 from backend.shared.contracts import AccountRiskPolicy, RiskPolicy, StrategyState
 from backend.shared.postgres import PostgresStore
+from backend.shared.store import Store
 from backend.shared.presentation import AccountResponseScope
 from backend.shared.browser_security import (
     DEFAULT_ORIGINS,
@@ -189,8 +192,24 @@ def create_app(platform=None, *, trusted_origins=None):
         else {"sqlite_path": ":memory:", "database_url": ""}
     )
     broker = None
+    application_store = None
     mock_broker_url = config.get("mock_broker_url", "")
-    if mock_broker_url:
+    if config.get("021_enabled"):
+        application_store = (
+            PostgresStore(config["database_url"])
+            if config["database_url"]
+            else Store(config["sqlite_path"])
+        )
+        broker = Broker021Adapter(
+            application_store,
+            enabled=True,
+            base_url=config.get("021_base_url"),
+            username=config.get("021_username"),
+            password=config.get("021_password"),
+            access_token=config.get("021_token"),
+            instrument_cache=config.get("021_instrument_cache"),
+        )
+    elif mock_broker_url:
         broker = HTTPMockBrokerAdapter(mock_broker_url)
     # PostgreSQL is safe for replay only when the caller explicitly points at
     # a loopback HTTP mock broker.  Remote/mock-looking URLs must never enable
@@ -200,10 +219,25 @@ def create_app(platform=None, *, trusted_origins=None):
     engine = platform or Platform(
         config["sqlite_path"],
         broker=broker,
-        store=PostgresStore(config["database_url"]) if config["database_url"] else None,
-        demo_enabled=not bool(config["database_url"]) or local_mock,
+        store=application_store
+        or (PostgresStore(config["database_url"]) if config["database_url"] else None),
+        demo_enabled=(
+            False
+            if config.get("021_enabled")
+            else not bool(config["database_url"]) or local_mock
+        ),
     )
-    if platform is None and config.get("market_data_provider") == "yahoo":
+    if platform is None and config.get("market_data_provider") == "021":
+        if not isinstance(broker, Broker021Adapter):
+            raise RuntimeError("021 market data requires ALGOSHIELD_021_ENABLED=true")
+        engine.configure_external_market_data(
+            MarketData021Provider(
+                engine,
+                broker,
+                config.get("021_symbols", ("RELIANCE",)),
+            )
+        )
+    elif platform is None and config.get("market_data_provider") == "yahoo":
         yahoo = YahooMarketDataProvider(
             engine, symbols=config.get("yahoo_symbols", ("TCS.NS", "INFY.NS"))
         )

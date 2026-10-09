@@ -4,6 +4,7 @@ from dataclasses import replace
 from decimal import Decimal
 from typing import Protocol
 
+from backend.market_data.official021 import MarketData021Provider  # noqa: F401
 from backend.shared.contracts import Candle, Tick
 
 
@@ -155,8 +156,3 @@ class CandleBuilder:
             "tracked_event_ids": len(self.seen),
             "last_event_timestamp": dict(self.last),
         }
-
-
-class MarketData021Provider:
-    def __init__(self):
-        raise NotImplementedError("021 feed contract unconfirmed")

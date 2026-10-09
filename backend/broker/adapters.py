@@ -15,6 +15,7 @@ from backend.shared.contracts import (
     TERMINAL,
 )
 from backend.broker.official021 import Provider021Blocked, parse_order_frame
+from backend.broker.official021_http import Official021RESTAdapter
 
 
 class BrokerAdapter(Protocol):
@@ -233,47 +234,50 @@ class MockBrokerAdapter:
         )
 
 
-class Broker021Adapter:
-    """Fail-closed 021 adapter shell.
+class Broker021Adapter(Official021RESTAdapter):
+    """Documented 021 REST adapter, fail-closed unless explicitly enabled."""
 
-    Wire normalization is fixture-testable, but live mutation is intentionally
-    unavailable until durable provider identity and trade association are proven.
-    """
+    def __init__(self, store=None, *, enabled=False, **kwargs):
+        self.enabled = bool(enabled)
+        if not self.enabled:
+            self.connected = False
+            self.updates = []
+            self.store = store
+            return
+        if store is None:
+            raise ValueError("enabled 021 adapter requires the application store")
+        super().__init__(store, **kwargs)
 
-    supports_virtual_closes = False
-
-    def __init__(self, *, enabled=False):
-        if enabled:
+    def _require_enabled(self):
+        if not self.enabled:
             raise Provider021Blocked(
-                "live 021 transport is blocked pending credentials and trade identity evidence"
+                "021 live operations are disabled; set ALGOSHIELD_021_ENABLED=true"
             )
-        self.enabled = False
-        self.connected = False
-        self.updates = []
-
-    @staticmethod
-    def _blocked():
-        raise Provider021Blocked(
-            "021 live operations are disabled; see docs/021_API_UNKNOWN.md"
-        )
 
     def submit(self, intent: OrderIntent) -> CanonicalOrder:
-        self._blocked()
+        self._require_enabled()
+        return super().submit(intent)
 
-    def cancel(self, order_id: str) -> None:
-        self._blocked()
+    def cancel(self, order_id: str, timeout=None) -> None:
+        self._require_enabled()
+        return super().cancel(order_id, timeout=timeout)
 
     def snapshot(self) -> BrokerSnapshot:
-        self._blocked()
+        self._require_enabled()
+        return super().snapshot()
 
     def drain_updates(self) -> list[BrokerUpdate]:
-        return list(self.updates)
-
-    def disconnect(self) -> None:
-        self.connected = False
+        if not self.enabled:
+            return []
+        return super().drain_updates()
 
     def reconnect(self) -> None:
-        self._blocked()
+        self._require_enabled()
+        return super().reconnect()
+
+    def close(self) -> None:
+        if self.enabled:
+            super().close()
 
     def parse_update(self, raw_payload: bytes):
         """Decode order evidence without inventing a Fill/trade ID.

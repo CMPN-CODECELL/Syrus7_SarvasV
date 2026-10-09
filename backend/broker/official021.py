@@ -36,6 +36,23 @@ class ObservationKind(StrEnum):
     HEARTBEAT = "HEARTBEAT"
 
 
+EXCHANGE_TO_CODE = {
+    "NSECM": 1,
+    "NSEFO": 2,
+    "NSEIDX": 3,
+    "BSEEQ": 4,
+    "BSEEQD": 5,
+    "BSEIDX": 6,
+}
+CODE_TO_EXCHANGE = {value: key for key, value in EXCHANGE_TO_CODE.items()}
+REQUEST_EXCHANGE = {
+    "NSECM": "NSE",
+    "NSEFO": "NSEFO",
+    "BSEEQ": "BSE",
+    "BSEEQD": "BSEFO",
+}
+
+
 @dataclass(frozen=True)
 class Instrument021:
     exchange: int
@@ -263,6 +280,39 @@ def parse_market_frame(frame: bytes) -> MarketObservation021:
         _u32(frame, volume_offset) if volume_offset is not None else None,
         _u32(frame, time_offset) + 315513000,
     )
+
+
+def parse_market_frames(frame: bytes) -> list[MarketObservation021]:
+    """Decode a WebSocket frame containing one or more documented packets."""
+    observations = []
+    offset = 0
+    while offset < len(frame):
+        if len(frame) - offset < 2:
+            raise Provider021ProtocolError("truncated 021 packet sequence")
+        tc = _u16(frame, offset)
+        if tc == 1:
+            if len(frame) - offset < 12:
+                raise Provider021ProtocolError("truncated TC1 packet")
+            # A snapshot LTPO packet has the documented 5-byte open suffix.
+            length = 17 if len(frame) - offset >= 17 and frame[offset + 12 : offset + 13] == b"o" else 12
+        elif tc == 3:
+            if len(frame) - offset < 4:
+                raise Provider021ProtocolError("truncated TC3 packet")
+            length = {1: 220, 2: 234, 3: 36, 4: 262, 5: 262, 6: 262}.get(
+                _u16(frame, offset + 2)
+            )
+            if length is None:
+                raise Provider021ProtocolError("unsupported TC3 exchange")
+        elif tc == 10:
+            length = 2
+        else:
+            raise Provider021ProtocolError(f"unsupported market transaction code {tc}")
+        packet = frame[offset : offset + length]
+        if len(packet) != length:
+            raise Provider021ProtocolError("truncated 021 packet")
+        observations.append(parse_market_frame(packet))
+        offset += length
+    return observations
 
 
 def parse_order_frame(frame: bytes) -> OrderEvent021:

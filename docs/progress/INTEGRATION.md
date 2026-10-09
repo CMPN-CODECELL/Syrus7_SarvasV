@@ -407,6 +407,10 @@ not a product regression; no original research text was rewritten to hide it.
 Documentation/research commit: 6a15db172725de23f887c170cfc22c0061101d92.
 Final delivery adds only this evidence clarification; no production change.
 
+## 2026-10-09 — 021 transport integration
+
+Implemented on `codex/021-integration`: bounded REST/auth transport, gzip instrument validation/cache, paise and signed-quantity encoding, durable provider-order mapping in SQLite and PostgreSQL migrations, asynchronous cancel verification, per-order trade attribution requiring `tradeId`, and sampled market WebSocket ingestion with fail-closed disconnect handling. Added `tests/test_official021_rest.py` with deterministic HTTP fixtures. Focused verification: 35 tests passed; compileall and Ruff passed. No credentialed sandbox call or live order was performed; status remains `IMPLEMENTED_UNVERIFIED`.
+
 
 
 
