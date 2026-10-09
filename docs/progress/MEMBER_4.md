@@ -1,5 +1,12 @@
 # Member 4 Progress
 
+- 2026-10-09: Tuned the configurable Auto policy for a bounded prototype demo:
+  two normalized updates, one warmed symbol, 0.01% entry edge, 0.05% exit
+  thresholds, two-second cooldown, quantity one and one simultaneous position.
+  Added deterministic canonical-path coverage. The provider/reconciliation/risk
+  gates and pending-order exclusion remain unchanged. Full validation: 481 backend
+  passed / 1 skipped; 51 frontend passed; Ruff, ESLint and Vite build passed.
+
 - 2026-10-09: Added guarded auto mode with bounded catalogue sampling, adaptive
   momentum/breakout/mean-reversion ranking, long-only quantity-one entry,
   take-profit/stop-loss/reversal exits, per-account BUY/SELL/HOLD plus risk-result

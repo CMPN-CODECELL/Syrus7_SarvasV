@@ -127,22 +127,25 @@ def settings():
         values, "ALGOSHIELD_AUTO_SCAN_LIMIT", 200, 1, 2000
     )
     result["auto_max_positions"] = _bounded_int(
-        values, "ALGOSHIELD_AUTO_MAX_POSITIONS", 3, 1, 20
+        values, "ALGOSHIELD_AUTO_MAX_POSITIONS", 1, 1, 20
     )
     result["auto_lookback_updates"] = _bounded_int(
-        values, "ALGOSHIELD_AUTO_LOOKBACK_UPDATES", 5, 2, 100
+        values, "ALGOSHIELD_AUTO_LOOKBACK_UPDATES", 2, 2, 100
+    )
+    result["auto_min_warmed_symbols"] = _bounded_int(
+        values, "ALGOSHIELD_AUTO_MIN_WARMED_SYMBOLS", 1, 1, 2000
     )
     result["auto_entry_momentum"] = _positive_float(
-        values, "ALGOSHIELD_AUTO_ENTRY_MOMENTUM", 0.003
+        values, "ALGOSHIELD_AUTO_ENTRY_MOMENTUM", 0.0001
     )
     result["auto_take_profit"] = _positive_float(
-        values, "ALGOSHIELD_AUTO_TAKE_PROFIT", 0.01
+        values, "ALGOSHIELD_AUTO_TAKE_PROFIT", 0.0005
     )
     result["auto_stop_loss"] = _positive_float(
-        values, "ALGOSHIELD_AUTO_STOP_LOSS", 0.005
+        values, "ALGOSHIELD_AUTO_STOP_LOSS", 0.0005
     )
     result["auto_cooldown_seconds"] = _bounded_int(
-        values, "ALGOSHIELD_AUTO_COOLDOWN_SECONDS", 60, 0, 86400
+        values, "ALGOSHIELD_AUTO_COOLDOWN_SECONDS", 2, 0, 86400
     )
     trusted_origins = os.getenv(
         "ALGOSHIELD_TRUSTED_ORIGINS", values.get("ALGOSHIELD_TRUSTED_ORIGINS")

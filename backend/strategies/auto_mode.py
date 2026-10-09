@@ -31,22 +31,29 @@ class AutoMode:
         platform,
         *,
         scan_limit=200,
-        max_positions=3,
-        lookback=5,
-        entry_momentum=Decimal("0.003"),
-        take_profit=Decimal("0.01"),
-        stop_loss=Decimal("0.005"),
-        cooldown_seconds=60,
+        max_positions=1,
+        lookback=2,
+        min_warmed_symbols=1,
+        entry_momentum=Decimal("0.0001"),
+        take_profit=Decimal("0.0005"),
+        stop_loss=Decimal("0.0005"),
+        cooldown_seconds=2,
     ):
         self.platform = platform
         self.scan_limit = int(scan_limit)
         self.max_positions = int(max_positions)
         self.lookback = int(lookback)
+        self.min_warmed_symbols = int(min_warmed_symbols)
         self.entry_momentum = Decimal(entry_momentum)
         self.take_profit = Decimal(take_profit)
         self.stop_loss = Decimal(stop_loss)
         self.cooldown_seconds = int(cooldown_seconds)
-        if self.scan_limit < 1 or self.max_positions < 1 or self.lookback < 2:
+        if (
+            self.scan_limit < 1
+            or self.max_positions < 1
+            or self.lookback < 2
+            or self.min_warmed_symbols < 1
+        ):
             raise ValueError("invalid auto-mode bounds")
         if min(self.entry_momentum, self.take_profit, self.stop_loss) <= 0:
             raise ValueError("auto-mode return thresholds must be positive")
@@ -56,7 +63,7 @@ class AutoMode:
         self._states = {}
         self._sequence = 0
 
-    def _catalogue_candidates(self):
+    def _catalogue_candidates(self, account_id=None):
         adapter = getattr(self.platform.broker_calls, "adapter", self.platform.broker)
         if hasattr(adapter, "all_market_symbols"):
             symbols = tuple(adapter.all_market_symbols())
@@ -77,14 +84,52 @@ class AutoMode:
                 )
             )
         symbols = tuple(symbol for symbol in symbols if symbol)
-        if len(symbols) <= self.scan_limit:
-            return symbols
+        repeatedly_rejected = {
+            row["symbol"]
+            for row in self.platform.store.rows(
+                "SELECT symbol FROM orders WHERE strategy LIKE 'auto-%' "
+                "AND side='BUY' AND status='REJECTED' AND filled=0 "
+                "GROUP BY symbol HAVING COUNT(*) >= 2"
+            )
+        }
+        managed = ()
+        if account_id:
+            managed = tuple(
+                dict.fromkeys(
+                    symbol
+                    for (
+                        account,
+                        strategy,
+                        symbol,
+                    ), position in self.platform.ledger.positions().items()
+                    if account == account_id
+                    and strategy.startswith("auto-")
+                    and position.net_quantity != 0
+                )
+            )
+        # Existing exposure is mandatory management work, not a new-entry scan
+        # candidate. Keep it in the feed/evaluation set across restarts even if
+        # catalogue ranking changes, then fill the remaining bounded slots.
+        candidates = tuple(
+            dict.fromkeys(
+                (
+                    *managed,
+                    *(
+                        symbol
+                        for symbol in symbols
+                        if symbol not in managed and symbol not in repeatedly_rejected
+                    ),
+                )
+            )
+        )
+        if len(candidates) <= self.scan_limit:
+            return candidates
         # Provider adapters may rank their catalogue by execution suitability
         # (021 uses its freeze-quantity metadata as a liquidity proxy).
-        return symbols[: self.scan_limit]
+        return candidates[: max(self.scan_limit, len(managed))]
 
     def start(self, account_id, *, audit_type="AUTO_MODE_STARTED"):
-        candidates = self._catalogue_candidates()
+        candidates = self._catalogue_candidates(account_id)
         if not candidates:
             raise ValueError("auto mode found no broker-supported stocks to scan")
         with self._lock:
@@ -233,15 +278,27 @@ class AutoMode:
         )
 
     def _position_count(self, account_id):
-        return sum(
-            position.net_quantity != 0
+        occupied = {
+            symbol
             for (
                 account,
                 strategy,
-                _,
+                symbol,
             ), position in self.platform.ledger.positions().items()
-            if account == account_id and strategy.startswith("auto-")
+            if account == account_id
+            and strategy.startswith("auto-")
+            and position.net_quantity != 0
+        }
+        occupied.update(
+            row["symbol"]
+            for row in self.platform.store.rows(
+                "SELECT DISTINCT symbol FROM orders WHERE account=? "
+                "AND strategy LIKE 'auto-%' AND side='BUY' "
+                "AND status NOT IN ('FILLED','CANCELLED','REJECTED')",
+                (account_id,),
+            )
         )
+        return len(occupied)
 
     def _record(
         self,
@@ -346,7 +403,11 @@ class AutoMode:
             ]
             momentum_score = strategy_scores["momentum"]
             strongest = max(opportunities, key=lambda item: opportunities[item][1])
-            minimum_coverage = min(len(state["candidates"]), min(20, self.scan_limit))
+            minimum_coverage = min(
+                len(state["candidates"]),
+                self.min_warmed_symbols,
+                self.scan_limit,
+            )
             strategy_id = self._strategy_id(account_id, tick.symbol)
             if strongest == tick.symbol and len(opportunities) >= minimum_coverage:
                 strategy_id = self._select_subscription(
@@ -535,6 +596,7 @@ class AutoMode:
             "scan_limit": self.scan_limit,
             "max_positions": self.max_positions,
             "lookback_updates": self.lookback,
+            "min_warmed_symbols": self.min_warmed_symbols,
             "entry_momentum": str(self.entry_momentum),
             "take_profit": str(self.take_profit),
             "stop_loss": str(self.stop_loss),

@@ -69,26 +69,44 @@ class BrokerSession:
             return self.active is not None and not self.active.done.is_set()
 
     def start(self, operation, *args):
-        if operation not in {"submit", "cancel", "snapshot", "execute"}:
+        if operation not in {
+            "submit",
+            "cancel",
+            "snapshot",
+            "execute",
+            "drain_updates",
+        }:
             raise ValueError("unsupported broker operation")
-        with self.lock:
-            if self.active is not None and not self.active.done.is_set():
+        while True:
+            wait_for_snapshot = None
+            with self.lock:
+                if self.active is not None and not self.active.done.is_set():
+                    if (
+                        operation in {"submit", "cancel", "execute"}
+                        and self.active.operation == "snapshot"
+                    ):
+                        wait_for_snapshot = self.active
+                    else:
+                        raise BrokerCallUnsettled("BROKER_CALL_UNSETTLED")
+                elif self.uncertain and operation != "snapshot":
+                    raise BrokerCallUnsettled("BROKER_RECONCILIATION_REQUIRED")
+                else:
+                    call = PendingCall(operation)
+                    self.active = call
+                    break
+            if not wait_for_snapshot.done.wait(self.write_timeout):
                 raise BrokerCallUnsettled("BROKER_CALL_UNSETTLED")
-            if self.uncertain and operation != "snapshot":
-                raise BrokerCallUnsettled("BROKER_RECONCILIATION_REQUIRED")
-            call = PendingCall(operation)
-            self.active = call
 
-            def invoke():
-                try:
-                    call.result = getattr(self.adapter, operation)(*args)
-                except BaseException as exc:
-                    call.error = exc
-                finally:
-                    call.done.set()
+        def invoke():
+            try:
+                call.result = getattr(self.adapter, operation)(*args)
+            except BaseException as exc:
+                call.error = exc
+            finally:
+                call.done.set()
 
-            Thread(target=invoke, daemon=True, name=f"broker-{operation}").start()
-            return call
+        Thread(target=invoke, daemon=True, name=f"broker-{operation}").start()
+        return call
 
     def wait(self, call, timeout=None):
         operation_timeout = self._operation_timeout(call.operation)
@@ -131,7 +149,7 @@ class BrokerSession:
 
     def drain_updates(self):
         if hasattr(self.adapter, "drain_updates"):
-            return self.adapter.drain_updates()
+            return self.call("drain_updates")
         return []
 
     def disconnect(self):

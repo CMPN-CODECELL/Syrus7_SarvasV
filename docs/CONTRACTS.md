@@ -203,6 +203,17 @@ RISK_NO_HEALTH_EVIDENCE, RISK_RECONCILIATION_REQUIRED, RISK_STALE_BROKER_STATE, 
 
 Kill latch/certificate and last reconciliation report persist in risk-owned safety_values. Startup always resets operational gate/health to RECOVERING. `/api/kill/reset` requires a new complete reconciliation, no open orders and zero broker/virtual positions, leaves STOPPED and never auto-resumes. Certificate remains historical after reset. Read freshness fields before treating historical reports as current evidence.
 
+For 021 only, a durable verified empty bootstrap may establish a bounded
+same-day history horizon after restart when all current-day provider orders,
+aggregate/per-order trade identities, mappings, current positions and holdings
+pass DEC-038's continuity proof. It never crosses the Asia/Kolkata trading-date
+boundary and never removes the explicit reconcile/resume requirement.
+
+After explicit live resume, broker freshness is maintained by a serialized
+read-only heartbeat (DEC-040). Busy write contention causes a skipped refresh,
+not false uncertainty; incomplete/mismatched evidence or a real provider error
+still fails closed. The heartbeat never submits, retries or authorizes an order.
+
 No module may rename fields silently. Limit/modify, external positions, typed health/audit envelopes and real broker events are coordinated contract extensions, not fabricated 021 behavior.
 
 Orders persist dispatch_started: new reservations are 0; dispatch commits UNKNOWN/1 before the external call. Never-dispatched rejected reservations need not exist at the broker. A complete settled snapshot may resolve an absent UNKNOWN as rejected/0, never retry it automatically. BrokerSession bounds waits and blocks mutations after uncertain calls until reconciliation. Emergency orders require risk authorization of actual reducing strategy exposure and are permitted only under the latched KILLING gate. Kill uses a nine-second deadline and verifies cancellation/fills/flatness in repeated rounds.
@@ -216,6 +227,9 @@ Every broker adapter (including `MockBrokerAdapter` and the eventual `Broker021A
    - `cancel(order_id: str) -> None`: Cancels open or partially filled order. Must never undo or reverse already executed fills.
    - `snapshot() -> BrokerSnapshot`: Provides complete authoritative view of orders, fills, and net positions. `is_complete` must be explicitly attested.
    - `drain_updates() -> list[BrokerUpdate]`: Exposes canonical broker-originated updates (`ORDER_ACCEPTED`, `ORDER_REJECTED`, `ORDER_CANCELLED`, `ORDER_STATUS`, `FILL`).
+     `provisional=true` identifies best-effort lifecycle evidence that may be
+     ignored when stronger fill evidence has already advanced the order; it
+     can never create a fill or regress financial state.
    - `disconnect() / reconnect()`: Explicit connection lifecycle. Operations must fail safely when disconnected rather than fabricating success.
 2. **Attribution & Mapping Invariants**:
    - Deterministic mapping from broker evidence back to the original approved `intent_id`.

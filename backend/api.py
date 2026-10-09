@@ -237,6 +237,7 @@ def create_app(platform=None, *, trusted_origins=None, cookie_secure=None):
         auto_scan_limit=config["auto_scan_limit"],
         auto_max_positions=config["auto_max_positions"],
         auto_lookback=config["auto_lookback_updates"],
+        auto_min_warmed_symbols=config["auto_min_warmed_symbols"],
         auto_entry_momentum=config["auto_entry_momentum"],
         auto_take_profit=config["auto_take_profit"],
         auto_stop_loss=config["auto_stop_loss"],
@@ -245,16 +246,15 @@ def create_app(platform=None, *, trusted_origins=None, cookie_secure=None):
     if platform is None and config.get("market_data_provider") == "021":
         if not isinstance(broker, Broker021Adapter):
             raise RuntimeError("021 market data requires ALGOSHIELD_021_ENABLED=true")
-        symbols = config.get("021_symbols")
-        if not symbols:
-            # The catalogue is the source of truth when no explicit universe is
-            # configured.  The provider applies 021's connection/instrument
-            # limits and reports any truncation in telemetry.
-            symbols = broker.all_market_symbols()
-            if not symbols:
-                raise RuntimeError(
-                    "021 instrument catalogue contains no cash-equity symbols"
-                )
+        # An unset override means dynamic subscription, not "subscribe every
+        # instrument". The complete catalogue remains available for search,
+        # while the WebSocket carries only active subscriptions, open exposure,
+        # pending orders, and Auto's bounded scan candidates. This stays within
+        # provider connection limits and avoids disconnecting the execution
+        # safety gate during catalogue-wide fan-out.
+        symbols = config.get("021_symbols", ())
+        if not broker.all_market_symbols():
+            raise RuntimeError("021 instrument catalogue contains no cash-equity symbols")
         engine.configure_external_market_data(
             MarketData021Provider(
                 engine,

@@ -50,6 +50,11 @@ never bypasses reconciliation/risk, starts disabled after every process restart,
 and does not guarantee profit. Stopping it does not implicitly liquidate existing
 positions. Configure its bounded policy with the
 `ALGOSHIELD_AUTO_*` placeholders in `.env.example`.
+The prototype-responsive defaults need two normalized updates for one eligible
+symbol, use a 0.01% entry edge, 0.05% take-profit/stop thresholds, a two-second
+cooldown, quantity one and at most one simultaneous Auto position. These defaults
+increase demonstration activity without weakening broker evidence, reconciliation,
+pending-order, market-session or central risk checks.
 
 ```sh
 python -m pytest -q --basetemp=.pytest-tmp

@@ -1,6 +1,7 @@
 import gzip
 import json
 import struct
+import time
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -462,6 +463,101 @@ def test_zero_fill_terminal_provider_order_does_not_poison_empty_bootstrap():
     )
 
     assert adapter.snapshot().is_complete is True
+
+
+def test_same_day_mapped_history_extends_verified_empty_bootstrap():
+    now = time.time()
+    store = _platform()
+    store.db.execute(
+        "INSERT INTO broker_order_mappings VALUES (?,?,?,?,?,?,?,?,?)",
+        ("i1", "021", "42", "a", "NSECM", 2885, "INTRADAY", "RELIANCE", now - 5),
+    )
+    store.db.commit()
+    store.audit(
+        "RECONCILED",
+        {
+            "verified": True,
+            "reason": "MATCHED",
+            "observed_at": now - 10,
+            "orders": 0,
+            "unique_fills": 0,
+            "broker_positions": [],
+            "unexplained_positions": [],
+        },
+    )
+
+    trade = {
+        "tradeId": 5001,
+        "tradeTime": now - 4,
+        "quantity": 2,
+        "token": 2885,
+        "exchange": "NSECM",
+        "product": "INTRADAY",
+        "price": 140000,
+        "symbol": "RELIANCE",
+    }
+
+    def handler(request):
+        path = request.url.path
+        if path.endswith("/instruments"):
+            return httpx.Response(200, content=gzip.compress(INSTRUMENTS))
+        if path.endswith("/orders/42/trades"):
+            return httpx.Response(200, json=[trade])
+        if path.endswith("/orders"):
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "orderId": 42,
+                        "time": now - 5,
+                        "qtyTraded": 2,
+                        "status": "Executed",
+                    }
+                ],
+            )
+        if path.endswith("/trades"):
+            return httpx.Response(200, json=[trade])
+        if path.endswith("/portfolio/positions"):
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "exchange": "NSECM",
+                        "token": 2885,
+                        "netQuantity": 2,
+                    }
+                ],
+            )
+        if path.endswith("/portfolio/holdings"):
+            return httpx.Response(200, json=[])
+        raise AssertionError(f"unexpected request {request.method} {path}")
+
+    adapter = Broker021Adapter(
+        store,
+        enabled=True,
+        access_token="test-token",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert adapter.snapshot().is_complete is True
+
+    store.db.execute(
+        "UPDATE audit SET payload=? WHERE type='RECONCILED'",
+        (
+            json.dumps(
+                {
+                    "verified": True,
+                    "observed_at": now - 86_400,
+                    "orders": 0,
+                    "unique_fills": 0,
+                    "broker_positions": [],
+                    "unexplained_positions": [],
+                }
+            ),
+        ),
+    )
+    store.db.commit()
+    assert adapter.snapshot().is_complete is False
 
 
 def test_order_websocket_disables_incompatible_client_ping_keepalive():

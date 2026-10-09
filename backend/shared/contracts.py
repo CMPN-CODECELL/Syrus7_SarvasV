@@ -342,6 +342,7 @@ class BrokerUpdate:
     status: OrderStatus | None = None
     fill: Fill | None = None
     timestamp: float = 0.0
+    provisional: bool = False
 
     def __post_init__(self):
         if not self.update_id or not isinstance(self.update_id, str):
@@ -354,3 +355,5 @@ class BrokerUpdate:
             raise ValueError("fill required for FILL update")
         if self.fill is not None and self.fill.broker_order_id != self.order_id:
             raise ValueError("fill broker_order_id must match update order_id")
+        if type(self.provisional) is not bool:
+            raise ValueError("provisional must be a boolean")

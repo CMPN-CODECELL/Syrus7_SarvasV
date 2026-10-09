@@ -2,7 +2,7 @@ from dataclasses import asdict
 from decimal import Decimal
 from threading import RLock, Event
 import time
-from backend.reliability.broker_calls import Deadline
+from backend.reliability.broker_calls import BrokerCallUnsettled, Deadline
 from uuid import uuid4
 
 from backend.reliability.snapshots import SnapshotError, verify_snapshot
@@ -513,6 +513,74 @@ class Reliability:
                 self.safety.set("reconciliation_report", self.report)
                 self.fail_closed(reason)
                 self._record_reconcile_metric(metric_started, False)
+                return False
+
+    def refresh_broker_evidence(self, *, timeout=None):
+        """Refresh an already-verified broker view without changing the gate.
+
+        This is used by the live-provider heartbeat after explicit operator
+        reconciliation/resume. It can preserve RUNNING/REDUCE_ONLY on a fresh,
+        complete match, but it can never open a gate or recover from failure.
+        """
+        with self.operation_lock:
+            try:
+                snapshot = self.broker.snapshot(timeout=timeout)
+                orders, fills, observed_at, duplicates = verify_snapshot(
+                    self.store, snapshot, self.clock(), self.max_broker_age
+                )
+                local_positions = {
+                    key: quantity
+                    for key, quantity in self.ledger.aggregate().items()
+                    if quantity
+                }
+                broker_positions = {
+                    key: quantity
+                    for key, quantity in snapshot.positions.items()
+                    if quantity
+                }
+                if local_positions != broker_positions:
+                    raise SnapshotError("VIRTUAL_POSITION_DRIFT")
+                self.last_broker_at = observed_at
+                self.broker.acknowledge_verified()
+                self._health(Health.HEALTHY)
+                self.report = dict(self.report) | {
+                    "verified": True,
+                    "reason": "MATCHED",
+                    "observed_at": observed_at,
+                    "orders": len(orders),
+                    "unique_fills": len(fills),
+                    "duplicate_snapshot_fills": duplicates,
+                }
+                self.safety.set("reconciliation_report", self.report)
+                with self.store.transaction():
+                    self.store.audit(
+                        "BROKER_EVIDENCE_REFRESHED",
+                        {
+                            "observed_at": observed_at,
+                            "orders": len(orders),
+                            "unique_fills": len(fills),
+                        },
+                    )
+                return True
+            except BrokerCallUnsettled:
+                # A strategy write owns the single broker call slot. The
+                # heartbeat is best-effort and retries on its next interval;
+                # it must not turn ordinary serialization into uncertainty.
+                return None
+            except Exception as exc:
+                reason = (
+                    exc.code
+                    if isinstance(exc, SnapshotError)
+                    else "BROKER_REFRESH_" + type(exc).__name__.upper()
+                )
+                self.last_broker_at = None
+                self.report = {
+                    "verified": False,
+                    "reason": reason,
+                    "observed_at": self.clock(),
+                }
+                self.safety.set("reconciliation_report", self.report)
+                self.fail_closed(reason)
                 return False
 
     def _record_reconcile_metric(self, started, success):

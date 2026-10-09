@@ -42,6 +42,26 @@ def test_incomplete_snapshot_cannot_import_fills(monkeypatch):
     p.store.close()
 
 
+def test_complete_snapshot_allows_missing_zero_fill_terminal_rejection():
+    p = ready()
+    with p.store.transaction() as db:
+        db.execute(
+            "INSERT INTO orders "
+            "(id,strategy,account,symbol,side,quantity,created,status,filled,emergency,dispatch_started) "
+            "VALUES ('provider-rejected','A','a','X','BUY',1,?,'REJECTED',0,0,1)",
+            (p.clock(),),
+        )
+
+    assert p.reliability.reconcile() is True
+    assert (
+        p.store.rows("SELECT status FROM orders WHERE id='provider-rejected'")[0][
+            "status"
+        ]
+        == "REJECTED"
+    )
+    p.close()
+
+
 def test_fill_history_compared_even_when_account_net_is_zero(monkeypatch):
     p = ready()
     for key, side in (("1-buy", Side.BUY), ("2-sell", Side.SELL)):

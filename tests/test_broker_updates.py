@@ -324,6 +324,36 @@ def test_illegal_status_regression_rejected():
     p.store.close()
 
 
+def test_provisional_status_regression_after_authoritative_fill_is_ignored():
+    p = ready()
+    i = intent(p, "ord-provisional-regr", 1)
+    p.risk.submit(i)
+
+    fill = p.broker.execute("ord-provisional-regr", 1, Decimal("100"), p.clock())
+    p.ingest(fill)
+    gate_before = p.risk.state
+
+    result = p.process_broker_update(
+        BrokerUpdate(
+            update_id="021:ws:provider-order:2:1",
+            order_id="ord-provisional-regr",
+            update_type=BrokerUpdateType.ORDER_STATUS,
+            status=OrderStatus.OPEN,
+            timestamp=p.clock(),
+            provisional=True,
+        )
+    )
+
+    assert result.status == OrderStatus.FILLED
+    assert p.risk.state == gate_before
+    ignored = p.store.rows(
+        "SELECT payload FROM audit WHERE type='BROKER_UPDATE_IGNORED'"
+    )
+    assert len(ignored) == 1
+    assert "STALE_PROVISIONAL_LIFECYCLE" in ignored[0]["payload"]
+    p.store.close()
+
+
 def test_attribution_mismatch_fails_closed():
     p = ready()
     i = intent(p, "ord-attr", 50)

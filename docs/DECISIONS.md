@@ -892,6 +892,27 @@ ignoring prior financial history. It does not certify arbitrary empty responses,
 non-empty accounts, cross-day recovery, charges, corrections or kill behavior.
 It introduces no broker bypass and does not submit a live order during bootstrap.
 
+### 2026-10-09 amendment — durable same-day continuity horizon
+
+The original implementation remained fail-closed after every restart once the
+first order existed, even when the same dedicated ledger retained a verified
+empty-account bootstrap from earlier in the current 021 trading day. That was
+stricter than the decision's requirement for an established complete history
+horizon and prevented the virtual prototype from recovering its own fully
+mapped same-day activity.
+
+The earlier empty bootstrap may now anchor a same-day continuity proof only
+when every exposure-bearing current-day provider order maps to the durable local
+ledger, every aggregate provider trade ID equals the union of mapped per-order
+trade IDs, every dispatched/executed local order is mapped (apart from proven
+zero-fill rejection), current provider positions are symbol-resolvable to the
+single mapped account, and holdings are empty. The bootstrap, every relevant
+order and the new observation must fall on the same Asia/Kolkata trading date.
+Any unknown order/trade, holding, mapping gap, unresolvable position, date
+boundary or subsequent canonical snapshot mismatch remains incomplete and
+fail-closed. Explicit operator reconcile and resume are still required; this
+does not auto-resume or weaken cross-day recovery.
+
 ## DEC-039 — Provider-derived 021 demo execution without fabricated portfolio state
 
 Date: 2026-10-09
@@ -928,3 +949,37 @@ The demo shows genuine strategy intents, risk decisions and 021 responses. A
 provider rejection is visible as rejection, an accepted order remains open
 until provider lifecycle evidence arrives, and portfolio/P&L changes only from
 unique REST trade fills. This does not promise execution or profit.
+
+## DEC-040 — Serialized live broker-evidence heartbeat
+
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Context
+
+Live admission requires broker evidence no older than five seconds, but the 021
+runtime refreshed that evidence only during operator reconciliation. Continuous
+Auto execution therefore closed itself after five seconds even while market
+data and REST were healthy. A naive background snapshot also raced strategy
+writes through the single-call broker session and converted ordinary contention
+into false uncertainty.
+
+### Decision
+
+While the gate is explicitly RUNNING or REDUCE_ONLY, a bounded background
+worker drains canonical provider updates and verifies a complete broker snapshot
+every two seconds. Successful refresh updates freshness and reconciliation
+evidence without changing the gate. It never starts or resumes trading.
+
+All provider update reads run through `BrokerSession`. A heartbeat that finds a
+strategy write in progress skips that cycle. A write arriving during a snapshot
+waits within the configured write deadline; concurrent writes and genuine
+timeouts remain uncertain/fail-closed. Snapshot mismatch, incomplete coverage,
+position drift or provider failure still closes the gate.
+
+### Impact
+
+Continuous strategies retain fresh broker evidence without operator polling,
+while the existing one-call serialization and non-bypassable risk boundary are
+preserved. The heartbeat adds provider read load and auditable refresh events;
+it does not fabricate fills, retry writes or weaken explicit resume.

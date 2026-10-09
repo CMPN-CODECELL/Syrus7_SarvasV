@@ -27,12 +27,13 @@ def test_environment_precedence_and_local_file(monkeypatch, tmp_path):
         "broker_write_timeout_seconds": 8.0,
         "reconciliation_timeout_seconds": 10.0,
         "auto_scan_limit": 200,
-        "auto_max_positions": 3,
-        "auto_lookback_updates": 5,
-        "auto_entry_momentum": 0.003,
-        "auto_take_profit": 0.01,
-        "auto_stop_loss": 0.005,
-        "auto_cooldown_seconds": 60,
+        "auto_max_positions": 1,
+        "auto_lookback_updates": 2,
+        "auto_min_warmed_symbols": 1,
+        "auto_entry_momentum": 0.0001,
+        "auto_take_profit": 0.0005,
+        "auto_stop_loss": 0.0005,
+        "auto_cooldown_seconds": 2,
     }
     monkeypatch.setenv("DATABASE_URL", "process-test-value")
     assert settings()["database_url"] == "process-test-value"
