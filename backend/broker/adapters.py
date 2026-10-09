@@ -275,6 +275,10 @@ class Broker021Adapter(Official021RESTAdapter):
         self._require_enabled()
         return super().reconnect()
 
+    def ephemeral_key(self) -> str:
+        self._require_enabled()
+        return super().ephemeral_key()
+
     def close(self) -> None:
         if self.enabled:
             super().close()

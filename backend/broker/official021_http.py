@@ -470,7 +470,6 @@ class Official021RESTAdapter:
         self.connected = True
 
     def ephemeral_key(self) -> str:
-        self._require_enabled()
         data = parse_envelope(self._request("GET", "/websocket/ephemeral-key").json())
         if not isinstance(data, dict) or not data.get("token"):
             raise Provider021ProtocolError("021 ephemeral-key response omitted token")
