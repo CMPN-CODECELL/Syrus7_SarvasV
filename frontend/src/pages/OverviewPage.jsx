@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { api } from '../api/client'
 import { Card, DataTable, Empty, Money, Page, Readiness, Status } from '../components/UI'
 import { strategyRows } from '../domain/snapshot'
+import { CandleChart } from '../components/CandleChart'
 
 const actionLabels={
   '/api/demo':'Run replay',
@@ -42,6 +43,10 @@ export function OverviewPage(){
       <Card title="Strategy instances"><strong>{s.subscriptions?.length??0}</strong><p>independent symbol-level ledgers</p></Card>
     </div>
     <div className="grid two">
+      <Card title="Market candles" meta={s.market_data?.label||'Unavailable'}>
+        <CandleChart candles={s.candles||[]} />
+        <p className="muted">Only backend-closed candles are shown. Prices and source labels are not calculated in the browser.</p>
+      </Card>
       <Card title="Subscribed strategies" meta={`${s.subscriptions?.length||0} configured`}>
         <DataTable rows={rows} columns={[
           {key:'id',label:'Strategy'},
