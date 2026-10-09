@@ -87,6 +87,9 @@ class Platform:
         for meta in self.strategies.registry.values():
             self.candles.add_interval(meta["interval"])
         self.closed_candles = deque(maxlen=128)
+        for row in reversed(self.store.candle_rows(limit=128)):
+            from backend.shared.contracts import Candle
+            self.closed_candles.append(Candle(row["symbol"], row["interval"], row["start_time"], row["end_time"], Decimal(row["open"]), Decimal(row["high"]), Decimal(row["low"]), Decimal(row["close"]), row["volume"], bool(row["is_closed"]), bool(row["volume_available"]), row["data_source"]))
         self.auth = AuthService(self.store)
         self.demo_count = 0
         self._simulation_cursor = {}
@@ -226,6 +229,7 @@ class Platform:
 
     def tick(self, tick, *, replay=False):
         started = time.perf_counter()
+        provider_telemetry = None
         if replay:
             self.require_replay_demo()
             if self.external_market_data is not None:
@@ -287,6 +291,7 @@ class Platform:
             self.reliability.observe_tick(tick, replay=replay)
             for candle in closed:
                 self.closed_candles.append(candle)
+                self.store.save_candle(candle, provider=(provider_telemetry.get("provider", "replay") if provider_telemetry else "replay"))
         intents = []
         for candle in closed:
             try:
@@ -901,6 +906,7 @@ class Platform:
             market_data = self.market_data_evidence()
             result = {
                 "demo_enabled": self.demo_enabled,
+                "failure_lab_enabled": True,
                 "mode": (
                     self.external_market_data.telemetry().get(
                         "label", "EXTERNAL MARKET DATA"

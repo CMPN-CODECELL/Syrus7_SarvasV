@@ -245,7 +245,11 @@ class Official021RESTAdapter:
                     "IDX",
                 }:
                     continue
-                if row.get("instrument_type") == "STK" and exchange in {"NSECM", "BSEEQ"}:
+                if (
+                    row.get("instrument_type") == "STK"
+                    and exchange in {"NSECM", "BSEEQ"}
+                    and symbol[:1].isalpha()
+                ):
                     market_symbols.add(symbol)
                 try:
                     token = int(row["token"])

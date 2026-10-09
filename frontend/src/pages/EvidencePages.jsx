@@ -267,7 +267,8 @@ export function FailureLabPage(){
   const [activeStepIndex,setActiveStepIndex]=useState(0);
   const [error,setError]=useState('');
   const resultRef=useRef(null);
-  const mockLabEnabled=snapshot?.demo_enabled!==false;
+  const mockLabEnabled=snapshot?.failure_lab_enabled!==false;
+  const isolatedLab=snapshot?.demo_enabled===false;
 
   useEffect(()=>{
     api.get('/api/failure-lab/scenarios')
@@ -335,10 +336,10 @@ export function FailureLabPage(){
       return;
     }
     if(!mockLabEnabled){
-      setError('Failure Lab is available only in offline mock mode. Stop the 021 backend and restart with ALGOSHIELD_021_ENABLED=false to run synthetic tests.');
+      setError('Failure Lab is temporarily unavailable.');
       return;
     }
-    if(busy||!confirm(`Run ${guideFor(scenario,details).title}? This will mutate the current mock platform and may change its safety, order, fill, or position state.`))return;
+    if(busy||!confirm(`Run ${guideFor(scenario,details).title}? ${isolatedLab?'This runs in an isolated mock sandbox and cannot change live 021 state.':'This will mutate the current mock platform and may change its safety, order, fill, or position state.'}`))return;
     const paramsToSend=customParams||getParamsFor(scenario);
     setBusy(scenario);
     setSelectedScenario(scenario);
@@ -359,8 +360,8 @@ export function FailureLabPage(){
 
   return(
     <Page eyebrow="Practice a failure safely" title="Failure Lab" description="Simulate broker and market failures to verify risk and recovery protections in real time.">
-      <p className="muted">These tests mutate the current mock platform. Review the selected scenario, then confirm before running it.</p>
-      {!mockLabEnabled&&<div className="error" role="status">021 virtual-exchange mode is active. Synthetic Failure Lab scenarios are disabled because they cannot inject fake events into 021 provider state.</div>}
+      <p className="muted">{isolatedLab?'These tests run in an isolated offline sandbox and cannot change 021 orders, fills, positions, or market data.':'These tests mutate the current mock platform.'} Review the selected scenario, then confirm before running it.</p>
+      {isolatedLab&&<div className="notice" role="status">021 virtual-exchange mode is active. Failure Lab runs against an isolated mock sandbox; live provider state remains untouched.</div>}
       {error&&<div className="error" role="alert">{error}</div>}
 
       {busy&&runningGuide&&(
@@ -518,7 +519,7 @@ export function FailureLabPage(){
                       }}
                       aria-label={`Run ${guide.title} mock test`}
                     >
-                      {isBusy?'Test running…':!isOperator?'Operator required':'Run on current mock platform'}
+                      {isBusy?'Test running…':!isOperator?'Operator required':isolatedLab?'Run in isolated sandbox':'Run on current mock platform'}
                     </button>
                   </div>
                 </div>
@@ -567,6 +568,9 @@ export function MarketDataPage(){
   const isOperator=Boolean(user?.is_operator)
   const {snapshot:s}=useOutletContext()
   const [symbol,setSymbol]=useState('')
+  const [symbolQuery,setSymbolQuery]=useState('')
+  const [displayLimit,setDisplayLimit]=useState(50)
+  const [watchlist,setWatchlist]=useState(()=>{try{return JSON.parse(localStorage.getItem('algoshield.watchlist')||'[]')}catch{return []}})
   const quotes=Array.isArray(s?.market_data?.latest_quotes)?s.market_data.latest_quotes:[]
   const symbols=[...new Set([
     ...(s?.market_data?.canonical_symbols||[]),
@@ -575,7 +579,9 @@ export function MarketDataPage(){
     ...(s?.candles||[]).map(item=>item.symbol),
     ...(s?.subscriptions||[]).map(item=>item.symbol),
   ].filter(Boolean))].sort()
-  const candles=(s?.candles||[]).filter(item=>!symbol||item.symbol===symbol)
+  const filteredSymbols=symbols.filter(value=>value.toLowerCase().includes(symbolQuery.trim().toLowerCase()))
+  const matchesQuery=item=>!symbolQuery.trim()||item.symbol?.toLowerCase().includes(symbolQuery.trim().toLowerCase())
+  const candles=(s?.candles||[]).filter(item=>(!symbol||item.symbol===symbol)&&matchesQuery(item))
   const [sessionBusy,setSessionBusy]=useState(false)
   const [sessionError,setSessionError]=useState('')
   const setSession=async status=>{
@@ -591,7 +597,11 @@ export function MarketDataPage(){
       setSessionBusy(false)
     }
   }
-  const visibleQuotes=quotes.filter(item=>!symbol||item.symbol===symbol)
+  const visibleQuotes=quotes.filter(item=>(!symbol||item.symbol===symbol)&&matchesQuery(item))
+  const displayedQuotes=visibleQuotes.slice(0,displayLimit)
+  const watchQuotes=quotes.filter(item=>watchlist.includes(item.symbol))
+  const toggleWatch=symbol=>setWatchlist(current=>current.includes(symbol)?current.filter(item=>item!==symbol):[...current,symbol])
+  useEffect(()=>{localStorage.setItem('algoshield.watchlist',JSON.stringify(watchlist))},[watchlist])
   const source=s?.market_data?.label||s?.market_data?.provider||'Unavailable'
   const eventTime=s?.market_data?.last_event_timestamp
   const receivedTime=s?.market_data?.last_received_at
@@ -619,11 +629,14 @@ export function MarketDataPage(){
       <Card title="Duplicates / late"><strong>{s?.market_data?.duplicate_ticks??'—'} / {s?.market_data?.late_ticks??'—'}</strong></Card>
     </div>
     {s?.market_data?.errors?.length?<Card title="Provider lifecycle errors"><EvidenceView value={s.market_data.errors}/></Card>:null}
-    <Card title="Latest external quotes" meta={`${visibleQuotes.length} shown`}>
-      <DataTable rows={visibleQuotes} columns={[{key:'symbol',label:'Symbol'},{key:'provider_symbol',label:'Provider symbol'},{key:'price',label:'Price',render:row=>row.price??'—'},{key:'event_timestamp',label:'Event time',render:row=>asUtc(row.event_timestamp)},{key:'raw_event_timestamp',label:'Raw timestamp',render:row=>row.raw_event_timestamp??'—'},{key:'received_at',label:'Received',render:row=>asUtc(row.received_at)},{key:'volume_available',label:'Volume',render:row=>row.volume_available===false?'Unavailable':'Available'},{key:'data_source',label:'Source'}]}/>
+    <Card title="Watchlist" meta={`${watchQuotes.length} live symbols`}><DataTable rows={watchQuotes} columns={[{key:'symbol',label:'Symbol'},{key:'price',label:'Price',render:row=>row.price??'—'},{key:'data_source',label:'Source'},{key:'action',label:'',render:row=><button type="button" onClick={()=>toggleWatch(row.symbol)}>Remove</button>}]}/></Card>
+    <Card title="Latest external quotes" meta={`${displayedQuotes.length} of ${visibleQuotes.length} shown`}>
+      <label className="compact-filter">Show stocks<input aria-label="Number of stocks to display" type="number" min="1" max="200" value={displayLimit} onChange={event=>setDisplayLimit(Math.max(1,Math.min(200,Number(event.target.value)||1)))}/></label>
+      <DataTable rows={displayedQuotes} columns={[{key:'symbol',label:'Symbol'},{key:'provider_symbol',label:'Provider symbol'},{key:'price',label:'Price',render:row=>row.price??'—'},{key:'event_timestamp',label:'Event time',render:row=>asUtc(row.event_timestamp)},{key:'raw_event_timestamp',label:'Raw timestamp',render:row=>row.raw_event_timestamp??'—'},{key:'received_at',label:'Received',render:row=>asUtc(row.received_at)},{key:'volume_available',label:'Volume',render:row=>row.volume_available===false?'Unavailable':'Available'},{key:'data_source',label:'Source'},{key:'watch',label:'',render:row=><button type="button" onClick={()=>toggleWatch(row.symbol)}>{watchlist.includes(row.symbol)?'★':'☆'}</button>}]}/>
     </Card>
     <Card title="Closed candles" meta={`${candles.length} shown`}>
-      <label className="compact-filter">Symbol<select aria-label="Filter market data by symbol" value={symbol} onChange={event=>setSymbol(event.target.value)}><option value="">All symbols</option>{symbols.map(value=><option key={value}>{value}</option>)}</select></label>
+      <label className="compact-filter">Search stock<input aria-label="Search stock symbols" placeholder="RELIANCE or TCS" value={symbolQuery} onChange={event=>setSymbolQuery(event.target.value)}/></label>
+      <label className="compact-filter">Symbol<select aria-label="Filter market data by symbol" value={symbol} onChange={event=>setSymbol(event.target.value)}><option value="">All symbols</option>{filteredSymbols.map(value=><option key={value}>{value}</option>)}</select></label>
       <DataTable rows={candles} columns={[{key:'symbol',label:'Symbol'},{key:'interval',label:'Interval'},{key:'open',label:'Open'},{key:'high',label:'High'},{key:'low',label:'Low'},{key:'close',label:'Close'},{key:'volume',label:'Volume',render:row=>row.volume_available===false?'Unavailable':String(row.volume??'—')},{key:'data_source',label:'Source'}]}/>
     </Card>
   </Page>

@@ -22,6 +22,10 @@ export function OverviewPage(){
   if(!s)return <Empty>Waiting for authenticated backend state…</Empty>
   const proof=s.safety_proof||{}
   const rows=strategyRows(s)
+  const positions=s.positions||[]
+  const portfolioPnl=positions.reduce((total,row)=>total+Number(row.net_pnl??row.financial_position?.net_pnl??0),0)
+  const openQuantity=positions.reduce((total,row)=>total+Math.abs(Number(row.net_quantity??row.financial_position?.net_quantity??0)),0)
+  const activePositions=positions.filter(row=>Number(row.net_quantity??row.financial_position?.net_quantity??0)!==0).length
   const activeStocks=new Set((s.subscriptions||[]).filter(item=>item.enabled).map(item=>item.symbol)).size
   const isKillLatched=Boolean(s.safety?.kill_latched||s.gate==='KILLED')
   const run=async(path)=>{
@@ -48,9 +52,10 @@ export function OverviewPage(){
       <Card title="Active stocks"><strong>{activeStocks}</strong><p>unique enabled symbols</p></Card>
       <Card title="Strategy instances"><strong>{s.subscriptions?.length??0}</strong><p>independent symbol-level ledgers</p></Card>
     </div>
+    <Card title="Portfolio overview" meta="Derived from authenticated strategy positions"><div className="stat-grid"><div><span className="muted">Open positions</span><strong>{activePositions}</strong></div><div><span className="muted">Gross quantity</span><strong>{openQuantity}</strong></div><div><span className="muted">Net P&amp;L</span><Money value={portfolioPnl}/></div></div><p className="muted">Funds, margin, holdings, IPO and GTT balances require provider endpoints that are not part of the documented 021 developer API.</p></Card>
     <div className="grid two">
       <Card title="Market candles" meta={s.market_data?.label||'Unavailable'}>
-        <CandleChart candles={s.candles||[]} />
+        <CandleChart candles={s.candles||[]} symbols={(s.market_data?.canonical_symbols||s.market_data?.symbols||[])} />
         <p className="muted">Only backend-closed candles are shown. Prices and source labels are not calculated in the browser.</p>
       </Card>
       <Card title="Subscribed strategies" meta={`${s.subscriptions?.length||0} configured`}>
