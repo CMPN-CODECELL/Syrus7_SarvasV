@@ -224,6 +224,7 @@ function FailureResult({result,details}){
 }
 
 export function FailureLabPage(){
+  const {snapshot} = useOutletContext() || {};
   const [scenarios,setScenarios]=useState([]);
   const [details,setDetails]=useState({});
   const [selectedScenario,setSelectedScenario]=useState('partial');
@@ -233,6 +234,7 @@ export function FailureLabPage(){
   const [activeStepIndex,setActiveStepIndex]=useState(0);
   const [error,setError]=useState('');
   const resultRef=useRef(null);
+  const mockLabEnabled=snapshot?.demo_enabled!==false;
 
   useEffect(()=>{
     api.get('/api/failure-lab/scenarios')
@@ -295,6 +297,10 @@ export function FailureLabPage(){
   };
 
   const run=async(scenario,customParams)=>{
+    if(!mockLabEnabled){
+      setError('Failure Lab is available only in offline mock mode. Stop the 021 backend and restart with ALGOSHIELD_021_ENABLED=false to run synthetic tests.');
+      return;
+    }
     if(busy||!confirm(`Run ${guideFor(scenario,details).title}? This will mutate the current mock platform and may change its safety, order, fill, or position state.`))return;
     const paramsToSend=customParams||getParamsFor(scenario);
     setBusy(scenario);
@@ -316,6 +322,7 @@ export function FailureLabPage(){
   return(
     <Page eyebrow="Practice a failure safely" title="Failure Lab" description="Simulate broker and market failures to verify risk and recovery protections in real time.">
       <p className="muted">These tests mutate the current mock platform. Review the selected scenario, then confirm before running it.</p>
+      {!mockLabEnabled&&<div className="error" role="status">021 live mode is active. Synthetic Failure Lab scenarios are disabled to protect the real account.</div>}
       {error&&<div className="error" role="alert">{error}</div>}
 
       {busy&&runningGuide&&(
@@ -427,7 +434,7 @@ export function FailureLabPage(){
               type="button"
               className="primary lab-inspector-run"
               aria-label="Run selected scenario with configured parameters"
-              disabled={!!busy}
+              disabled={!!busy||!mockLabEnabled}
               onClick={()=>run(selectedScenario)}
             >
               {busy===selectedScenario?'Running mock test…':`Run ${activeGuide.title} with configured parameters`}
@@ -465,7 +472,7 @@ export function FailureLabPage(){
                     <button
                       type="button"
                       className={`scenario-run-btn ${isBusy?'active':''}`}
-                      disabled={!!busy}
+                      disabled={!!busy||!mockLabEnabled}
                       onClick={e=>{
                         e.stopPropagation();
                         setSelectedScenario(s);

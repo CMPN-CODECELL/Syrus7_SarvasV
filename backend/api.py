@@ -362,11 +362,14 @@ def create_app(platform=None, *, trusted_origins=None):
     async def invalid(request, exc):
         from fastapi.responses import JSONResponse
 
+        message = str(exc)
+        safe_messages = (
+            "demo/failure injection requires offline mock storage",
+            "demo replay requires an explicitly enabled local mock broker",
+        )
         return JSONResponse(
             status_code=409,
-            content={
-                "detail": "operation rejected; inspect authorized local audit evidence"
-            },
+            content={"detail": message if message.startswith(safe_messages) else "operation rejected; inspect authorized local audit evidence"},
         )
 
     @app.get("/")
