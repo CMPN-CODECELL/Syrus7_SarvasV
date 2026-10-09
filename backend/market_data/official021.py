@@ -184,8 +184,9 @@ class MarketData021Provider:
         if factory is None:
             from websockets.sync.client import connect
 
-            factory = connect
-        socket = factory(url)
+            socket = connect(url, ping_interval=None)
+        else:
+            socket = factory(url)
         socket.send(
             json.dumps({"Task": "subscribe", "Mode": self.mode, "Instruments": pairs})
         )

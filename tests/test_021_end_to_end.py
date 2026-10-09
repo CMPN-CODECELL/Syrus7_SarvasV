@@ -86,6 +86,8 @@ def test_fake_021_quote_to_reconciled_fill_pipeline(tmp_path):
                     else []
                 ),
             )
+        if path.endswith("/portfolio/holdings"):
+            return httpx.Response(200, json=[])
         raise AssertionError(f"unexpected fake 021 request: {request.method} {path}")
 
     class CompleteFake021(Official021RESTAdapter):

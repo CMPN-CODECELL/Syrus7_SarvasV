@@ -195,11 +195,14 @@ class Platform:
             self._broker_stream = OrderStream021(
                 adapter,
                 self.enqueue_broker_update,
-                lambda _reason: self.reliability.fail_closed(
-                    "021_ORDER_STREAM_DISCONNECTED"
-                ),
+                self._record_order_stream_disconnect,
             )
         return self._broker_stream.start()
+
+    def _record_order_stream_disconnect(self, reason):
+        """Record loss of the optional lifecycle stream; REST remains authority."""
+        with self.store.transaction():
+            self.store.audit("021_ORDER_STREAM_DISCONNECTED", {"reason": str(reason)})
 
     def stop_broker_order_stream(self):
         if self._broker_stream is not None:
@@ -886,32 +889,61 @@ class Platform:
                 sub_rows = self.store.rows("SELECT * FROM subscriptions")
                 user_strat_ids = None
 
-            subscriptions = [
-                dict(r)
-                | {
-                    "running": self.strategies.state_for(r) == "RUNNING"
-                    and self.risk.strategy_state(r["id"]) == "RUNNING",
-                    "state": (
-                        "HALTED"
-                        if str(self.risk.strategy_state(r["id"])).endswith("HALTED")
-                        else self.strategies.state_for(r)
-                    ),
-                    "strategy_state": self.risk.strategy_state(r["id"]),
-                    "readiness": self.strategies.readiness_for(r["id"]),
-                }
-                for r in sub_rows
-            ]
+            ledger_positions = self.ledger.positions()
+
+            subscriptions = []
+            for r in sub_rows:
+                financial_position = ledger_positions.get(
+                    (r["account"], r["id"], r["symbol"])
+                )
+                financial_projection = (
+                    _contract_dict(financial_position)
+                    | {"evidence_status": "FILL_DERIVED"}
+                    if financial_position is not None
+                    else {
+                        "strategy_instance_id": r["id"],
+                        "symbol": r["symbol"],
+                        "net_quantity": 0,
+                        "average_price": "0",
+                        "realized_pnl": "0",
+                        "unrealized_pnl": "0",
+                        "gross_pnl": "0",
+                        "charges": "0",
+                        "net_pnl": "0",
+                        "evidence_status": "NO_FILLS",
+                    }
+                )
+                readiness = (
+                    self.auto_mode.readiness_for(r["account"], r["symbol"])
+                    if r["kind"] in self.auto_mode.managed_kinds
+                    else self.strategies.readiness_for(r["id"])
+                )
+                subscriptions.append(
+                    dict(r)
+                    | {
+                        "running": self.strategies.state_for(r) == "RUNNING"
+                        and self.risk.strategy_state(r["id"]) == "RUNNING",
+                        "state": (
+                            "HALTED"
+                            if str(self.risk.strategy_state(r["id"])).endswith("HALTED")
+                            else self.strategies.state_for(r)
+                        ),
+                        "strategy_state": self.risk.strategy_state(r["id"]),
+                        "readiness": readiness,
+                        "financial_position": financial_projection,
+                    }
+                )
 
             if account_id is not None:
                 positions = [
                     _contract_dict(p) | {"account_id": a}
-                    for (a, _, _), p in self.ledger.positions().items()
+                    for (a, _, _), p in ledger_positions.items()
                     if a == account_id
                 ]
             else:
                 positions = [
                     _contract_dict(p) | {"account_id": a}
-                    for (a, _, _), p in self.ledger.positions().items()
+                    for (a, _, _), p in ledger_positions.items()
                 ]
 
             risk_budgets = [
@@ -1158,6 +1190,32 @@ class Platform:
                 )
 
             market_data = self.market_data_evidence()
+            auto_evidence = (
+                self.auto_mode.evidence(account_id) if account_id is not None else None
+            )
+            if auto_evidence is not None:
+                decisions_by_symbol = {
+                    row["symbol"]: row for row in auto_evidence["decisions"]
+                }
+                latest_order_by_strategy = {}
+                for order in orders:
+                    latest_order_by_strategy.setdefault(order["strategy"], order)
+                auto_evidence["instances"] = [
+                    {
+                        **subscription,
+                        "decision": decisions_by_symbol.get(subscription["symbol"]),
+                        "latest_order": latest_order_by_strategy.get(
+                            subscription["id"]
+                        ),
+                    }
+                    for subscription in subscriptions
+                    if subscription["kind"] in self.auto_mode.managed_kinds
+                    and (
+                        subscription["enabled"]
+                        or subscription["financial_position"]["net_quantity"] != 0
+                    )
+                ]
+
             result = {
                 "demo_enabled": self.demo_enabled,
                 "failure_lab_enabled": True,
@@ -1205,11 +1263,7 @@ class Platform:
                 "signals": signals,
                 "strategy_errors": strategy_errors,
                 "market_data": market_data,
-                "auto_mode": (
-                    self.auto_mode.evidence(account_id)
-                    if account_id is not None
-                    else None
-                ),
+                "auto_mode": auto_evidence,
                 "provider_readiness": (
                     self.provider_readiness(account_id, market_data)
                     if account_id is not None

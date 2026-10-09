@@ -400,13 +400,28 @@ class Reliability:
         reconciliation_status = "VERIFIED" if coverage_verified else "UNKNOWN"
         reconciliation_reason = report.get("reason") or "RECONCILIATION_UNAVAILABLE"
 
-        # No current external provider contract supplies an authenticated
-        # subscription acknowledgement.  Socket connection and send success are
-        # deliberately insufficient, so external subscription evidence remains
-        # UNKNOWN until Member 2 adds reviewed provider evidence.
-        subscription_status = "UNKNOWN" if external_market_data else "NOT_APPLICABLE"
+        # A send acknowledgement is insufficient, but fresh accepted marks for
+        # every required symbol prove that the provider is actively serving the
+        # requested subscription set.
+        subscribed_symbols = set(market_data.get("subscribed_symbols") or ())
+        subscription_observed = bool(
+            external_market_data
+            and required_symbols
+            and market_data.get("connected") is True
+            and required_symbols <= subscribed_symbols
+            and not missing_marks
+        )
+        subscription_status = (
+            "VERIFIED"
+            if subscription_observed
+            else "UNKNOWN"
+            if external_market_data
+            else "NOT_APPLICABLE"
+        )
         subscription_reason = (
-            "PROVIDER_SUBSCRIPTION_EVIDENCE_UNAVAILABLE"
+            "PROVIDER_SUBSCRIPTION_OBSERVED"
+            if subscription_observed
+            else "PROVIDER_SUBSCRIPTION_EVIDENCE_UNAVAILABLE"
             if external_market_data
             else "NO_EXTERNAL_PROVIDER_SUBSCRIPTION"
         )

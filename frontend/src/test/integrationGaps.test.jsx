@@ -36,7 +36,7 @@ const snapshot={
   subscriptions:[
     {id:'alpha',account:'acc_a',kind:'momentum',symbol:'TCS',enabled:1,state:'RUNNING',readiness:{samples:5,warmup:5,ready:true}},
     {id:'zero',account:'acc_a',kind:'mean_reversion',symbol:'INFY',enabled:0,state:'STOPPED',readiness:{samples:0,warmup:5,ready:false}},
-    {id:'missing',account:'acc_a',kind:'breakout',symbol:'RELIANCE',enabled:1,state:'READY',readiness:{samples:1,warmup:1,ready:true}},
+    {id:'missing',account:'acc_a',kind:'breakout',symbol:'RELIANCE',enabled:1,state:'READY',readiness:{samples:1,warmup:1,ready:true},financial_position:{net_quantity:0,net_pnl:'0',charges:'0',evidence_status:'NO_FILLS'}},
   ],
   positions:[
     {account_id:'acc_a',strategy_instance_id:'alpha',symbol:'TCS',net_quantity:7,net_pnl:'123.4500',charges:'1.25'},

@@ -11,8 +11,10 @@
   required by open orders/positions. Rebuilding that universe remains fail-closed
   and requires reconciliation plus explicit resume before risk-increasing work.
 - Added server-side policy configuration and React controls/evidence. This is
-  mock-fixture verified, not a profitability or live-021-write claim. Final
-  regression: 445 backend passed / 1 optional PostgreSQL skip; 43 frontend
+  mock-fixture verified, not a profitability or live-021-write claim. Backend
+  `NO_FILLS` projections replace ambiguous financial dashes without adding
+  browser-side calculations or authoritative position rows. Final
+  regression: 446 backend passed / 1 optional PostgreSQL skip; 43 frontend
   passed; Ruff, formatting, ESLint, Vite build, docs links and diff checks passed.
 
 ## 2026-10-09 — Official 021-03 gap-only fixture integration
@@ -526,3 +528,53 @@ dependency was changed.
 - Final verification: backend `441 passed, 1 skipped`; frontend `42 passed`,
   ESLint and Vite production build passed; Ruff check/format and diff check
   passed. The only backend warning is the existing Starlette/httpx deprecation.
+
+## 2026-10-09 — Adaptive Auto attribution visibility
+
+- Auto now persists the selected account-scoped attribution instance once its
+  cross-stock comparison coverage is warm, before an entry threshold is crossed.
+  This makes subscription/readiness visible without fabricating a broker order.
+- Auto readiness is based on normalized provider updates, while its snapshot row
+  includes backend fill-derived financial evidence, current decision/risk result,
+  and latest real order state. The selected policy remains evidence on one Auto
+  instance so the runtime cannot emit duplicate policy intents.
+- The manual stock picker no longer contains hardcoded symbol shortcuts; it uses
+  authenticated backend/provider inventory. No live 021 order was submitted in
+  this validation task.
+- Explicit Auto start/stop lifecycle now restores from durable audit evidence on
+  application restart. Restoration re-enables scanning only and leaves the
+  reconciliation-controlled global gate unchanged.
+
+## 2026-10-09 — 021 empty-account bootstrap and ledger isolation
+
+- Fresh authenticated reads returned 200 for orders, trades, positions,
+  holdings, instruments and ephemeral key. The four account-state lists were
+  empty; the catalogue contained 104,969 rows. Order-specific reads were not
+  callable because no order ID exists; no write endpoint was invoked.
+- The previous shared SQLite file contained offline mock history and no 021
+  mappings. DEC-037 now selects a dedicated 021 SQLite ledger and permits only a
+  simultaneous four-view empty bootstrap when that ledger has no execution
+  history. Any non-empty/cross-day state remains incomplete.
+- Fresh accepted marks for every provider-reported subscribed symbol now provide
+  serving-subscription evidence. Reconciliation still leaves the gate STOPPED
+  until authorized explicit resume. Focused tests passed; full-suite evidence is
+  recorded after final validation.
+
+## 2026-10-09 — Truthful 021 virtual-exchange demo execution
+
+- No dummy holdings, fills or P&L were inserted. A dedicated ignored demo ledger
+  preserves identity and user-created strategy rows while starting execution
+  evidence empty.
+- 021 cash orders are configurable with `ALGOSHIELD_021_PRODUCT=CNC`. Auto ranks
+  provider catalogue stocks by provider freeze quantity instead of a hardcoded
+  symbol list.
+- Definitive 021 validation failures now remain `REJECTED` across HTTP 4xx,
+  failure-envelope and zero-ID terminal-row variants. Ambiguous writes still
+  become `UNKNOWN` and fail closed.
+- Live evidence observed real risk-approved quantity-one requests: illiquid or
+  session-restricted instruments were rejected with provider reasons, while
+  `ARCFIN BUY` was provider-accepted as `OPEN`. No fill was claimed without a
+  uniquely identified REST trade.
+- The optional order WebSocket no longer owns safety authority; disconnects are
+  audited while REST order/trade evidence remains authoritative. Market-feed or
+  REST uncertainty still fails closed.

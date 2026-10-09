@@ -180,3 +180,12 @@ real implementation deferred on sponsor evidence. No migration/lockfile change.
   REST submit → unique REST fill → ledger position → complete fixture
   reconciliation. Full backend regression: 441 passed, 1 optional PostgreSQL
   test skipped.
+
+## 2026-10-09 — Empty 021 virtual-account bootstrap
+
+- Re-verified authenticated account reads: orders, trades, positions and
+  holdings simultaneously returned empty; instruments and ephemeral-key reads
+  passed. No write endpoint was invoked.
+- Added the DEC-037 adapter boundary: only those four empty views plus an
+  execution-empty dedicated 021 store can report bootstrap completeness. Any
+  provider data, local order/fill, or mapping retains incomplete status.

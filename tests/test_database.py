@@ -19,6 +19,7 @@ def test_environment_precedence_and_local_file(monkeypatch, tmp_path):
         "database_url": "local-test-value",
         "sqlite_path": "fallback.db",
         "021_enabled": False,
+        "021_product": "INTRADAY",
         "market_data_provider": "replay",
         "021_max_timestamp_skew_seconds": 10.0,
         "broker_read_timeout_seconds": 8.0,
@@ -43,6 +44,18 @@ def test_021_live_mode_requires_021_market_data(monkeypatch, tmp_path):
 
     with pytest.raises(ValueError, match="disable ALGOSHIELD_021_ENABLED"):
         settings()
+
+
+def test_021_live_mode_uses_dedicated_sqlite_timeline(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("ALGOSHIELD_DB", "mock.db")
+    monkeypatch.setenv("ALGOSHIELD_021_ENABLED", "true")
+    monkeypatch.delenv("ALGOSHIELD_021_DB", raising=False)
+
+    assert settings()["sqlite_path"] == "data/platform-021.db"
+    monkeypatch.setenv("ALGOSHIELD_021_DB", "provider.db")
+    assert settings()["sqlite_path"] == "provider.db"
 
 
 def test_021_market_data_requires_live_mode(monkeypatch, tmp_path):

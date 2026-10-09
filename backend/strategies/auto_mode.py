@@ -9,6 +9,7 @@ loss-containment thresholds while reporting HOLD when evidence is insufficient.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from collections import deque
 from decimal import Decimal
@@ -78,17 +79,11 @@ class AutoMode:
         symbols = tuple(symbol for symbol in symbols if symbol)
         if len(symbols) <= self.scan_limit:
             return symbols
-        # Even catalogue sampling avoids the alphabetical bias that previously
-        # surfaced only the first exchange rows while keeping socket load bounded.
-        if self.scan_limit == 1:
-            return (symbols[len(symbols) // 2],)
-        indexes = {
-            round(index * (len(symbols) - 1) / (self.scan_limit - 1))
-            for index in range(self.scan_limit)
-        }
-        return tuple(symbols[index] for index in sorted(indexes))
+        # Provider adapters may rank their catalogue by execution suitability
+        # (021 uses its freeze-quantity metadata as a liquidity proxy).
+        return symbols[: self.scan_limit]
 
-    def start(self, account_id):
+    def start(self, account_id, *, audit_type="AUTO_MODE_STARTED"):
         candidates = self._catalogue_candidates()
         if not candidates:
             raise ValueError("auto mode found no broker-supported stocks to scan")
@@ -106,7 +101,7 @@ class AutoMode:
             }
         with self.platform.store.transaction():
             self.platform.store.audit(
-                "AUTO_MODE_STARTED",
+                audit_type,
                 {
                     "account": account_id,
                     "candidate_count": len(candidates),
@@ -116,6 +111,28 @@ class AutoMode:
             )
         self.platform.refresh_external_market_universe()
         return self.evidence(account_id)
+
+    def restore(self):
+        """Restore explicitly active scanners without reopening the trading gate."""
+        latest = {}
+        for row in self.platform.store.rows(
+            "SELECT type,payload FROM audit WHERE type IN "
+            "('AUTO_MODE_STARTED','AUTO_MODE_RESTORED','AUTO_MODE_STOPPED') "
+            "ORDER BY sequence"
+        ):
+            try:
+                payload = json.loads(row["payload"])
+            except (TypeError, ValueError):
+                continue
+            account_id = payload.get("account")
+            if account_id:
+                latest[account_id] = row["type"]
+        restored = []
+        for account_id, event_type in latest.items():
+            if event_type != "AUTO_MODE_STOPPED":
+                self.start(account_id, audit_type="AUTO_MODE_RESTORED")
+                restored.append(account_id)
+        return tuple(restored)
 
     def stop(self, account_id):
         with self._lock:
@@ -166,6 +183,46 @@ class AutoMode:
             self.platform.strategies.set_enabled(account_id, strategy_id, True)
         return strategy_id
 
+    def _select_subscription(self, account_id, symbol, selected_strategy):
+        """Persist the currently selected Auto attribution before any order exists.
+
+        Auto's policy family is evidence attached to one guarded auto instance;
+        it is not registered as a second runnable strategy because that would
+        emit duplicate intents for the same market observation.
+        """
+        strategy_id = self._ensure_subscription(account_id, symbol)
+        for row in self.platform.store.rows(
+            "SELECT id,symbol FROM subscriptions WHERE account=? AND id<>? "
+            "AND kind IN ('auto_adaptive','auto_momentum') AND enabled=1",
+            (account_id, strategy_id),
+        ):
+            position = self.platform.ledger.positions().get(
+                (account_id, row["id"], row["symbol"])
+            )
+            if (position and position.net_quantity) or self._open_order(
+                account_id, row["id"], row["symbol"]
+            ):
+                continue
+            self.platform.strategies.set_enabled(account_id, row["id"], False)
+        with self._lock:
+            state = self._states[account_id]
+            state["selected_symbol"] = symbol
+            state["selected_strategy"] = selected_strategy
+            state["selected_strategy_instance_id"] = strategy_id
+        return strategy_id
+
+    def readiness_for(self, account_id, symbol):
+        """Return quote-observation readiness for an Auto-managed instance."""
+        with self._lock:
+            state = self._states.get(account_id) or {}
+            samples = len((state.get("history") or {}).get(symbol, ()))
+        return {
+            "samples": min(samples, self.lookback),
+            "warmup": self.lookback,
+            "ready": samples >= self.lookback,
+            "evidence": "NORMALIZED_MARKET_UPDATES",
+        }
+
     def _open_order(self, account_id, strategy_id, symbol):
         return bool(
             self.platform.store.rows(
@@ -205,6 +262,11 @@ class AutoMode:
             "reason": reason,
             "momentum": str(score) if score is not None else None,
             "selected_strategy": selected_strategy,
+            "selected_score": (
+                str((strategy_scores or {})[selected_strategy])
+                if selected_strategy in (strategy_scores or {})
+                else None
+            ),
             "strategy_scores": {
                 key: str(value) for key, value in (strategy_scores or {}).items()
             },
@@ -283,7 +345,13 @@ class AutoMode:
                 tick.symbol
             ]
             momentum_score = strategy_scores["momentum"]
+            strongest = max(opportunities, key=lambda item: opportunities[item][1])
+            minimum_coverage = min(len(state["candidates"]), min(20, self.scan_limit))
             strategy_id = self._strategy_id(account_id, tick.symbol)
+            if strongest == tick.symbol and len(opportunities) >= minimum_coverage:
+                strategy_id = self._select_subscription(
+                    account_id, tick.symbol, selected_strategy
+                )
             position = self.platform.ledger.positions().get(
                 (account_id, strategy_id, tick.symbol)
             )
@@ -338,19 +406,11 @@ class AutoMode:
                 side, order_quantity = Side.BUY, abs(quantity)
                 reason = "long-only policy is flattening short exposure"
             else:
-                minimum_coverage = min(
-                    len(state["candidates"]), min(20, self.scan_limit)
-                )
                 if len(opportunities) < minimum_coverage:
                     reason = (
                         "comparing strategy evidence across stocks "
                         f"{len(opportunities)}/{minimum_coverage}"
                     )
-                strongest = (
-                    max(opportunities, key=lambda item: opportunities[item][1])
-                    if opportunities
-                    else None
-                )
                 global_cooldown = state.get("last_attempt_at")
                 if (
                     strongest == tick.symbol
@@ -387,7 +447,9 @@ class AutoMode:
                 )
                 continue
 
-            strategy_id = self._ensure_subscription(account_id, tick.symbol)
+            strategy_id = self._select_subscription(
+                account_id, tick.symbol, selected_strategy
+            )
             with self._lock:
                 self._sequence += 1
                 sequence = self._sequence
@@ -442,6 +504,9 @@ class AutoMode:
                     "candidate_count": 0,
                     "evaluated_count": 0,
                     "decisions": [],
+                    "selected_symbol": None,
+                    "selected_strategy": None,
+                    "selected_strategy_instance_id": None,
                     "policy": self._policy(),
                 }
             decisions = sorted(
@@ -454,6 +519,11 @@ class AutoMode:
                 "candidate_count": len(state["candidates"]),
                 "evaluated_count": len(state["history"]),
                 "started_at": state.get("started_at"),
+                "selected_symbol": state.get("selected_symbol"),
+                "selected_strategy": state.get("selected_strategy"),
+                "selected_strategy_instance_id": state.get(
+                    "selected_strategy_instance_id"
+                ),
                 "decisions": decisions,
                 "policy": self._policy(),
             }

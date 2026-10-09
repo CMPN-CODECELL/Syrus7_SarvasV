@@ -67,5 +67,14 @@ One worker. UNKNOWN retains reservation. No synthetic drift fixes; opposing virt
 - SQLite schema v12 is verified. PostgreSQL migration 011 is packaged but blocked
   on an isolated database; no Neon or production access occurred.
 
+## 2026-10-09 — 021 bootstrap admission boundary
+
+- Added provider/readiness integration for DEC-037. 021 SQLite execution uses a
+  dedicated configured ledger, never the offline mock ledger. Fresh accepted
+  marks for every required provider-reported subscribed symbol prove serving
+  subscription evidence; send/connect alone remain insufficient.
+- Empty bootstrap leaves the gate STOPPED. Operator reconciliation and explicit
+  resume authority remain mandatory before any risk-increasing order.
+
 
 2026-10-09 documentation integration: current ownership, dependencies and acceptance gates are consolidated in [TEAM_EXECUTION_PLAN](../TEAM_EXECUTION_PLAN.md), DEC-028. Direct branch pushes are allowed; PRs optional. No new member feature is claimed implemented by this planning update. Fresh cross-module evidence is in [INTEGRATION](INTEGRATION.md).

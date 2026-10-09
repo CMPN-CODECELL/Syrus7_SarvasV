@@ -43,6 +43,14 @@ def settings():
     if enabled_021 not in {"true", "false"}:
         raise ValueError("ALGOSHIELD_021_ENABLED must be true or false")
     result["021_enabled"] = enabled_021 == "true"
+    if result["021_enabled"] and not result["database_url"]:
+        # A live-provider accounting timeline must never share the offline
+        # mock/replay order and fill ledger. Preserve ALGOSHIELD_DB as the mock
+        # store and use an independently configurable 021 store.
+        result["sqlite_path"] = os.getenv(
+            "ALGOSHIELD_021_DB",
+            values.get("ALGOSHIELD_021_DB", "data/platform-021.db"),
+        )
     # 021 is primary when explicitly enabled; offline installs retain replay.
     # Provider changes are startup configuration, never an implicit fallback.
     result["market_data_provider"] = "021" if result["021_enabled"] else "replay"
@@ -56,6 +64,16 @@ def settings():
         value = os.getenv(env_name, values.get(env_name))
         if value:
             result[key] = value.strip()
+    product = (
+        os.getenv(
+            "ALGOSHIELD_021_PRODUCT", values.get("ALGOSHIELD_021_PRODUCT", "INTRADAY")
+        )
+        .strip()
+        .upper()
+    )
+    if product not in {"INTRADAY", "CNC", "NRML"}:
+        raise ValueError("ALGOSHIELD_021_PRODUCT must be INTRADAY, CNC or NRML")
+    result["021_product"] = product
     # The HTTP mock is an explicit local integration dependency.  Keep this
     # optional so existing callers/config tests remain backwards compatible.
     mock_broker_url = os.getenv("MOCK_BROKER_URL", values.get("MOCK_BROKER_URL"))
