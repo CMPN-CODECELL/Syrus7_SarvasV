@@ -1,4 +1,5 @@
 from dataclasses import replace
+from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 import pytest
 
@@ -143,6 +144,53 @@ def test_duplicate_identical_fill_ignored():
 
     dup_audits = p.store.rows("SELECT * FROM audit WHERE type='DUPLICATE_FILL_IGNORED'")
     assert len(dup_audits) == 1
+    p.store.close()
+
+
+def test_concurrent_duplicate_fill_has_one_financial_effect():
+    p = ready()
+    p.risk.submit(intent(p, "ord-concurrent-dup", 100))
+    fill = p.broker.execute("ord-concurrent-dup", 40, Decimal("100"), p.clock())
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: p.ingest(fill), range(2)))
+
+    assert sorted(results) == [False, True]
+    assert p.ledger.quantity("a", "A", "X") == 40
+    row = p.store.rows(
+        "SELECT status,filled FROM orders WHERE id='ord-concurrent-dup'"
+    )[0]
+    assert (row["status"], row["filled"]) == ("PARTIALLY_FILLED", 40)
+    assert len(p.store.rows("SELECT id FROM fills WHERE id=?", (fill.fill_id,))) == 1
+    p.store.close()
+
+
+def test_fill_and_order_state_roll_back_together_on_audit_failure():
+    p = ready()
+    p.risk.submit(intent(p, "ord-fill-rollback", 100))
+    fill = p.broker.execute("ord-fill-rollback", 40, Decimal("100"), p.clock())
+    original_audit = p.store.audit
+    failed = False
+
+    def fail_order_transition_audit(event_type, payload, correlation_id=None):
+        nonlocal failed
+        if event_type == "ORDER_STATUS_CHANGED" and not failed:
+            failed = True
+            raise RuntimeError("injected audit persistence failure")
+        return original_audit(event_type, payload, correlation_id)
+
+    p.store.audit = fail_order_transition_audit
+    with pytest.raises(RuntimeError, match="injected audit persistence failure"):
+        p.ingest(fill)
+    p.store.audit = original_audit
+
+    order = p.store.rows(
+        "SELECT status,filled FROM orders WHERE id='ord-fill-rollback'"
+    )[0]
+    assert (order["status"], order["filled"]) == ("OPEN", 0)
+    assert p.store.rows("SELECT id FROM fills WHERE id=?", (fill.fill_id,)) == []
+    assert p.ledger.quantity("a", "A", "X") == 0
+    assert p.risk.state == "UNCERTAIN"
     p.store.close()
 
 
