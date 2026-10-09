@@ -18,6 +18,7 @@ def test_environment_precedence_and_local_file(monkeypatch, tmp_path):
     assert settings() == {
         "database_url": "local-test-value",
         "sqlite_path": "fallback.db",
+        "021_enabled": False,
     }
     monkeypatch.setenv("DATABASE_URL", "process-test-value")
     assert settings()["database_url"] == "process-test-value"

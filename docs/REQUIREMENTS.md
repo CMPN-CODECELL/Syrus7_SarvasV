@@ -2,6 +2,14 @@
 
 ## Official PS-06 requirements
 
+### 021-03 strategy addendum (OFFICIAL_DOCUMENTED)
+
+- One INTRADAY reference strategy enters at 09:15 and exits at 15:15 Asia/Kolkata.
+- One reference strategy enters on a directional 1% move from the verified official daily open and manages 5% take-profit/stop-loss in the application from actual fill WAP.
+- At least one own strategy is documented; AlgoShield uses the existing 1-minute 3/5 EMA crossover.
+- All entry and exit orders remain intents routed through RiskGateway and OrderManager. No strategy calls 021 directly.
+- Live 021 behavior is not established by documentation or fixture tests.
+
 ### 1. Account + strategy subscription
 - User can create an account.
 - User can subscribe to strategies.

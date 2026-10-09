@@ -292,24 +292,16 @@ def test_contract_external_persistence_across_restart(tmp_path):
 
 
 # Broker021Adapter Contract Honesty
-def test_contract_021_adapter_raises_not_implemented():
-    # Constructor fails closed
-    with pytest.raises(NotImplementedError, match="021_API_UNKNOWN.md"):
-        Broker021Adapter()
-
-    # Stub methods documented and raising NotImplementedError
-    adapter = Broker021Adapter.__new__(Broker021Adapter)
-    with pytest.raises(NotImplementedError, match="021_API_UNKNOWN.md"):
+def test_contract_021_adapter_is_disabled_and_fails_closed():
+    adapter = Broker021Adapter()
+    with pytest.raises(RuntimeError, match="disabled"):
         adapter.submit(make_intent())
-    with pytest.raises(NotImplementedError, match="021_API_UNKNOWN.md"):
+    with pytest.raises(RuntimeError, match="disabled"):
         adapter.cancel("ord-1")
-    with pytest.raises(NotImplementedError, match="021_API_UNKNOWN.md"):
+    with pytest.raises(RuntimeError, match="disabled"):
         adapter.snapshot()
-    with pytest.raises(NotImplementedError, match="021_API_UNKNOWN.md"):
-        adapter.drain_updates()
-    with pytest.raises(NotImplementedError, match="021_API_UNKNOWN.md"):
-        adapter.disconnect()
-    with pytest.raises(NotImplementedError, match="021_API_UNKNOWN.md"):
+    assert adapter.drain_updates() == []
+    adapter.disconnect()
+    assert adapter.connected is False
+    with pytest.raises(RuntimeError, match="disabled"):
         adapter.reconnect()
-    with pytest.raises(NotImplementedError, match="021_API_UNKNOWN.md"):
-        adapter.parse_update({})

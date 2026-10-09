@@ -1,5 +1,9 @@
 # Team execution plan
 
+## Official 021-03 update (2026-10-09)
+
+The supplied official contract supersedes the earlier claim that all endpoint and packet schemas were unavailable. DEC-031 adds a first gap-only checkpoint: strict fixture normalization and isolated mandatory strategy policies are implemented, while live transport, runtime composition, durable broker mapping, trade association, charges, complete history, opposing close semantics and sandbox/PG evidence remain release blockers. Continue with `docs/021/INTEGRATION_BLUEPRINT.md`; do not rebuild the existing risk/ledger/React modules.
+
 2026-10-09 (Asia/Calcutta). Sole operational phase plan under DEC-028.
 Product facts: PROJECT_TRUTH. Gap/evidence matrix: REQUIREMENTS_TRACEABILITY.
 Current blockers: IMPLEMENTATION_DELTA. Contracts and invariants remain normative.

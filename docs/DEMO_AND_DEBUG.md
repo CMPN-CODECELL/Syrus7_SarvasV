@@ -1,5 +1,7 @@
 # AlgoShield â€” Demo, Rehearsal & Debug Guide
 
+The runnable demo remains **OFFLINE MOCK/REPLAY**. The official 021 fixture suite is a developer/parser demonstration only; do not label its prices, fills, fees, reconnect behavior or kill timing as sandbox evidence. `ALGOSHIELD_021_ENABLED=true` currently fails closed because authenticated transport and identity association are intentionally not composed.
+
 Use [TEAM_EXECUTION_PLAN](TEAM_EXECUTION_PLAN.md) for the current demo/browser tasks. Seven mock rehearsals passed in the release candidate; the browser script still uses legacy selectors and has not established current React browser coverage. Label mock demonstrations explicitly.
 
 ## Overview

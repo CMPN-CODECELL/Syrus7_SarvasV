@@ -2,9 +2,12 @@
 
 Current task sequencing and ownership live in [TEAM_EXECUTION_PLAN](TEAM_EXECUTION_PLAN.md), the sole execution plan under DEC-028. Evidence is in [requirements traceability](REQUIREMENTS_TRACEABILITY.md) and [integration progress](progress/INTEGRATION.md).
 
+2026-10-09 official-contract update: endpoint/wire shapes are now documented and strict fixture normalization plus isolated 021-03 strategy policies exist. This narrows, but does not clear, the provider gate.
+
 Confirmed remaining gaps:
 
-- P0: verified 021 orders, fills, cancellation, history, charges and raw feed contracts; no fabricated adapter behavior.
+- P0: wire the policies into subscription/runtime composition; implement bounded REST/WS transport, token/instrument refresh and durable compound broker-order mapping.
+- P0: verify 021 orders, per-order trade association, asynchronous cancellation, today's-history coverage and charges in an authorized sandbox; no fabricated adapter behavior.
 - P0: isolated PostgreSQL transaction, restart and ownership evidence; production access is excluded.
 - P0: real-provider reconciliation coverage and verified kill/flatten semantics, including opposing strategies.
 - P1: actual React browser smoke, deployment Origin/proxy configuration and reproducible runtime evidence.

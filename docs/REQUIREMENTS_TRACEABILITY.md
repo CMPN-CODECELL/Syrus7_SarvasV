@@ -24,9 +24,9 @@ retain their ordinary meaning. E1/E2 are evidence references for all rows below.
 |---|---|---|---|---|---|
 | PS01 | Account/session/operator access | api.create_app; auth.AuthService; browser_security.origin_allowed | test_auth, test_round2_security, test_operator_authority; E1/E2 | VERIFIED_CURRENT_COMMIT local; deployment identity/TLS unverified P1 | M3 SEC01 |
 | PS02 | Subscribe and start/stop own strategy | runtime.StrategyRuntime; Platform snapshot; api subscription routes | test_member4, test_strategy_lifecycle; E1/E2 | VERIFIED_CURRENT_COMMIT mock; no arbitrary uploads | M4 preserve |
-| PS03 | Raw ticks → 60/300-second candles | candles.CandleBuilder.ingest_event | test_candle_correctness, test_member4, test_mock_feed; E1/E2 | VERIFIED_CURRENT_COMMIT canonical mock; 021 normalization blocked P0 | M4 FEED02 |
+| PS03 | Raw ticks → 60/300-second candles | candles.CandleBuilder.ingest_event; official021.parse_market_frame | test_candle_correctness, test_member4, test_mock_feed, test_official021 | VERIFIED_CURRENT_COMMIT canonical mock; MOCK_VERIFIED 021 sampled-snapshot decoding, not a live raw-trade feed | M4 FEED02 |
 | PS04 | Candle-based strategy entry | runtime.on_candle; built-in handlers | test_member4, test_demo_scenarios; rehearsal 1; E1/E2 | VERIFIED_CURRENT_COMMIT mock; real feed dependent | M4 FEED02 |
-| PS05 | Actual 021 sandbox orders | adapters.Broker021Adapter.submit/cancel/snapshot | test_broker_adapter_contract proves raising placeholder; E1 | BLOCKED_EXTERNAL; no schemas/credentials/round trip P0 | M2 CAP01 → ADAPTER02 |
+| PS05 | Actual 021 sandbox orders | adapters.Broker021Adapter; broker.official021 | test_broker_adapter_contract, test_official021 | OFFICIAL_DOCUMENTED + MOCK_VERIFIED normalization; live transport/credentials/round trip BLOCKED_EXTERNAL | M2 ADAPTER02 |
 | PS06 | Fills/partial/reject/cancel lifecycle | OrderManager.submit_reserved/ingest/process_broker_update | test_broker_updates, test_execution_state_machine, test_cancellation; E1/E2 | PARTIAL: mock verified, real events/identity unverified P0 | M2 ADAPTER02 |
 | PS07 | Exact attributed trades/net P&L after charges | Ledger.apply/_calculate; Platform.history | test_member1, test_charges, test_safety; E1/E2 | PARTIAL: Decimal mock verified; real charges/corrections/final economics unknown P0 | M1 PG01/FIN02 |
 | PS08 | Max strategy position | RiskGateway.submit/budget | test_risk_policies, test_safety; E1/E2 | VERIFIED_CURRENT_COMMIT mock directional reservations | M3 preserve |
@@ -74,7 +74,7 @@ substitutes for sponsor sandbox proof.
 | PostgreSQL | PostgresStore advisory lock/checksum validation; opt-in rollback test | IMPLEMENTED_UNVERIFIED real transactions/controller parity; isolated test skipped; packaged through migration011 (two distinct historical002 names) |
 | CI/packaging | tests.yml, Dockerfile, pyproject package-data | Prior CI pytest prerequisite missing, reproduced cloud failure; fixed push-only workflow succeeds at E2. Docker image not built here |
 | Deployment scripts | run_app.sh; SECURITY_OPERATIONS | run_app lacks --no-proxy-headers; mark mismatch for SEC01, do not silently pick a Neon project |
-| 021/feed | Broker021Adapter raising stub; no implemented 021 market provider | BLOCKED_EXTERNAL; yfinance probe/mock feed not sponsor evidence |
+| 021/feed | Strict fixture normalizer plus live-disabled Broker021Adapter; no composed 021 transport/provider | PARTIAL; sandbox identity/history/fees/kill remain BLOCKED_EXTERNAL |
 | Hidden/change tests | tests and seven isolated rehearsals | PARTIAL readiness; actual hidden harness/change request unknown |
 
 Unresolved human inputs: isolated DB authorization, which Neon identity/environment,

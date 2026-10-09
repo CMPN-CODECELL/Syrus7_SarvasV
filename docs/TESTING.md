@@ -1,5 +1,9 @@
 # Testing
 
+## Official 021 focused fixtures
+
+Run `python -m pytest -q tests/test_official021.py tests/test_broker_adapter_contract.py --tb=short`. This verifies signed quantity/paise/tick validation, HTTP uncertainty classification, strict TC1/TC3/TC4 decoding, absence of fabricated WS fill identity, and once-per-session strategy triggers with WAP/residual gating. It is **MOCK_VERIFIED**, not a live sandbox test. No credentialed read or write occurs.
+
 Push CI builds the React SPA before the Python suite, then checks frontend tests/lint, Ruff, root TypeScript and rehearsals. Fresh local release evidence: 372 Python passed, one isolated PostgreSQL test skipped; 30 frontend tests passed; seven mock rehearsals passed. Browser automation remains unverified; the existing smoke script targets legacy selectors. Exact commands and setup failures are retained in [integration progress](progress/INTEGRATION.md).
 
 Run `python -m pytest -q --basetemp=.pytest-tmp`. The explicit workspace temp directory avoids Windows sandbox temp restrictions and works from a clean checkout. Run `python -m ruff check .` and `python -m ruff format --check .`. For the SPA run `npm --prefix frontend ci`, `npm --prefix frontend run test`, `npm --prefix frontend run lint`, and `npm --prefix frontend run build`.

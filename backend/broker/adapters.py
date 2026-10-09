@@ -14,6 +14,7 @@ from backend.shared.contracts import (
     OrderStatus,
     TERMINAL,
 )
+from backend.broker.official021 import Provider021Blocked, parse_order_frame
 
 
 class BrokerAdapter(Protocol):
@@ -233,45 +234,52 @@ class MockBrokerAdapter:
 
 
 class Broker021Adapter:
-    def __init__(self):
-        raise NotImplementedError(
-            "021 contract/credentials unconfirmed; see docs/021_API_UNKNOWN.md"
+    """Fail-closed 021 adapter shell.
+
+    Wire normalization is fixture-testable, but live mutation is intentionally
+    unavailable until durable provider identity and trade association are proven.
+    """
+
+    supports_virtual_closes = False
+
+    def __init__(self, *, enabled=False):
+        if enabled:
+            raise Provider021Blocked(
+                "live 021 transport is blocked pending credentials and trade identity evidence"
+            )
+        self.enabled = False
+        self.connected = False
+        self.updates = []
+
+    @staticmethod
+    def _blocked():
+        raise Provider021Blocked(
+            "021 live operations are disabled; see docs/021_API_UNKNOWN.md"
         )
 
     def submit(self, intent: OrderIntent) -> CanonicalOrder:
-        raise NotImplementedError(
-            "021 contract/credentials unconfirmed; see docs/021_API_UNKNOWN.md"
-        )
+        self._blocked()
 
     def cancel(self, order_id: str) -> None:
-        raise NotImplementedError(
-            "021 contract/credentials unconfirmed; see docs/021_API_UNKNOWN.md"
-        )
+        self._blocked()
 
     def snapshot(self) -> BrokerSnapshot:
-        raise NotImplementedError(
-            "021 contract/credentials unconfirmed; see docs/021_API_UNKNOWN.md"
-        )
+        self._blocked()
 
     def drain_updates(self) -> list[BrokerUpdate]:
-        raise NotImplementedError(
-            "021 contract/credentials unconfirmed; see docs/021_API_UNKNOWN.md"
-        )
+        return list(self.updates)
 
     def disconnect(self) -> None:
-        raise NotImplementedError(
-            "021 contract/credentials unconfirmed; see docs/021_API_UNKNOWN.md"
-        )
+        self.connected = False
 
     def reconnect(self) -> None:
-        raise NotImplementedError(
-            "021 contract/credentials unconfirmed; see docs/021_API_UNKNOWN.md"
-        )
+        self._blocked()
 
-    def parse_update(self, raw_payload: dict) -> BrokerUpdate:
-        """Future mapping hook: raw 021 payload -> canonical BrokerUpdate.
-        Specific 021 schema unconfirmed; see docs/021_API_UNKNOWN.md.
+    def parse_update(self, raw_payload: bytes):
+        """Decode order evidence without inventing a Fill/trade ID.
+
+        TC4/TC8 status 1 remains provider evidence only.  It cannot become a
+        canonical Fill until GET /orders/{orderId}/trades supplies a scoped,
+        verifiable tradeId and cumulative quantity matches.
         """
-        raise NotImplementedError(
-            "021 contract/credentials unconfirmed; see docs/021_API_UNKNOWN.md"
-        )
+        return parse_order_frame(raw_payload)

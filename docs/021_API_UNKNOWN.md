@@ -1,8 +1,8 @@
 # 021 Integration — Known Unknowns
 
-The next provider gate is M2-CAP01 in [TEAM_EXECUTION_PLAN](TEAM_EXECUTION_PLAN.md): obtain authenticated sponsor schemas and sanitized executable fixtures. Broker021Adapter is unimplemented; a concrete MarketData021Provider is absent. Mock evidence cannot resolve provider fees, history coverage or kill semantics.
+The official wire contract is now documented in [OFFICIAL_API_CONTRACT](021/OFFICIAL_API_CONTRACT.md), with implementation order in [INTEGRATION_BLUEPRINT](021/INTEGRATION_BLUEPRINT.md). Strict fixture parsers and a disabled `Broker021Adapter` shell exist; a bounded authenticated transport and composed `MarketData021Provider` do not. Mock/fixture evidence cannot resolve live trade identity scope, provider fees, history coverage or kill semantics.
 
-Do not assume answers until sponsor documentation or mentoring confirms them.
+Do not assume answers absent from the official contract or until harmless authorized sandbox evidence confirms them.
 
 DEC-027's [broker identity contract](CONTRACTS.md) requires provider/account-scoped
 mapping, durable restart/cancel translation and canonical snapshot normalization.
@@ -67,10 +67,10 @@ No benchmark's FIX/IBKR/Kite fields establish 021 behavior.
 All answers above belong in `021BrokerAdapter` / `MarketData021Provider` configuration and mapping logic, not scattered throughout the codebase.
 
 ## Research status (2026-10-07)
-Public 021 Carbon sign-up material was found, but no authoritative sandbox endpoint, authentication, tick/order/fill schema or charge table was established. No CONFIRMED_021_BEHAVIOR exists yet. See DECISIONS.md for sources and classification. Adapter placeholders raise NotImplementedError; mock behavior must not be presented as sponsor behavior.
+The supplied official guide establishes the documented endpoint/authentication and packet schemas summarized in the canonical contract. It does not supply a charges table, prove live trade-ID scope/order association, establish cross-day history completeness, or certify kill timing. Fixture behavior must not be presented as observed sponsor behavior.
 
 Additional blockers: snapshot completeness/pagination and consistency, short-selling/product restrictions, bounded request deadlines, opposing virtual exit sequencing, delayed charge corrections, and durable kill recovery.
 
 ## 2026-10-09 remediation boundary
 
-Local operator authority and account response scoping do not confirm sponsor authentication or multi-account API semantics. Broker021Adapter remains a raising placeholder. Execution identity/corrections, history completeness/consistency, charges, netting/shorting and measured live kill semantics remain UNKNOWN/BLOCKED. No sandbox or production Neon access occurred; local mock regression evidence is recorded in progress/INTEGRATION.md.
+Local operator authority and account response scoping do not confirm sponsor authentication or multi-account API semantics. Broker021Adapter remains live-disabled. Execution identity/corrections, history completeness/consistency, charges, netting/shorting and measured live kill semantics remain UNKNOWN/BLOCKED. No sandbox or production Neon access occurred; local fixture/mock evidence is recorded in progress/INTEGRATION.md.

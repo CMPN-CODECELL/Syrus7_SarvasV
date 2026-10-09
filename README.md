@@ -6,6 +6,18 @@ Safety control plane for untrusted trading strategies, built for SYRUS 7.0 FinTe
 
 `tick -> 1m/5m candle -> strategy -> intent -> risk reservation -> order manager -> broker -> fill ledger -> reconciliation -> dashboard`
 
+## Official 021-03 reference rules and status
+
+The canonical wire source is [docs/021/OFFICIAL_API_CONTRACT.md](docs/021/OFFICIAL_API_CONTRACT.md); implementation order is [docs/021/INTEGRATION_BLUEPRINT.md](docs/021/INTEGRATION_BLUEPRINT.md). The official API is **DOCUMENTED**, while live integration remains **OFF by default and LIVE-UNVERIFIED**. Current code fixture-verifies price/quantity normalization and TC1/TC3/TC4/TC8 decoding. It deliberately blocks live writes and does not turn order-WebSocket trade notices into fills without a REST `tradeId` association.
+
+The three 021-03 reference strategies are:
+
+1. `time_0915_1515`: one fresh-evidence, risk-approved INTRADAY entry only during 09:15 Asia/Kolkata; no late catch-up. At/after 15:15 it may emit one reducing intent for the strategy's fill-attributed residual only when account square-off evidence provides a compatible bound.
+2. `open_1pct_tp5_sl5`: one directional entry per session when LTP crosses 1% from the verified official daily open. After actual fills, application-managed TP/SL is 5% from fill-derived WAP and sizes only the residual; it is a normal intent through RiskGateway, never a broker-side SL shortcut.
+3. `momentum`: existing own strategy using 1-minute candles, 3/5 EMA warm-up/crossover, quantity 1, and central risk limits. A 15:15 custom-strategy exit is not yet integrated, so this is not claimed live-complete.
+
+The first two policies are fixture-verified as isolated decision boundaries but are not yet registered into the production subscription/runtime composition. Mock/replay remains the only end-to-end execution mode.
+
 ## Start here
 
 Read [Project Truth](docs/PROJECT_TRUTH.md), [Implementation Delta](docs/IMPLEMENTATION_DELTA.md), [requirement traceability](docs/REQUIREMENTS_TRACEABILITY.md), then [research decisions](docs/RESEARCH_DECISIONS.md). See [current verification](docs/progress/INTEGRATION.md) and [operator provisioning](docs/SECURITY_OPERATIONS.md).
@@ -60,7 +72,7 @@ The dashboard exposes candles, orders/fills/P&L and compact backend-derived safe
 
 Kill latches durably and converges through verified cancellation/fill evidence and attributed exits, with bounded broker waits and a nine-second default deadline. SUCCESS means verified flat under ten seconds; SAFE_LATE is verified but misses the SLA; FAILED retains uncertainty. A timed-out external operation may complete later; it is never blindly retried. Verified kill reset requires no open orders and zero broker/virtual positions, leaves STOPPED, and retains the historical certificate. Fresh broker evidence is required within five seconds and LIVE market event/receive evidence within fifteen seconds; offline REPLAY is labeled and uses receive freshness.
 
-This is a local development tool, not a production service. It has a basic durable local login/session boundary and authenticated local WebSocket telemetry, but no production identity provider, arbitrary strategy upload, or live 021 feed yet. Demo charges are assumptions until sponsor fee behavior is confirmed. No profitability or live kill SLA claim is made.
+This is a local development tool, not a production service. It has a basic durable local login/session boundary and authenticated local WebSocket telemetry, but no production identity provider, arbitrary strategy upload, or live 021 feed yet. The 021 contract is documented and fixture parsers exist, but credentials, transport, trade association, complete history and charges are not live-verified. Demo charges are assumptions until the official charge table is supplied. No profitability or live kill SLA claim is made.
 
 ## Repository map
 
