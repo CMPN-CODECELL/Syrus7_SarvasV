@@ -515,6 +515,7 @@ export function MetricsPage(){return <RemotePage endpoint="/api/metrics" eyebrow
 export function MarketDataPage(){
   const {snapshot:s}=useOutletContext()
   const [symbol,setSymbol]=useState('')
+  const [symbolQuery,setSymbolQuery]=useState('')
   const [displayLimit,setDisplayLimit]=useState(50)
   const quotes=Array.isArray(s?.market_data?.latest_quotes)?s.market_data.latest_quotes:[]
   const symbols=[...new Set([
@@ -524,11 +525,13 @@ export function MarketDataPage(){
     ...(s?.candles||[]).map(item=>item.symbol),
     ...(s?.subscriptions||[]).map(item=>item.symbol),
   ].filter(Boolean))].sort()
-  const candles=(s?.candles||[]).filter(item=>!symbol||item.symbol===symbol)
+  const filteredSymbols=symbols.filter(value=>value.toLowerCase().includes(symbolQuery.trim().toLowerCase()))
+  const matchesQuery=item=>!symbolQuery.trim()||item.symbol?.toLowerCase().includes(symbolQuery.trim().toLowerCase())
+  const candles=(s?.candles||[]).filter(item=>(!symbol||item.symbol===symbol)&&matchesQuery(item))
   const [sessionBusy,setSessionBusy]=useState(false)
   const [sessionError,setSessionError]=useState('')
   const setSession=async status=>{setSessionBusy(true);setSessionError('');try{await api.post('/api/market/session',{status});}catch(e){setSessionError(e.message||'Market session update failed.')}finally{setSessionBusy(false)}}
-  const visibleQuotes=quotes.filter(item=>!symbol||item.symbol===symbol)
+  const visibleQuotes=quotes.filter(item=>(!symbol||item.symbol===symbol)&&matchesQuery(item))
   const displayedQuotes=visibleQuotes.slice(0,displayLimit)
   const source=s?.market_data?.label||s?.market_data?.provider||'Unavailable'
   const eventTime=s?.market_data?.last_event_timestamp
@@ -556,7 +559,8 @@ export function MarketDataPage(){
       <DataTable rows={displayedQuotes} columns={[{key:'symbol',label:'Symbol'},{key:'provider_symbol',label:'Provider symbol'},{key:'price',label:'Price',render:row=>row.price??'—'},{key:'event_timestamp',label:'Event time',render:row=>asUtc(row.event_timestamp)},{key:'raw_event_timestamp',label:'Raw timestamp',render:row=>row.raw_event_timestamp??'—'},{key:'received_at',label:'Received',render:row=>asUtc(row.received_at)},{key:'volume_available',label:'Volume',render:row=>row.volume_available===false?'Unavailable':'Available'},{key:'data_source',label:'Source'}]}/>
     </Card>
     <Card title="Closed candles" meta={`${candles.length} shown`}>
-      <label className="compact-filter">Symbol<select aria-label="Filter market data by symbol" value={symbol} onChange={event=>setSymbol(event.target.value)}><option value="">All symbols</option>{symbols.map(value=><option key={value}>{value}</option>)}</select></label>
+      <label className="compact-filter">Search stock<input aria-label="Search stock symbols" placeholder="RELIANCE or TCS" value={symbolQuery} onChange={event=>setSymbolQuery(event.target.value)}/></label>
+      <label className="compact-filter">Symbol<select aria-label="Filter market data by symbol" value={symbol} onChange={event=>setSymbol(event.target.value)}><option value="">All symbols</option>{filteredSymbols.map(value=><option key={value}>{value}</option>)}</select></label>
       <DataTable rows={candles} columns={[{key:'symbol',label:'Symbol'},{key:'interval',label:'Interval'},{key:'open',label:'Open'},{key:'high',label:'High'},{key:'low',label:'Low'},{key:'close',label:'Close'},{key:'volume',label:'Volume',render:row=>row.volume_available===false?'Unavailable':String(row.volume??'—')},{key:'data_source',label:'Source'}]}/>
     </Card>
   </Page>

@@ -44,6 +44,7 @@ class MarketData021Provider:
         self._connected_count = 0
         self._last_volume = {}
         self._latest_quotes = {}
+        self._last_event_by_symbol = {}
         self._last_received_at = None
         self._last_event_timestamp = None
         self._last_raw_event_timestamp = None
@@ -204,6 +205,12 @@ class MarketData021Provider:
             timestamp = int(received_at)
             with self._lock:
                 self.timestamp_fallbacks += 1
+        prior_timestamp = self._last_event_by_symbol.get(instrument.symbol)
+        if prior_timestamp is not None and timestamp < prior_timestamp:
+            timestamp = max(int(received_at), prior_timestamp)
+            with self._lock:
+                self.timestamp_fallbacks += 1
+        self._last_event_by_symbol[instrument.symbol] = timestamp
         raw_volume = (
             "na"
             if observation.cumulative_volume is None
