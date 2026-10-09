@@ -209,7 +209,7 @@ def test_breakout_requires_official_open_and_fill_wap_for_residual_exit():
     )
 
 
-def test_official_open_strategy_is_registered_and_routes_through_platform_risk():
+def test_official_open_runtime_is_blocked_without_subscription_acknowledgement():
     now = epoch(9, 10, 0)
     platform = Platform(clock=lambda: now)
 
@@ -235,26 +235,18 @@ def test_official_open_strategy_is_registered_and_routes_through_platform_risk()
             )
         )
         assert platform.reliability.reconcile()
-        platform.reliability.resume()
-        platform.strategies.subscribe(
-            "a", "official-breakout", "open_1pct_tp5_sl5", "RELIANCE"
-        )
+        with pytest.raises(
+            ValueError,
+            match="provider subscription evidence unavailable: PROVIDER_SUBSCRIPTION_EVIDENCE_UNAVAILABLE",
+        ):
+            platform.reliability.resume()
 
-        platform.tick(
-            Tick(
-                "RELIANCE",
-                int(now) + 1,
-                Decimal("101"),
-                0,
-                "trigger",
-                data_source="021_LIVE",
+        assert platform.risk.state != "RUNNING"
+        assert (
+            platform.store.rows(
+                "SELECT id FROM orders WHERE strategy='official-breakout'"
             )
+            == []
         )
-
-        orders = platform.store.rows(
-            "SELECT strategy,status FROM orders WHERE strategy='official-breakout'"
-        )
-        assert len(orders) == 1
-        assert platform.strategies.signals[-1]["reason"].startswith("021-03 1%")
     finally:
         platform.close()

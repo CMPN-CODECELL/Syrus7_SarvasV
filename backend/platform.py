@@ -268,8 +268,15 @@ class Platform:
         """Drain and authoritatively apply pending broker updates."""
         updates = self.drain_broker_updates()
         results = []
+        adapter = getattr(self.broker_calls, "adapter", self.broker)
         for upd in updates:
             results.append(self.process_broker_update(upd))
+            # A provider may retain a trade until the canonical fill has been
+            # durably applied.  Acknowledge only after process_broker_update
+            # completes; failures retain the provider evidence for retry.
+            acknowledge = getattr(adapter, "acknowledge_update", None)
+            if acknowledge is not None:
+                acknowledge(upd)
         return results
 
     def disconnect_broker(self):
@@ -386,7 +393,10 @@ class Platform:
                     else "replay",
                     None,
                 )
-        intents = []
+        # Auto mode observes only an accepted canonical tick. Its policy work
+        # stays outside the control-plane store lock; every returned intent
+        # joins the same RiskGateway/OrderManager path as candle strategies.
+        intents = list(self.auto_mode.on_tick(tick))
         for candle in closed:
             try:
                 intents.extend(self.strategies.on_candle(candle, self.clock()))
@@ -397,6 +407,7 @@ class Platform:
                 ) from None
         for intent in intents:
             decision = self.risk.submit(intent)
+            self.auto_mode.record_risk_result(intent, decision)
             if (
                 decision.allowed
                 and self.risk.state == "RUNNING"
@@ -704,7 +715,9 @@ class Platform:
                         (account_id,),
                     )
                 }
-                quotes = [quote for quote in quotes if quote.get("symbol") in visible_symbols]
+                quotes = [
+                    quote for quote in quotes if quote.get("symbol") in visible_symbols
+                ]
             market_data.update(
                 {
                     "provider": "MOCK_REPLAY",
@@ -721,7 +734,9 @@ class Platform:
         for quote in quotes:
             item = dict(quote)
             received_at = item.get("received_at")
-            age = max(0.0, now - float(received_at)) if received_at is not None else None
+            age = (
+                max(0.0, now - float(received_at)) if received_at is not None else None
+            )
             item["age_seconds"] = age
             item["stale"] = age is not None and age > 15
             enriched_quotes.append(item)
@@ -743,12 +758,15 @@ class Platform:
                 )
             }
             forming_candles = [
-                candle for candle in forming_candles
+                candle
+                for candle in forming_candles
                 if candle["symbol"] in visible_symbols
             ]
         market_data["forming_candles"] = forming_candles
         provider_key = (
-            market_data.get("provider") if self.external_market_data is not None else "replay"
+            market_data.get("provider")
+            if self.external_market_data is not None
+            else "replay"
         )
         cached_count = self._candle_count_cache.get(provider_key)
         if cached_count is None or now - cached_count[0] > 2:
@@ -1144,6 +1162,11 @@ class Platform:
                 "signals": signals,
                 "strategy_errors": strategy_errors,
                 "market_data": market_data,
+                "auto_mode": (
+                    self.auto_mode.evidence(account_id)
+                    if account_id is not None
+                    else None
+                ),
                 "provider_readiness": (
                     self.provider_readiness(account_id, market_data)
                     if account_id is not None

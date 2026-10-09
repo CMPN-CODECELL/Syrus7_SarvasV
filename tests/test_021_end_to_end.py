@@ -5,10 +5,11 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 import httpx
+import pytest
 
 from backend.broker.official021_http import Official021RESTAdapter
 from backend.platform import Platform
-from backend.shared.contracts import Tick
+from backend.shared.contracts import OrderIntent, Side, Tick
 from backend.shared.store import Store
 
 
@@ -20,7 +21,7 @@ INSTRUMENTS = (
 ).encode()
 
 
-def test_fake_021_quote_to_reconciled_fill_pipeline(tmp_path):
+def test_synthetic_complete_021_fixture_syncs_trade_before_terminal_fill(tmp_path):
     now = datetime(2026, 10, 9, 10, 0, tzinfo=ZoneInfo("Asia/Kolkata")).timestamp()
     state = {"placed": False, "executed": False}
 
@@ -90,7 +91,7 @@ def test_fake_021_quote_to_reconciled_fill_pipeline(tmp_path):
 
     class CompleteFake021(Official021RESTAdapter):
         def snapshot(self):
-            # Test-only exchange fixture explicitly attests its entire state.
+            # Synthetic fixture only: real 021 snapshots remain incomplete.
             return replace(super().snapshot(), is_complete=True, observed_at=now)
 
     cache = tmp_path / "instruments.csv.gz"
@@ -104,49 +105,63 @@ def test_fake_021_quote_to_reconciled_fill_pipeline(tmp_path):
     )
     platform = Platform(store=store, broker=adapter, clock=lambda: now)
 
-    class QuoteProvider:
-        supports_live_broker = True
-
-        def telemetry(self):
-            return {
-                "provider": "021",
-                "source": "021_LIVE",
-                "latest_quotes": [{"symbol": "RELIANCE", "official_open": "100"}],
-            }
-
-        def stop(self):
-            return True
-
-    platform.configure_external_market_data(QuoteProvider())
     try:
         platform.account("a")
-        platform.strategies.subscribe(
-            "a", "open-reliance", "open_1pct_tp5_sl5", "RELIANCE"
+        platform.strategies.subscribe("a", "fixture-momentum", "momentum", "RELIANCE")
+        platform.tick(
+            Tick("RELIANCE", int(now), Decimal("101"), 1, "fixture-market-tick")
         )
         assert platform.reliability.reconcile() is True
         platform.reliability.resume()
-
-        platform.tick(
-            Tick(
+        assert platform.risk.submit(
+            OrderIntent(
+                "fixture-021-order",
+                "fixture-momentum",
+                "a",
                 "RELIANCE",
-                int(now),
-                Decimal("101"),
-                0,
-                "fake-021-quote-1",
-                data_source="021_LIVE",
+                Side.BUY,
+                1,
+                now,
             )
-        )
-        order = store.rows("SELECT * FROM orders")[0]
+        ).allowed
+        order = store.rows("SELECT * FROM orders WHERE id='fixture-021-order'")[0]
         assert order["status"] == "OPEN"
         assert state["placed"] is True
 
         state["executed"] = True
-        platform.sync_broker_updates()
-        order = store.rows("SELECT * FROM orders")[0]
+        original_process = platform.process_broker_update
+        platform.process_broker_update = lambda update: (_ for _ in ()).throw(
+            RuntimeError("synthetic durable apply failure")
+        )
+        with pytest.raises(RuntimeError, match="synthetic durable apply failure"):
+            platform.sync_broker_updates()
+        # No acknowledgement occurs before a durable apply, so the provider
+        # still offers the trade for retry.
+        assert adapter.drain_updates()[0].fill.fill_id == "021:5001"
+
+        platform.process_broker_update = original_process
+        original_acknowledge = adapter.acknowledge_update
+        acknowledgements = 0
+
+        def fail_first_acknowledgement(update):
+            nonlocal acknowledgements
+            acknowledgements += 1
+            if acknowledgements == 1:
+                raise RuntimeError("synthetic acknowledgement failure")
+            original_acknowledge(update)
+
+        adapter.acknowledge_update = fail_first_acknowledgement
+        with pytest.raises(RuntimeError, match="synthetic acknowledgement failure"):
+            platform.sync_broker_updates()
+        order = store.rows("SELECT * FROM orders WHERE id='fixture-021-order'")[0]
         assert order["status"] == "FILLED"
         assert order["filled"] == 1
         assert store.rows("SELECT id FROM fills")[0]["id"] == "021:5001"
         assert platform.ledger.aggregate() == {("a", "RELIANCE"): 1}
+        # Replay after acknowledgement failure is financial-idempotent, then
+        # the successful acknowledgement removes the provider retry evidence.
+        assert platform.sync_broker_updates()[0].filled_quantity == 1
+        assert platform.sync_broker_updates() == []
         assert platform.reliability.reconcile() is True
         assert platform.reliability.report["verified"] is True
     finally:

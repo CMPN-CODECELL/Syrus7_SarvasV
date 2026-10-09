@@ -656,12 +656,27 @@ def create_app(platform=None, *, trusted_origins=None, cookie_secure=None):
     def historical_candles(
         request: Request,
         symbol: str | None = None,
-        interval: int | None = Query(None, ge=60, le=3600),
+        interval: int = Query(60, ge=60, le=300),
         limit: int = Query(200, ge=1, le=1000),
     ):
         require_user(request)
+        # The public history API exposes the documented 1m/5m candle contract.
+        # Runtime strategy registration may build custom intervals internally;
+        # it does not expand this stable HTTP projection.
+        if interval not in {60, 300}:
+            raise HTTPException(422, "interval must be 60 or 300 seconds")
+        provider = (
+            engine.market_data_evidence().get("provider")
+            if engine.external_market_data is not None
+            else "replay"
+        )
         return financial_json(
-            [dict(row) for row in engine.store.candle_rows(symbol, interval, limit)]
+            [
+                dict(row)
+                for row in engine.store.candle_rows(
+                    symbol, interval, limit, provider=provider
+                )
+            ]
         )
 
     @app.post("/api/market/session")

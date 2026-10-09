@@ -10,6 +10,10 @@ Canonical executable definitions: `backend/shared/contracts.py`. Documentation d
 - Quantity is a positive integer; signed quantity uses Side.sign. BUY/SELL are canonical enums.
 - `Tick`: symbol, event_timestamp, price, quantity (per-tick volume), event_id. Adapter must normalize cumulative volume if needed.
 - `Candle`: symbol, interval (60/300 seconds), start_time, end_time, OHLCV, is_closed. Half-open UTC windows; no empty gap candles; no end-of-replay fabricated closure.
+- `GET /api/candles`: authenticated public history is fixed to the documented
+  60-second and 300-second intervals. Runtime registration may construct and
+  route a custom positive interval internally, but that does not enlarge this
+  stable HTTP history contract; unsupported public intervals return HTTP 422.
 - `OrderIntent`: intent_id, strategy_instance_id, account_id, symbol, side, quantity, created_at, order_type, limit_price, reason. MARKET and LIMIT are accepted; LIMIT requires a positive Decimal limit_price.
 - `RiskDecision`: intent_id, allowed, reason_code, projected_position, reason_text, rule_results, created_at, reservation_id. New fields have backward-compatible defaults. Approval indicates admission, **not broker acceptance**; inspect canonical order status.
 - `CanonicalOrder`: order_id, intent, status, filled_quantity, derived remaining_quantity. Mock broker order ID equals intent ID; real adapter must retain explicit broker/client mapping.

@@ -1,8 +1,10 @@
 import gzip
 import json
+import struct
 from decimal import Decimal
 
 import httpx
+import pytest
 
 from backend.broker.adapters import Broker021Adapter
 from backend.shared.contracts import OrderIntent, Side
@@ -144,3 +146,46 @@ def test_catalogue_exposes_cash_equity_symbols_for_auto_market_setup(tmp_path):
     )
 
     assert adapter.all_market_symbols() == ("RELIANCE",)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="Member 2 must prove UCC-to-account scope before order-WS mapping",
+    raises=AssertionError,
+)
+def test_order_ws_event_never_cross_attributes_same_provider_order_id_across_accounts():
+    """Frozen fixture for the required account/UCC mapping handoff.
+
+    The unique database key permits the same provider order ID for two local
+    accounts.  An event carrying UCC ``account-b`` must not select account A
+    merely because it was inserted first.
+    """
+    store = Store()
+    for account, strategy, order in (
+        ("account-a", "sa", "oa"),
+        ("account-b", "sb", "ob"),
+    ):
+        store.db.execute("INSERT INTO accounts VALUES (?)", (account,))
+        store.db.execute(
+            "INSERT INTO subscriptions VALUES (?,?,?, ?,1)",
+            (strategy, account, "momentum", "RELIANCE"),
+        )
+        store.db.execute(
+            "INSERT INTO orders(id,strategy,account,symbol,side,quantity,created,status,filled,emergency) "
+            "VALUES (?,?,?,?,?,?,100,'OPEN',0,0)",
+            (order, strategy, account, "RELIANCE", "BUY", 1),
+        )
+        store.db.execute(
+            "INSERT INTO broker_order_mappings(platform_order_id,provider,provider_order_id,account,exchange,token,product,symbol,created) "
+            "VALUES (?,?, '42', ?, 'NSE', 2885, 'INTRADAY', 'RELIANCE', 100)",
+            (order, "021", account),
+        )
+    store.db.commit()
+    adapter = Broker021Adapter(store, enabled=True, access_token="fixture-token")
+    frame = bytearray(46)
+    struct.pack_into(">HH", frame, 0, 4, 2)
+    frame[4:14] = b"account-b "
+    frame[14:34] = b"RELIANCE            "
+    struct.pack_into(">IiI", frame, 34, 42, 1, 10100)
+
+    assert adapter.parse_order_update(bytes(frame)) is None

@@ -66,6 +66,20 @@ def test_auto_mode_buys_strongest_candidate_and_exits_at_profit_target():
             ]
             == "momentum"
         )
+        assert (
+            platform.snapshot("account-a")["auto_mode"]["decisions"][0]["result"]
+            == "APPROVED"
+        )
+
+        # Duplicate canonical ticks return before auto-mode evaluation, so the
+        # accepted entry cannot create a second intent or broker order.
+        platform.tick(Tick("AAA", clock(), D("103"), 1, "AAA-2"))
+        assert (
+            platform.store.rows(
+                "SELECT COUNT(*) AS n FROM orders WHERE strategy LIKE 'auto-%'"
+            )[0]["n"]
+            == 1
+        )
 
         tick(platform, clock, "AAA", 105, "profit")
         orders = platform.store.rows(
