@@ -1,10 +1,20 @@
 import { useEffect,useRef,useState } from 'react';import { useOutletContext } from 'react-router-dom';import { api } from '../api/client';import { Card,CompactEvidence,DataTable,Empty,EvidenceView,Page,Status } from '../components/UI'
-function RemotePage({endpoint,eyebrow,title,description,render}){const [data,setData]=useState(null),[error,setError]=useState('');useEffect(()=>{api.get(endpoint).then(setData).catch(e=>setError(e.status===404?'No completed evidence yet.':e.message))},[endpoint]);return <Page eyebrow={eyebrow} title={title} description={description}>{error?<Empty>{error}</Empty>:data?render(data):<Empty>Loading backend evidence…</Empty>}</Page>}
+function RemotePage({endpoint,eyebrow,title,description,render,children}){const [data,setData]=useState(null),[error,setError]=useState('');useEffect(()=>{api.get(endpoint).then(setData).catch(e=>setError(e.status===404?'No completed evidence yet.':e.message))},[endpoint]);return <Page eyebrow={eyebrow} title={title} description={description}>{children}{error?<Empty>{error}</Empty>:data?render(data):<Empty>Loading backend evidence…</Empty>}</Page>}
 const reconciliationLabel=value=>String(value).replaceAll('_',' ').replace(/\b\w/g,letter=>letter.toUpperCase())
 const hasReconciliationDetails=value=>value&&typeof value==='object'&&(Array.isArray(value)?value.length>0:Object.keys(value).length>0)
 const reconciliationSections=value=>({summary:Object.fromEntries(Object.entries(value||{}).filter(([,item])=>!item||typeof item!=='object')),details:Object.entries(value||{}).filter(([,item])=>hasReconciliationDetails(item))})
 export function ReconciliationView({data}){const report=data.report||{};const reportSections=reconciliationSections(report);const comparisonSections=reconciliationSections(data.position_comparison);const events=(data.events||[]).map(event=>({...event,payload:auditEvidence(event.payload)}));return <><div className="reconciliation-summary"><Card title="Verification"><Status value={report.verified?'VERIFIED':'FAILED'}/></Card><Card title="Reason"><strong>{report.reason||'UNKNOWN'}</strong></Card><Card title="Unknown orders"><strong>{data.unknown_orders?.length||0}</strong></Card></div><div className="reconciliation-stack"><Card title="Position comparison"><CompactEvidence value={comparisonSections.summary}/>{comparisonSections.details.length>0?<div className="reconciliation-details">{comparisonSections.details.map(([name,value])=><section key={name}><h3>{reconciliationLabel(name)}</h3><EvidenceView value={value} name={name}/></section>)}</div>:<p className="reconciliation-clear">No broker or virtual position differences reported.</p>}</Card><Card title="Broker evidence"><CompactEvidence value={data.broker}/></Card><Card title="Recovery report"><CompactEvidence value={reportSections.summary}/>{reportSections.details.length>0&&<div className="reconciliation-details">{reportSections.details.map(([name,value])=><section key={name}><h3>{reconciliationLabel(name)}</h3><EvidenceView value={value} name={name}/></section>)}</div>}</Card>{events.length>0&&<Card title="Recent reconciliation events"><EvidenceView value={events} name="events"/></Card>}</div></>}
-export function ReconciliationPage(){return <RemotePage endpoint="/api/reconciliation" eyebrow="Recovery" title="Reconciliation center" description="Expected local state compared with observed broker truth." render={data=><ReconciliationView data={data}/>}/>}
+export function ReconciliationPage(){
+  const {snapshot,refresh}=useOutletContext()||{};
+  const [busy,setBusy]=useState('');
+  const [error,setError]=useState('');
+  const run=async action=>{if(busy)return;setBusy(action);setError('');try{await api.post(`/api/broker/${action}`);await refresh?.()}catch(e){setError(e.message||'Broker control failed.')}finally{setBusy('')}};
+  const disconnect=()=>{if(confirm('Disconnect the broker and fail closed?'))run('disconnect')};
+  return <RemotePage endpoint="/api/reconciliation" eyebrow="Recovery" title="Reconciliation center" description="Expected local state compared with observed broker truth.">
+    {error&&<div className="error" role="alert">{error}</div>}
+    <Card title="Broker controls"><p className="muted">Operator-only controls. Reconnect always reconciles before trading can resume.</p><div className="actions"><button type="button" disabled={!!busy} onClick={()=>run('updates/sync')}>{busy==='updates/sync'?'Syncing…':'Sync broker updates'}</button><button type="button" disabled={!!busy} onClick={()=>run('reconnect')}>{busy==='reconnect'?'Reconnecting…':'Reconnect and reconcile'}</button><button type="button" disabled={!!busy} onClick={disconnect}>{busy==='disconnect'?'Disconnecting…':'Disconnect broker'}</button></div></Card>
+  </RemotePage>
+}
 export function TracesPage(){
   return (
     <RemotePage endpoint="/api/traces" eyebrow="Causality" title="Execution traces" description="Server-built timelines connect intent, risk, order, fill, and reconciliation evidence." render={d=><Card title="Recent traces"><DataTable rows={Array.isArray(d)?d:d.traces||[]} columns={[{key:'trace_id',label:'Trace'},{key:'strategy_instance_id',label:'Strategy'},{key:'account_id',label:'Account'},{key:'events',label:'Events',render:r=>Array.isArray(r.events)?r.events.length:'—'},{key:'recorded_at',label:'First recorded',render:r=>r.events?.[0]?.recorded_at??'—'}]}/></Card>}/>
@@ -513,6 +523,9 @@ export function MarketDataPage(){
     ...(s?.subscriptions||[]).map(item=>item.symbol),
   ].filter(Boolean))].sort()
   const candles=(s?.candles||[]).filter(item=>!symbol||item.symbol===symbol)
+  const [sessionBusy,setSessionBusy]=useState(false)
+  const [sessionError,setSessionError]=useState('')
+  const setSession=async status=>{setSessionBusy(true);setSessionError('');try{await api.post('/api/market/session',{status});}catch(e){setSessionError(e.message||'Market session update failed.')}finally{setSessionBusy(false)}}
   const visibleQuotes=quotes.filter(item=>!symbol||item.symbol===symbol)
   const source=s?.market_data?.label||s?.market_data?.provider||'Unavailable'
   const eventTime=s?.market_data?.last_event_timestamp
@@ -522,12 +535,14 @@ export function MarketDataPage(){
     return value===null||value===undefined||!Number.isFinite(numeric)?'—':new Date(numeric*1000).toISOString()
   }
   return <Page eyebrow="Market ingestion" title="Market data" description="One- and five-minute candles built from normalized updates for every enabled strategy symbol. Yahoo candles are sampled quote-derived evidence, not complete exchange ticks.">
+    {sessionError&&<div className="error" role="alert">{sessionError}</div>}
     <div className="stat-grid">
       <Card title="Source"><strong>{source}</strong><p>{s?.market_data?.connected?'Connected':'Not connected'} · Volume {s?.market_data?.volume_available===false?'unavailable':'available'}</p></Card>
       <Card title="Safety gate"><Status value={s?.gate}/></Card>
       <Card title="Last quote event"><strong>{asUtc(eventTime)}</strong><p>Raw: {s?.market_data?.last_raw_event_timestamp??'—'}</p></Card>
       <Card title="Last received"><strong>{asUtc(receivedTime)}</strong><p>{s?.market_data?.received_messages??'—'} received · {s?.market_data?.accepted_updates??'—'} accepted</p></Card>
       <Card title="Session"><Status value={s?.market_session?.status}/></Card>
+      <Card title="Operator session control"><div className="actions"><button type="button" disabled={sessionBusy} onClick={()=>setSession('OPEN')}>Open</button><button type="button" disabled={sessionBusy} onClick={()=>setSession('CLOSED')}>Close</button></div></Card>
       <Card title="Tracked stocks"><strong>{symbols.length}</strong></Card>
       <Card title="Accepted ticks"><strong>{s?.market_data?.accepted_ticks??'—'}</strong></Card>
       <Card title="Duplicates / late"><strong>{s?.market_data?.duplicate_ticks??'—'} / {s?.market_data?.late_ticks??'—'}</strong></Card>
