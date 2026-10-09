@@ -43,3 +43,14 @@ One worker. UNKNOWN retains reservation. No synthetic drift fixes; opposing virt
 - 2026-10-07 16:03 Asia/Kolkata: commits `55beeb2` and `8dc8e34` pushed to `origin/bootstrap/safety-vertical-slice` before further Neon setup, as requested.
 - Neon CLI 8.0.11 login launched browser and is awaiting user authentication. Link to requested production branch, skills/MCP setup, remote schema inspection/migration, connectivity and deploy are paused. No remote schema changes or production seed performed.
 - Action needed: complete browser sign-in, then continue the requested Neon workflow. PostgreSQL implementation is locally tested only; isolated integration remains skipped.
+
+## 2026-10-09 — DEC-026 authority and response boundary
+
+- Added durable explicit operator grants and mutation-free 401/403 enforcement
+  for global controls. Public registration cannot self-promote; revocation affects
+  existing sessions.
+- Added shared nested account response projection without filtering internal
+  risk, reconciliation, kill or accounting inputs. Two-account adversarial tests
+  cover actions, evidence, traces, broker responses and audit payloads.
+- SQLite schema v12 is verified. PostgreSQL migration 011 is packaged but blocked
+  on an isolated database; no Neon or production access occurred.

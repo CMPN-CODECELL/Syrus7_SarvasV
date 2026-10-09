@@ -213,4 +213,28 @@ Neon CLI 8.0.11 installed. Requested project/branch not yet authenticated/linked
     - Deterministic rehearsal runner: all 7 scenarios passed with zero errors.
     - Ruff check, Ruff format, ESLint, and TypeScript (`npm run check`) all clean.
 
+- 2026-10-09 DEC-026 remediation on `dev`:
+  - Audited base: `b0930c52056f175539e8fe9be7a1fabd2cd075eb`.
+  - Implementation/research integration commit: `dd21746051119edf58fbdd85f333d54c67fe8260`.
+    During the session this commit was authored and published to `origin/main`
+    by `acchasujal` outside this agent's git operations; this agent did not push
+    main. The follow-up evidence/runbook commit targets only `origin/dev`.
+  - Added durable explicit operator grants, offline SQLite provisioning, shared
+    nested account response scoping, strict trace ownership, and generic domain
+    error responses. Ordinary users retain owned controls and cannot mutate
+    global state. Mock fault/benchmark operations require operator authority and
+    the existing isolated-mock guard.
+  - Added SQLite migration 012 and packaged PostgreSQL migration 011. No prior
+    migration changed. SQLite upgrade/provision/restart/revoke paths are verified.
+    PostgreSQL remains skipped without an isolated test URL.
+  - Replaced the obsolete Python source-string telemetry assertion with existing
+    behavioral Vitest coverage for logout/account changes, HTTP 401 and WS 1008;
+    backend restart/lifecycle coverage remains.
+  - Final validation: Python **351 passed / 1 PostgreSQL skipped** in 48.98s.
+    Vitest **28 passed in 6 files**; ESLint, Vite build, root TypeScript,
+    Ruff check/format and all 7 rehearsals passed. Node 23.6.0 emitted package
+    engine warnings; use supported Node 24.15+ for release validation.
+  - No 021 sandbox, remote Neon, production database or browser-driver access.
+    No lockfile or generated frontend artifact changed.
+
 
