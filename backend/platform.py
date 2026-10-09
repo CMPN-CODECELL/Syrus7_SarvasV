@@ -24,6 +24,12 @@ from backend.shared.auth import AuthService
 from backend.shared.contracts import GlobalTradingState as Gate, OrderStatus, Side, Tick
 from backend.shared.store import Store
 from backend.strategies.runtime import StrategyRuntime
+from backend.strategies.auto_mode import AutoMode
+from backend.strategies.official021 import (
+    OpenBreakoutStrategy,
+    StrategyContext,
+    Time0915Strategy,
+)
 
 
 def _contract_dict(value):
@@ -42,6 +48,17 @@ class Platform:
         clock=time.time,
         store=None,
         demo_enabled=True,
+        broker_call_timeout=1.0,
+        broker_read_timeout=None,
+        broker_write_timeout=None,
+        reconciliation_timeout=None,
+        auto_scan_limit=200,
+        auto_max_positions=3,
+        auto_lookback=5,
+        auto_entry_momentum=Decimal("0.003"),
+        auto_take_profit=Decimal("0.01"),
+        auto_stop_loss=Decimal("0.005"),
+        auto_cooldown_seconds=60,
     ):
         self.clock = clock
         self.demo_enabled = demo_enabled
@@ -55,7 +72,13 @@ class Platform:
             )
         )
         self.ledger = Ledger(self.store)
-        self.broker_calls = BrokerSession(self.broker)
+        self.broker_calls = BrokerSession(
+            self.broker,
+            call_timeout=broker_call_timeout,
+            read_timeout=broker_read_timeout,
+            write_timeout=broker_write_timeout,
+            reconciliation_timeout=reconciliation_timeout,
+        )
         self.orders = OrderManager(self.store, self.broker_calls, self.ledger)
         self.risk = RiskGateway(self.store, self.ledger, self.orders, clock)
         self.strategies = StrategyRuntime(self.store)
@@ -89,7 +112,23 @@ class Platform:
         self.closed_candles = deque(maxlen=128)
         for row in reversed(self.store.candle_rows(limit=128)):
             from backend.shared.contracts import Candle
-            self.closed_candles.append(Candle(row["symbol"], row["interval"], row["start_time"], row["end_time"], Decimal(row["open"]), Decimal(row["high"]), Decimal(row["low"]), Decimal(row["close"]), row["volume"], bool(row["is_closed"]), bool(row["volume_available"]), row["data_source"]))
+
+            self.closed_candles.append(
+                Candle(
+                    row["symbol"],
+                    row["interval"],
+                    row["start_time"],
+                    row["end_time"],
+                    Decimal(row["open"]),
+                    Decimal(row["high"]),
+                    Decimal(row["low"]),
+                    Decimal(row["close"]),
+                    row["volume"],
+                    bool(row["is_closed"]),
+                    bool(row["volume_available"]),
+                    row["data_source"],
+                )
+            )
         self.auth = AuthService(self.store)
         self.demo_count = 0
         self._simulation_cursor = {}
@@ -98,6 +137,17 @@ class Platform:
         self._replay_stop = Event()
         self._replay_thread = None
         self.external_market_data = None
+        self._broker_stream = None
+        self.auto_mode = AutoMode(
+            self,
+            scan_limit=auto_scan_limit,
+            max_positions=auto_max_positions,
+            lookback=auto_lookback,
+            entry_momentum=auto_entry_momentum,
+            take_profit=auto_take_profit,
+            stop_loss=auto_stop_loss,
+            cooldown_seconds=auto_cooldown_seconds,
+        )
 
     def configure_external_market_data(self, provider):
         """Attach one explicit source before any timeline has been ingested."""
@@ -123,12 +173,83 @@ class Platform:
             if getattr(self.external_market_data, "supports_live_broker", False)
             else "YAHOO_FEED_STARTING"
         )
-        return self.external_market_data.start()
+        started = self.external_market_data.start()
+        if started:
+            self.start_broker_order_stream()
+        return started
 
     def stop_external_market_data(self):
+        self.stop_broker_order_stream()
         if self.external_market_data is not None:
             return self.external_market_data.stop()
         return True
+
+    def start_broker_order_stream(self):
+        """Start an optional 021 order-status stream without granting it fill authority."""
+        adapter = getattr(self.broker_calls, "adapter", self.broker)
+        if not getattr(adapter, "provider", None) == "021":
+            return False
+        if self._broker_stream is None:
+            from backend.broker.official021_order_stream import OrderStream021
+
+            self._broker_stream = OrderStream021(
+                adapter,
+                self.enqueue_broker_update,
+                lambda _reason: self.reliability.fail_closed(
+                    "021_ORDER_STREAM_DISCONNECTED"
+                ),
+            )
+        return self._broker_stream.start()
+
+    def stop_broker_order_stream(self):
+        if self._broker_stream is not None:
+            return self._broker_stream.stop()
+        return True
+
+    def enqueue_broker_update(self, update):
+        """Queue provider-thread evidence; database mutation remains on sync."""
+        if update is not None:
+            with self._replay_lock:
+                queue = getattr(self, "_provider_update_queue", None)
+                if queue is None:
+                    self._provider_update_queue = deque()
+                    queue = self._provider_update_queue
+                queue.append(update)
+
+    def refresh_external_market_universe(self):
+        provider = self.external_market_data
+        if provider is None or not hasattr(provider, "refresh_universe"):
+            return False
+        changed = provider.refresh_universe()
+        if getattr(provider, "symbols", ()):
+            self.start_broker_order_stream()
+        return changed
+
+    def required_market_symbols(self):
+        """Symbols that must remain observed for automatic or exposure management."""
+        required = list(self.auto_mode.market_symbols())
+        required.extend(
+            position.symbol
+            for (
+                account,
+                _strategy,
+                _symbol,
+            ), position in self.ledger.positions().items()
+            if account and position.net_quantity != 0
+        )
+        required.extend(
+            row["symbol"]
+            for row in self.store.rows(
+                "SELECT DISTINCT symbol FROM orders "
+                "WHERE status NOT IN ('FILLED','CANCELLED','REJECTED')"
+            )
+        )
+        return tuple(dict.fromkeys(symbol.upper() for symbol in required if symbol))
+
+    def validate_external_market_symbols(self, symbols):
+        provider = self.external_market_data
+        if provider is not None and hasattr(provider, "validate_symbols"):
+            provider.validate_symbols(symbols)
 
     def account(self, account_id):
         if not account_id:
@@ -190,16 +311,26 @@ class Platform:
 
     def drain_broker_updates(self):
         adapter = getattr(self.broker_calls, "adapter", self.broker)
-        if hasattr(adapter, "drain_updates"):
-            return adapter.drain_updates()
-        return []
+        with self._replay_lock:
+            queued = list(getattr(self, "_provider_update_queue", ()))
+            if hasattr(self, "_provider_update_queue"):
+                self._provider_update_queue.clear()
+        # REST trades carry stable fill identity. Apply them before provisional
+        # WebSocket lifecycle status so status cannot outrun executed quantity.
+        authoritative = (
+            adapter.drain_updates() if hasattr(adapter, "drain_updates") else []
+        )
+        return authoritative + queued
 
     def sync_broker_updates(self):
         """Drain and authoritatively apply pending broker updates."""
         updates = self.drain_broker_updates()
         results = []
+        adapter = getattr(self.broker_calls, "adapter", self.broker)
         for upd in updates:
             results.append(self.process_broker_update(upd))
+            if hasattr(adapter, "acknowledge_update"):
+                adapter.acknowledge_update(upd)
         return results
 
     def disconnect_broker(self):
@@ -291,8 +422,17 @@ class Platform:
             self.reliability.observe_tick(tick, replay=replay)
             for candle in closed:
                 self.closed_candles.append(candle)
-                self.store.save_candle(candle, provider=(provider_telemetry.get("provider", "replay") if provider_telemetry else "replay"))
+                self.store.save_candle(
+                    candle,
+                    provider=(
+                        provider_telemetry.get("provider", "replay")
+                        if provider_telemetry
+                        else "replay"
+                    ),
+                )
         intents = []
+        intents.extend(self.auto_mode.on_tick(tick))
+        intents.extend(self._official_strategy_intents(tick, provider_telemetry))
         for candle in closed:
             try:
                 intents.extend(self.strategies.on_candle(candle, self.clock()))
@@ -303,6 +443,7 @@ class Platform:
                 ) from None
         for intent in intents:
             decision = self.risk.submit(intent)
+            self.auto_mode.record_risk_result(intent, decision)
             if (
                 decision.allowed
                 and self.risk.state == "RUNNING"
@@ -329,6 +470,117 @@ class Platform:
         self._metric_observe(
             "tick_processing_latency_ms", (time.perf_counter() - started) * 1000
         )
+
+    def _official_strategy_intents(self, tick, provider_telemetry):
+        """Evaluate documented reference policies from canonical, provider-neutral evidence."""
+        rows = self.store.rows(
+            "SELECT * FROM subscriptions WHERE symbol=? AND enabled=1 "
+            "AND kind IN ('time_0915_1515','open_1pct_tp5_sl5') ORDER BY id",
+            (tick.symbol,),
+        )
+        if not rows:
+            return []
+        now = self.clock()
+        quote = next(
+            (
+                item
+                for item in (provider_telemetry or {}).get("latest_quotes", [])
+                if item.get("symbol") == tick.symbol
+            ),
+            {},
+        )
+        official_open = quote.get("official_open")
+        official_open = (
+            Decimal(str(official_open)) if official_open not in {None, ""} else None
+        )
+        feed_fresh = -1 <= now - tick.event_timestamp <= self.reliability.max_feed_age
+        broker_fresh = bool(
+            self.reliability.report.get("verified")
+            and self.reliability.last_broker_at is not None
+            and -1
+            <= now - self.reliability.last_broker_at
+            <= self.reliability.max_broker_age
+        )
+        intents = []
+        positions = self.ledger.positions()
+        for row in rows:
+            context = StrategyContext(
+                row["id"],
+                row["account"],
+                row["symbol"],
+                now,
+                feed_fresh,
+                broker_fresh,
+                self.risk.state == Gate.RUNNING,
+                self.market_session.is_open(now),
+            )
+            position = positions.get((row["account"], row["id"], row["symbol"]))
+            residual = abs(position.net_quantity) if position else 0
+            attributed_side = (
+                Side.BUY if position and position.net_quantity > 0 else Side.SELL
+            )
+            intent = None
+            if row["kind"] == "time_0915_1515":
+                policy = Time0915Strategy(self.store)
+                if residual:
+                    broker_quantity = next(
+                        (
+                            abs(item.get("quantity", 0))
+                            for item in self.reliability.report.get(
+                                "broker_positions", []
+                            )
+                            if item.get("account_id") == row["account"]
+                            and item.get("symbol") == row["symbol"]
+                        ),
+                        None,
+                    )
+                    intent = policy.evaluate_exit(
+                        context,
+                        residual_quantity=residual,
+                        attributed_side=attributed_side,
+                        account_square_off_quantity=broker_quantity,
+                    )
+                else:
+                    intent = policy.evaluate_entry(context)
+            else:
+                policy = OpenBreakoutStrategy(self.store)
+                if residual:
+                    open_order = bool(
+                        self.store.rows(
+                            "SELECT id FROM orders WHERE strategy=? AND status NOT IN "
+                            "('FILLED','CANCELLED','REJECTED') LIMIT 1",
+                            (row["id"],),
+                        )
+                    )
+                    intent = policy.evaluate_exit(
+                        context,
+                        ltp=tick.price,
+                        fill_wap=position.average_price,
+                        residual_quantity=residual,
+                        attributed_side=attributed_side,
+                        entry_order_open=open_order,
+                    )
+                else:
+                    intent = policy.evaluate_entry(
+                        context, ltp=tick.price, official_open=official_open
+                    )
+            if intent is not None:
+                event = {
+                    "intent_id": intent.intent_id,
+                    "strategy": row["id"],
+                    "account": row["account"],
+                    "kind": row["kind"],
+                    "symbol": row["symbol"],
+                    "interval": 0,
+                    "side": intent.side.value,
+                    "reason": intent.reason,
+                    "candle_start": tick.event_timestamp,
+                }
+                self.strategies.signals.append(event)
+                with self.store.transaction():
+                    self.store.audit("STRATEGY_SIGNAL", event)
+                intents.append(intent)
+        return intents
 
     def get_simulation_cursor(self, symbol: str | None = None) -> int:
         """Return the highest simulation timestamp seen for symbol or globally."""
@@ -595,6 +847,8 @@ class Platform:
         market_data = self.candles.stats()
         if self.external_market_data is not None:
             market_data.update(self.external_market_data.telemetry())
+            if self._broker_stream is not None:
+                market_data["order_stream"] = self._broker_stream.telemetry()
         else:
             market_data.update(
                 {
@@ -951,6 +1205,11 @@ class Platform:
                 "signals": signals,
                 "strategy_errors": strategy_errors,
                 "market_data": market_data,
+                "auto_mode": (
+                    self.auto_mode.evidence(account_id)
+                    if account_id is not None
+                    else None
+                ),
                 "provider_readiness": (
                     self.provider_readiness(account_id, market_data)
                     if account_id is not None

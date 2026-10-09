@@ -1,5 +1,20 @@
 # Integration Progress
 
+## 2026-10-09 — Guarded auto-mode integration
+
+- Added a process-local, explicitly activated auto strategy orchestrator over
+  the existing one-instance/one-symbol contract. It scans a bounded cash-equity
+  catalogue subset, selects among momentum, breakout and mean reversion, records
+  BUY/SELL/HOLD and risk outcomes, and preserves the
+  canonical risk → order → broker → fill → ledger chain.
+- Dynamic 021 feed composition now includes active scan candidates and symbols
+  required by open orders/positions. Rebuilding that universe remains fail-closed
+  and requires reconciliation plus explicit resume before risk-increasing work.
+- Added server-side policy configuration and React controls/evidence. This is
+  mock-fixture verified, not a profitability or live-021-write claim. Final
+  regression: 445 backend passed / 1 optional PostgreSQL skip; 43 frontend
+  passed; Ruff, formatting, ESLint, Vite build, docs links and diff checks passed.
+
 ## 2026-10-09 — Official 021-03 gap-only fixture integration
 
 Work started from `main` `2490e82a4f6c1dc60ab8cc8d61f0523899dc80de` after fetch; `dev` diverged and was not merged. A temporary local feature branch was created during inspection, then the uncommitted work was moved back to `main` at the owner's explicit request before commit. Before push, remote main advanced to `da609f4`; the checkpoint was normally rebased, preserving upstream multi-stock DEC-030 and assigning this change DEC-031. Added the supplied canonical contract/blueprint, strict 021 price/quantity/instrument/response and TC1/TC3/TC4/TC8 normalization, a live-disabled adapter shell, and isolated durable-once mandatory strategy policies. Focused evidence: `29 passed`; affected regression: `99 passed`; post-rebase Python suite: `408 passed, 1 isolated PostgreSQL skipped`; seven mock rehearsals passed with measured mock kill `0.17s`. Ruff, format, docs links and diff checks passed. No live REST/WS, credentials, sandbox writes, PG, migration, fees, or kill claim. Runtime/provider composition and sponsor-dependent identity/history semantics remain blocked.
@@ -487,3 +502,27 @@ readiness/recovery tests passed; full backend regression passed 428 tests with 1
 optional PostgreSQL test skipped. Focused Ruff check/format and `git diff
 --check` passed. The existing Starlette/httpx deprecation warning remains; no
 dependency was changed.
+# 2026-10-09 — 021 end-to-end hardening checkpoint
+
+- Merged current `origin/main` into `codex/021-integration` without discarding
+  existing work. Removed whole-catalogue default subscription; live desired
+  universe is enabled strategy symbols plus optional pinned symbols and updates
+  through controlled fail-closed socket rebuilds.
+- Added provider-boundary duplicate fingerprints, 10-second configurable
+  timestamp normalization with detailed fallback evidence, bounded market
+  reconnect/resubscribe, order-stream reconnect, REST-fill-first sequencing,
+  durable-apply acknowledgement, and separate broker operation deadlines.
+- Registered `time_0915_1515` and `open_1pct_tp5_sl5` in runtime composition;
+  both remain ordinary canonical intent producers subject to reconciliation,
+  RiskGateway and OrderManager. React Market Data now exposes market/order socket
+  health, desired/subscribed universe, official open, duplicate/timestamp and
+  reconnect evidence without any provider secret.
+- Authenticated read-only 021 checks passed orders, instruments, trades,
+  positions, ephemeral key, two-symbol market WS observations, normalized live
+  quotes and order-WS handshake. No order write occurred. The documented
+  today/current endpoints still do not establish complete cross-day broker
+  history, so live reconciliation and risk-increasing execution remain safely
+  blocked rather than falsely certified.
+- Final verification: backend `441 passed, 1 skipped`; frontend `42 passed`,
+  ESLint and Vite production build passed; Ruff check/format and diff check
+  passed. The only backend warning is the existing Starlette/httpx deprecation.

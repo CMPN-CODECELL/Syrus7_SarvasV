@@ -1,5 +1,16 @@
 # Member 4 Progress
 
+- 2026-10-09: Added guarded auto mode with bounded catalogue sampling, adaptive
+  momentum/breakout/mean-reversion ranking, long-only quantity-one entry,
+  take-profit/stop-loss/reversal
+  exits, per-account BUY/SELL/HOLD plus risk-result evidence, authenticated
+  start/stop APIs and Strategies UI controls. All intents use the existing
+  RiskGateway/OrderManager/fill path; process restart disables auto mode and no
+  profit guarantee is made. Tests: `tests/test_auto_mode.py` plus React strategy
+  coverage. Final regression: 445 backend passed / 1 optional PostgreSQL skip;
+  43 frontend passed; Ruff, formatting, ESLint, Vite build, docs links and diff
+  checks passed.
+
 - 2026-10-09: Added isolated 021-03 time and official-open breakout decision policies with durable once/session triggers, stale/UNKNOWN gating, fill-WAP/residual exits and no direct broker authority. Fixture-verified only; runtime/provider composition and the custom-strategy 15:15 exit remain incomplete.
 
 ## Ownership

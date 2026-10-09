@@ -10,7 +10,16 @@ import weakref
 
 from backend.shared.contracts import OrderIntent, Side
 
-KINDS = {"momentum", "mean_reversion", "breakout", "rsi_reversal"}
+KINDS = {
+    "momentum",
+    "mean_reversion",
+    "breakout",
+    "rsi_reversal",
+    "time_0915_1515",
+    "open_1pct_tp5_sl5",
+    "auto_momentum",
+    "auto_adaptive",
+}
 MAX_BATCH_SYMBOLS = 20
 MAX_SYMBOL_LENGTH = 32
 MAX_INSTANCE_PREFIX_LENGTH = 48
@@ -182,8 +191,42 @@ class StrategyRuntime:
                 "warmup": 15,
                 "description": "14-period RSI oversold (<30) and overbought (>70) reversal on 1m candles",
             },
+            "time_0915_1515": {
+                "handler": self._official_evidence_observer,
+                "interval": 60,
+                "warmup": 1,
+                "description": "021 reference: one 09:15 IST entry and attributed 15:15 residual exit",
+            },
+            "open_1pct_tp5_sl5": {
+                "handler": self._official_evidence_observer,
+                "interval": 60,
+                "warmup": 1,
+                "description": "021 reference: 1% move from official open with fill-WAP 5% TP/SL",
+            },
+            "auto_momentum": {
+                "handler": self._official_evidence_observer,
+                "interval": 60,
+                "warmup": 1,
+                "description": "Guarded auto mode: strongest positive momentum with explicit exits",
+                "internal": True,
+            },
+            "auto_adaptive": {
+                "handler": self._official_evidence_observer,
+                "interval": 60,
+                "warmup": 1,
+                "description": "Guarded auto mode: selects momentum, breakout, or mean reversion",
+                "internal": True,
+            },
         }
         self.handlers = {k: v["handler"] for k, v in self.registry.items()}
+
+    def _official_evidence_observer(self, subscription, candle, state=None):
+        """Track candle readiness; provider-neutral quote evidence is evaluated by Platform."""
+        if candle.interval != 60:
+            return None
+        if state is not None:
+            state["samples"] = state.get("samples", 0) + 1
+        return None
 
     @property
     def enabled(self) -> bool:
@@ -286,6 +329,7 @@ class StrategyRuntime:
                 "description": meta.get("description", ""),
             }
             for kind, meta in self.registry.items()
+            if not meta.get("internal", False)
         ]
 
     def subscribe(self, account, strategy, kind, symbol):

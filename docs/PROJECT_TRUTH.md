@@ -17,6 +17,11 @@ Every claim must be tagged `REQUIRED`, `REPORTED_IMPLEMENTED`, `VERIFIED_CURRENT
 
 AlgoShield is an **evidence-driven safety and execution control plane for multiple automated strategies sharing a brokerage account**. Tagline: **Strategies propose. The platform decides.** It enables account registration/subscription, tick→1m/5m candle-based strategy signals, three or more concurrent strategy instances, platform-owned risk limits, broker orders and partial/rejected fills, independent strategy accounting and net P&L after charges, live dashboard, recovery and a ten-second **verified emergency-shutdown requirement**. Profitability, ML forecasting, microservices, a strategy marketplace and arbitrary untrusted Python uploads are out of scope.
 
+The optional auto mode is a bounded long-only momentum policy and orchestration
+workflow. It tries to select favorable observed momentum and applies explicit
+exit thresholds, but it cannot predict or guarantee profit. Its BUY/SELL/HOLD
+and risk outcome evidence is distinct from fills and financial truth.
+
 The product must distinguish **intent vs order vs execution vs position** and **account broker net vs virtual per-strategy exposure**. A broker-flat account can have nonflat virtual strategies; these are not interchangeable safety claims.
 
 ## Canonical architecture (freeze boundaries, not unverified implementation)
@@ -28,7 +33,7 @@ Cross-cutting: `Reliability/Reconciliation/Kill`, `PostgreSQL Store`, `authentic
 - **Runtime:** Python/FastAPI modular monolith, one authorized execution worker. Callback calculations run outside control-plane locks using bounded pure workers with generation invalidation. Threads are not a malicious-code sandbox.
 - **Persistence:** PostgreSQL/Neon target, SQLite only for explicitly selected offline/mock. Applied SQL migrations and their checksums are immutable. Never silently fall back to SQLite after configured PostgreSQL failure.
 - **Frontend:** React/Vite (`frontend/src`) is canonical per DEC-025. `frontend/static_dashboard.html` is preserved legacy demonstration material. React only displays backend-computed financial/safety truth. Authenticated single WebSocket with HTTP fallback.
-- **Broker:** mock HTTP broker and replay are development/testing infrastructure. The official 021 wire contract is now **OFFICIAL_DOCUMENTED** in `021/OFFICIAL_API_CONTRACT.md`; strict fixture normalization exists, but transport, credentials, durable identity mapping and sandbox behavior remain **IMPLEMENTED_UNVERIFIED/BLOCKED**. Do not fabricate charges, account models or performance.
+- **Broker:** mock HTTP broker and replay are development/testing infrastructure. The official 021 wire contract is **OFFICIAL_DOCUMENTED** in `021/OFFICIAL_API_CONTRACT.md`; read-only REST/WS connectivity is **021_LIVE_VERIFIED**, while writes, complete reconciliation, charges, corrections and kill behavior remain **IMPLEMENTED_UNVERIFIED/BLOCKED**. Do not fabricate charges, account models or performance.
 - **Financial truth:** unique attributed effective broker executions drive Decimal positions, weighted-average costs and realized/unrealized/net P&L. Pending orders never create positions. Identical duplicate fills are idempotent; conflicting duplicate/correction handling requires explicit evidence.
 - **Risk:** serialize admission/check/reserve with changing policies and kill gate. Worst-case pending buys and sells are evaluated independently; account net/gross policies are optional/configurable. UNKNOWN submissions conservatively retain exposure.
 - **Reliability:** closed/unknown state fails closed; startup RECOVERING, successful reconciliation STOPPED, explicit authorized resume only. Broker evidence must have sufficient coverage, freshness and consistency. Do not synthesize balancing fills or infer an absent UNKNOWN from an incomplete open-order list.
@@ -49,7 +54,7 @@ Uploaded 2026-10-08 integration progress reports merge builds with **311 Python 
 
 ## Hard blockers / open sponsor questions
 
-- 021 authenticated API schemas and client/execution IDs; order/reject/cancel/partial fill/UNKNOWN semantics; completeness and consistency of historical snapshots; charges and correction events.
+- 021 write-side order/reject/cancel/partial-fill behavior and execution-ID scope; completeness and consistency of historical snapshots; charges and correction events. Read-only endpoint and WebSocket connectivity are no longer blockers.
 - Live shorting/netted opposing virtual positions and emergency close sequencing; the exact sponsor interpretation of ten-second success.
 - Isolated Postgres tests, remote Neon project identity and production deployment/identity readiness. Explicit operator authorization and account response isolation are implemented and locally verified under DEC-026; see the current integration record. DEC-009 names `muddy-tooth-14996153`; a member log mentions `soft-glade-57602806`. These may be separate environments: inspect and obtain authorization; never choose blindly or touch production data.
 

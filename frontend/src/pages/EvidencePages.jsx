@@ -549,6 +549,10 @@ export function MarketDataPage(){
     {sessionError&&<div className="error" role="alert">{sessionError}</div>}
     <div className="stat-grid">
       <Card title="Source"><strong>{source}</strong><p>{s?.market_data?.connected?'Connected':'Not connected'} · Volume {s?.market_data?.volume_available===false?'unavailable':'available'}</p></Card>
+      <Card title="Provider health"><Status value={s?.market_data?.health||'UNKNOWN'}/><p>{s?.market_data?.last_disconnect_reason||'No disconnect reason'}</p></Card>
+      <Card title="Market sockets"><strong>{s?.market_data?.connected_sockets??s?.market_data?.connection_count??0} / {s?.market_data?.expected_sockets??'—'}</strong><p>{s?.market_data?.reconnect_attempts??0} reconnect attempts</p></Card>
+      {s?.market_data?.order_stream?<Card title="Order stream"><Status value={s.market_data.order_stream.connected?'CONNECTED':'DISCONNECTED'}/><p>{s.market_data.order_stream.frames_received??0} frames · {s.market_data.order_stream.reconnect_attempts??0} reconnects</p></Card>:null}
+      <Card title="Live universe"><strong>{s?.market_data?.subscribed_symbols?.length??s?.market_data?.symbols?.length??0} subscribed</strong><p>{s?.market_data?.desired_symbols?.length??0} desired · {(s?.market_data?.unsupported_symbols||[]).length} unsupported</p></Card>
       <Card title="Safety gate"><Status value={s?.gate}/></Card>
       <Card title="Last quote event"><strong>{asUtc(eventTime)}</strong><p>Raw: {s?.market_data?.last_raw_event_timestamp??'—'}</p></Card>
       <Card title="Last received"><strong>{asUtc(receivedTime)}</strong><p>{s?.market_data?.received_messages??'—'} received · {s?.market_data?.accepted_updates??'—'} accepted</p></Card>
@@ -557,12 +561,13 @@ export function MarketDataPage(){
       <Card title="Tracked stocks"><strong>{symbols.length}</strong></Card>
       <Card title="Accepted ticks"><strong>{s?.market_data?.accepted_ticks??'—'}</strong></Card>
       <Card title="Duplicates / late"><strong>{s?.market_data?.duplicate_ticks??'—'} / {s?.market_data?.late_ticks??'—'}</strong></Card>
+      <Card title="Provider filtering"><strong>{s?.market_data?.provider_duplicates_dropped??0} duplicates</strong><p>{s?.market_data?.timestamp_fallbacks??0} timestamp fallbacks · {s?.market_data?.timestamp_reorder_fallbacks??0} reordered</p></Card>
     </div>
     {s?.market_data?.errors?.length?<Card title="Provider lifecycle errors"><EvidenceView value={s.market_data.errors}/></Card>:null}
     <Card title="Watchlist" meta={`${watchQuotes.length} live symbols`}><DataTable rows={watchQuotes} columns={[{key:'symbol',label:'Symbol'},{key:'price',label:'Price',render:row=>row.price??'—'},{key:'data_source',label:'Source'},{key:'action',label:'',render:row=><button type="button" onClick={()=>toggleWatch(row.symbol)}>Remove</button>}]}/></Card>
     <Card title="Latest external quotes" meta={`${displayedQuotes.length} of ${visibleQuotes.length} shown`}>
       <label className="compact-filter">Show stocks<input aria-label="Number of stocks to display" type="number" min="1" max="200" value={displayLimit} onChange={event=>setDisplayLimit(Math.max(1,Math.min(200,Number(event.target.value)||1)))}/></label>
-      <DataTable rows={displayedQuotes} columns={[{key:'symbol',label:'Symbol'},{key:'provider_symbol',label:'Provider symbol'},{key:'price',label:'Price',render:row=>row.price??'—'},{key:'event_timestamp',label:'Event time',render:row=>asUtc(row.event_timestamp)},{key:'raw_event_timestamp',label:'Raw timestamp',render:row=>row.raw_event_timestamp??'—'},{key:'received_at',label:'Received',render:row=>asUtc(row.received_at)},{key:'volume_available',label:'Volume',render:row=>row.volume_available===false?'Unavailable':'Available'},{key:'data_source',label:'Source'},{key:'watch',label:'',render:row=><button type="button" onClick={()=>toggleWatch(row.symbol)}>{watchlist.includes(row.symbol)?'★':'☆'}</button>}]}/>
+      <DataTable rows={displayedQuotes} columns={[{key:'symbol',label:'Symbol'},{key:'provider_symbol',label:'Provider symbol'},{key:'price',label:'Price',render:row=>row.price??'—'},{key:'official_open',label:'Official open',render:row=>row.official_open??'—'},{key:'event_timestamp',label:'Event time',render:row=>asUtc(row.event_timestamp)},{key:'raw_event_timestamp',label:'Raw timestamp',render:row=>row.raw_event_timestamp??'—'},{key:'received_at',label:'Received',render:row=>asUtc(row.received_at)},{key:'volume_available',label:'Volume',render:row=>row.volume_available===false?'Unavailable':'Available'},{key:'data_source',label:'Source'},{key:'watch',label:'',render:row=><button type="button" onClick={()=>toggleWatch(row.symbol)}>{watchlist.includes(row.symbol)?'★':'☆'}</button>}]}/>
     </Card>
     <Card title="Closed candles" meta={`${candles.length} shown`}>
       <label className="compact-filter">Search stock<input aria-label="Search stock symbols" placeholder="RELIANCE or TCS" value={symbolQuery} onChange={event=>setSymbolQuery(event.target.value)}/></label>

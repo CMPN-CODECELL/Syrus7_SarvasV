@@ -20,6 +20,17 @@ def test_environment_precedence_and_local_file(monkeypatch, tmp_path):
         "sqlite_path": "fallback.db",
         "021_enabled": False,
         "market_data_provider": "replay",
+        "021_max_timestamp_skew_seconds": 10.0,
+        "broker_read_timeout_seconds": 8.0,
+        "broker_write_timeout_seconds": 8.0,
+        "reconciliation_timeout_seconds": 10.0,
+        "auto_scan_limit": 200,
+        "auto_max_positions": 3,
+        "auto_lookback_updates": 5,
+        "auto_entry_momentum": 0.003,
+        "auto_take_profit": 0.01,
+        "auto_stop_loss": 0.005,
+        "auto_cooldown_seconds": 60,
     }
     monkeypatch.setenv("DATABASE_URL", "process-test-value")
     assert settings()["database_url"] == "process-test-value"
@@ -59,6 +70,7 @@ def test_additive_migration_constraints_and_checksum():
         "010_benchmark_runs.sql",
         "011_operator_grants.sql",
         "012_021_order_mappings.sql",
+        "013_closed_candles.sql",
     ]
     for name, checksum, sql in items:
         assert checksum == hashlib.sha256(sql.encode()).hexdigest()
@@ -126,6 +138,6 @@ def test_sqlite_v1_subscription_state_migrates_additively(tmp_path):
     try:
         row = store.rows("SELECT enabled FROM subscriptions WHERE id='s'")[0]
         assert row["enabled"] == 1
-        assert store.rows("PRAGMA user_version")[0][0] == 13
+        assert store.rows("PRAGMA user_version")[0][0] == 14
     finally:
         store.close()

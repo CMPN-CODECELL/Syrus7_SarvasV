@@ -59,7 +59,7 @@ STATUS_MAP = {
 }
 
 ORDER_FRAME_STATUS = {
-    1: OrderStatus.PARTIALLY_FILLED,  # trade evidence only; REST supplies tradeId
+    1: OrderStatus.OPEN,  # provisional trade notice; REST supplies fill identity
     2: OrderStatus.OPEN,
     3: OrderStatus.REJECTED,
     4: OrderStatus.OPEN,
@@ -115,6 +115,8 @@ class Official021RESTAdapter:
         access_token: str | None = None,
         product: str = "INTRADAY",
         timeout: float = 8.0,
+        read_timeout: float | None = None,
+        write_timeout: float | None = None,
         client: httpx.Client | None = None,
         transport: httpx.BaseTransport | None = None,
         instrument_cache: str | None = None,
@@ -132,6 +134,8 @@ class Official021RESTAdapter:
         self.access_token = access_token or os.getenv("ALGOSHIELD_021_TOKEN")
         self.product = product
         self.timeout = timeout
+        self.read_timeout = read_timeout or timeout
+        self.write_timeout = write_timeout or timeout
         self.instrument_cache = instrument_cache or os.getenv(
             "ALGOSHIELD_021_INSTRUMENT_CACHE"
         )
@@ -139,6 +143,7 @@ class Official021RESTAdapter:
         self.market_symbols: tuple[str, ...] = ()
         self._provider_orders: dict[str, str] = {}
         self._seen_trade_ids: set[str] = set()
+        self._unknown_provider_orders: set[str] = set()
         self.connected = False
         self.updates: list[BrokerUpdate] = []
         self.client = client or httpx.Client(timeout=timeout, transport=transport)
@@ -158,6 +163,7 @@ class Official021RESTAdapter:
         response = self.client.post(
             f"{self.base_url}/auth/token",
             json={"username": self.username, "password": self.password},
+            timeout=self.read_timeout,
         )
         if response.status_code >= 400:
             self._raise_http(response, write=False)
@@ -190,6 +196,7 @@ class Official021RESTAdapter:
                 f"{self.base_url}{path}",
                 headers=headers,
                 json=json,
+                timeout=self.write_timeout if write else self.read_timeout,
             )
         except httpx.TimeoutException as exc:
             if write:
@@ -209,6 +216,7 @@ class Official021RESTAdapter:
                 f"{self.base_url}{path}",
                 headers={"Authorization": f"Bearer {token}"},
                 json=json,
+                timeout=self.read_timeout,
             )
         if response.status_code >= 400:
             self._raise_http(response, write=write)
@@ -307,7 +315,14 @@ class Official021RESTAdapter:
             )
         return rows[0]
 
-    def _order_payload(self, intent: OrderIntent, instrument: Instrument021, *, quantity=None, limit_price=None):
+    def _order_payload(
+        self,
+        intent: OrderIntent,
+        instrument: Instrument021,
+        *,
+        quantity=None,
+        limit_price=None,
+    ):
         requested_quantity = intent.quantity if quantity is None else quantity
         instrument.validate_quantity(requested_quantity)
         if intent.order_type == "MARKET":
@@ -368,7 +383,9 @@ class Official021RESTAdapter:
         self._provider_orders[intent.intent_id] = provider_order_id
         return CanonicalOrder(intent.intent_id, intent, OrderStatus.OPEN)
 
-    def modify(self, order_id: str, *, quantity: int, limit_price: Decimal | None = None) -> None:
+    def modify(
+        self, order_id: str, *, quantity: int, limit_price: Decimal | None = None
+    ) -> None:
         """Modify a pending order using the provider's complete order payload."""
         mapping = self._mapping(order_id)
         intent = self._local_intent(mapping)
@@ -380,7 +397,10 @@ class Official021RESTAdapter:
             "PUT", f"/orders/{mapping['provider_order_id']}", json=payload, write=True
         )
         data = parse_envelope(response.json())
-        if not isinstance(data, dict) or str(data.get("type", "")).upper() not in {"SUCCESS", "OK"}:
+        if not isinstance(data, dict) or str(data.get("type", "")).upper() not in {
+            "SUCCESS",
+            "OK",
+        }:
             raise Provider021ProtocolError("021 modify response was not successful")
 
     def cancel(self, order_id: str, timeout: float | None = None) -> None:
@@ -557,13 +577,33 @@ class Official021RESTAdapter:
             )
         }
         trades = self._mapped_trades(mapped)
+        # REST trades have stable trade IDs and are financial authority. Apply
+        # them before a terminal provider status so local executed quantity is
+        # established before an order can become FILLED.
         updates = []
+        for fill in self._fills_from_trades(trades, mapped):
+            if fill.fill_id in self._seen_trade_ids:
+                continue
+            updates.append(
+                BrokerUpdate(
+                    f"021:fill:{fill.fill_id}",
+                    fill.broker_order_id,
+                    BrokerUpdateType.FILL,
+                    OrderStatus.PARTIALLY_FILLED,
+                    fill,
+                    fill.timestamp,
+                )
+            )
         for row in orders:
             mapping = mapped.get(_text(row.get("orderId")))
             if mapping is None:
                 continue
             intent = self._local_intent(mapping)
             status = STATUS_MAP.get(_text(row.get("status")), OrderStatus.UNKNOWN)
+            # An Executed status without a uniquely identified REST trade is
+            # not enough evidence to manufacture a local filled quantity.
+            if status == OrderStatus.FILLED:
+                continue
             update_type = {
                 OrderStatus.REJECTED: BrokerUpdateType.ORDER_REJECTED,
                 OrderStatus.CANCELLED: BrokerUpdateType.ORDER_CANCELLED,
@@ -578,22 +618,13 @@ class Official021RESTAdapter:
                     timestamp=float(row.get("lastActivity", time.time())),
                 )
             )
-        for fill in self._fills_from_trades(trades, mapped):
-            if fill.fill_id in self._seen_trade_ids:
-                continue
-            self._seen_trade_ids.add(fill.fill_id)
-            updates.append(
-                BrokerUpdate(
-                    f"021:fill:{fill.fill_id}",
-                    fill.broker_order_id,
-                    BrokerUpdateType.FILL,
-                    OrderStatus.PARTIALLY_FILLED,
-                    fill,
-                    fill.timestamp,
-                )
-            )
         self.updates = updates
         return list(updates)
+
+    def acknowledge_update(self, update: BrokerUpdate) -> None:
+        """Mark fill evidence seen only after the platform durably applies it."""
+        if update.update_type == BrokerUpdateType.FILL and update.fill is not None:
+            self._seen_trade_ids.add(update.fill.fill_id)
 
     def disconnect(self):
         self.connected = False
@@ -625,9 +656,35 @@ class Official021RESTAdapter:
             (self.provider, event.order_id),
         )
         if not mapping:
+            if event.order_id not in self._unknown_provider_orders:
+                self._unknown_provider_orders.add(event.order_id)
+                with self.store.transaction():
+                    self.store.audit(
+                        "021_UNKNOWN_PROVIDER_ORDER",
+                        {"provider_order_id": event.order_id, "source": "order_ws"},
+                    )
             return None
         row = mapping[0]
+        # A trade notification has no documented unique trade ID. Polling the
+        # per-order REST trades endpoint is the only safe way to create a Fill.
+        if event.status_code == 1:
+            return None
         status = ORDER_FRAME_STATUS[event.status_code]
+        local = self.store.rows(
+            "SELECT status FROM orders WHERE id=?", (row["platform_order_id"],)
+        )
+        if (
+            local
+            and status == OrderStatus.OPEN
+            and local[0]["status"]
+            in {
+                OrderStatus.PARTIALLY_FILLED.value,
+                OrderStatus.FILLED.value,
+                OrderStatus.CANCELLED.value,
+                OrderStatus.REJECTED.value,
+            }
+        ):
+            return None
         update_type = {
             OrderStatus.REJECTED: BrokerUpdateType.ORDER_REJECTED,
             OrderStatus.CANCELLED: BrokerUpdateType.ORDER_CANCELLED,

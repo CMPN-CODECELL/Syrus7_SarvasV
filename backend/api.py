@@ -23,6 +23,7 @@ from backend.platform import Platform
 from backend.market_data.yahoo import YahooMarketDataProvider
 from backend.market_data.official021 import MarketData021Provider
 from backend.broker.adapters import Broker021Adapter, MockBrokerAdapter
+from backend.broker.official021 import Provider021Error
 from backend.broker.http_adapter import HTTPMockBrokerAdapter
 from backend.reliability.failure_lab import FailureLab, SCENARIOS, SCENARIO_METADATA
 from backend.shared.config import settings
@@ -208,6 +209,8 @@ def create_app(platform=None, *, trusted_origins=None):
             password=config.get("021_password"),
             access_token=config.get("021_token"),
             instrument_cache=config.get("021_instrument_cache"),
+            read_timeout=config["broker_read_timeout_seconds"],
+            write_timeout=config["broker_write_timeout_seconds"],
         )
     elif mock_broker_url:
         broker = HTTPMockBrokerAdapter(mock_broker_url)
@@ -226,23 +229,27 @@ def create_app(platform=None, *, trusted_origins=None):
             if config.get("021_enabled")
             else not bool(config["database_url"]) or local_mock
         ),
+        broker_read_timeout=config["broker_read_timeout_seconds"],
+        broker_write_timeout=config["broker_write_timeout_seconds"],
+        reconciliation_timeout=config["reconciliation_timeout_seconds"],
+        auto_scan_limit=config["auto_scan_limit"],
+        auto_max_positions=config["auto_max_positions"],
+        auto_lookback=config["auto_lookback_updates"],
+        auto_entry_momentum=config["auto_entry_momentum"],
+        auto_take_profit=config["auto_take_profit"],
+        auto_stop_loss=config["auto_stop_loss"],
+        auto_cooldown_seconds=config["auto_cooldown_seconds"],
     )
     if platform is None and config.get("market_data_provider") == "021":
         if not isinstance(broker, Broker021Adapter):
             raise RuntimeError("021 market data requires ALGOSHIELD_021_ENABLED=true")
-        symbols = config.get("021_symbols")
-        if not symbols:
-            # The catalogue is the source of truth when no explicit universe is
-            # configured.  The provider applies 021's connection/instrument
-            # limits and reports any truncation in telemetry.
-            symbols = broker.all_market_symbols()
-            if not symbols:
-                raise RuntimeError("021 instrument catalogue contains no cash-equity symbols")
+        symbols = config.get("021_symbols", ())
         engine.configure_external_market_data(
             MarketData021Provider(
                 engine,
                 broker,
                 symbols,
+                max_timestamp_skew_seconds=config["021_max_timestamp_skew_seconds"],
             )
         )
     elif platform is None and config.get("market_data_provider") == "yahoo":
@@ -627,9 +634,16 @@ def create_app(platform=None, *, trusted_origins=None):
         return financial_json(engine.market_session.to_dict(engine.clock()))
 
     @app.get("/api/candles")
-    def historical_candles(request: Request, symbol: str | None = None, interval: int | None = Query(None, ge=60, le=3600), limit: int = Query(200, ge=1, le=1000)):
+    def historical_candles(
+        request: Request,
+        symbol: str | None = None,
+        interval: int | None = Query(None, ge=60, le=3600),
+        limit: int = Query(200, ge=1, le=1000),
+    ):
         require_user(request)
-        return financial_json([dict(row) for row in engine.store.candle_rows(symbol, interval, limit)])
+        return financial_json(
+            [dict(row) for row in engine.store.candle_rows(symbol, interval, limit)]
+        )
 
     @app.post("/api/market/session")
     def set_market_session(body: MarketSessionRequest, request: Request):
@@ -644,17 +658,22 @@ def create_app(platform=None, *, trusted_origins=None):
     def subscribe(body: SubscriptionRequest, request: Request):
         user = require_user(request)
         try:
+            engine.validate_external_market_symbols([body.symbol])
             engine.strategies.subscribe(
                 user["account_id"], body.strategy_instance_id, body.kind, body.symbol
             )
+        except Provider021Error as exc:
+            raise HTTPException(422, str(exc)) from None
         except (sqlite3.IntegrityError, UniqueViolation):
             raise HTTPException(409, "strategy instance exists") from None
+        engine.refresh_external_market_universe()
         return engine.snapshot(user["account_id"])["subscriptions"]
 
     @app.post("/api/subscriptions/batch", status_code=201)
     def subscribe_batch(body: BatchSubscriptionRequest, request: Request):
         user = require_user(request)
         try:
+            engine.validate_external_market_symbols(body.symbols)
             created = engine.strategies.subscribe_many(
                 user["account_id"],
                 body.kind,
@@ -669,8 +688,11 @@ def create_app(platform=None, *, trusted_origins=None):
                     "existing": exc.existing,
                 },
             ) from None
+        except Provider021Error as exc:
+            raise HTTPException(422, str(exc)) from None
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from None
+        engine.refresh_external_market_universe()
         return {
             "created": created,
             "count": len(created),
@@ -682,16 +704,36 @@ def create_app(platform=None, *, trusted_origins=None):
         user = require_user(request)
         return engine.snapshot(account_id=user["account_id"])["subscriptions"]
 
+    @app.get("/api/auto-mode")
+    def auto_mode(request: Request):
+        user = require_user(request)
+        return financial_json(engine.auto_mode.evidence(user["account_id"]))
+
+    @app.post("/api/auto-mode/start")
+    def start_auto_mode(request: Request):
+        user = require_user(request)
+        try:
+            return financial_json(engine.auto_mode.start(user["account_id"]))
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+
+    @app.post("/api/auto-mode/stop")
+    def stop_auto_mode(request: Request):
+        user = require_user(request)
+        return financial_json(engine.auto_mode.stop(user["account_id"]))
+
     @app.post("/api/subscriptions/{strategy_instance_id}/start")
     def start_subscription(strategy_instance_id: str, request: Request):
         user = require_strategy_owner(request, strategy_instance_id)
         engine.strategies.set_enabled(user["account_id"], strategy_instance_id, True)
+        engine.refresh_external_market_universe()
         return engine.snapshot(user["account_id"])["subscriptions"]
 
     @app.post("/api/subscriptions/{strategy_instance_id}/stop")
     def stop_subscription(strategy_instance_id: str, request: Request):
         user = require_strategy_owner(request, strategy_instance_id)
         engine.strategies.set_enabled(user["account_id"], strategy_instance_id, False)
+        engine.refresh_external_market_universe()
         return engine.snapshot(user["account_id"])["subscriptions"]
 
     @app.post("/api/demo")
@@ -819,7 +861,9 @@ def create_app(platform=None, *, trusted_origins=None):
         if not engine.demo_enabled:
             # Live 021 state is never mutated by synthetic scenarios. Run the
             # same FailureLab contract against a fresh in-memory mock sandbox.
-            sandbox = Platform(":memory:", broker=MockBrokerAdapter(), demo_enabled=True)
+            sandbox = Platform(
+                ":memory:", broker=MockBrokerAdapter(), demo_enabled=True
+            )
             target = sandbox
         try:
             result = FailureLab(target).run(scenario, params=params)

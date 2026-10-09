@@ -8,8 +8,8 @@ vi.mock('../api/client',()=>({api:{get:mocks.get,post:mocks.post}}))
 
 import { StrategiesPage } from '../pages/StrategiesPage'
 
-function renderPage(refresh=vi.fn()){
-  const context={snapshot:{subscriptions:[],positions:[]},refresh}
+function renderPage(refresh=vi.fn(),snapshot={subscriptions:[],positions:[]}){
+  const context={snapshot,refresh}
   return render(<MemoryRouter><Routes><Route element={<Outlet context={context}/> }><Route index element={<StrategiesPage/>}/></Route></Routes></MemoryRouter>)
 }
 
@@ -19,6 +19,24 @@ beforeEach(()=>{
 })
 
 describe('multi-stock strategy creation',()=>{
+  it('shows auto-mode policy, honest decisions, and starts it through the backend',async()=>{
+    const user=userEvent.setup()
+    const refresh=vi.fn().mockResolvedValue()
+    mocks.post.mockResolvedValue({enabled:true})
+    renderPage(refresh,{
+      subscriptions:[{id:'auto-hidden',account:'acc_a',kind:'auto_adaptive',symbol:'TCS',enabled:1,state:'READY',readiness:{samples:0,warmup:1,ready:false}}],positions:[],
+      auto_mode:{enabled:false,candidate_count:200,evaluated_count:12,policy:{max_positions:3,entry_momentum:'0.003',take_profit:'0.01',stop_loss:'0.005'},decisions:[{symbol:'TCS',selected_strategy:'mean_reversion',action:'HOLD',result:null,momentum:'0.002',reason:'no entry or exit threshold crossed',observed_at:123}]},
+    })
+    expect(screen.getByText('Profit is not guaranteed.')).toBeInTheDocument()
+    expect(screen.getAllByText('TCS').length).toBeGreaterThan(0)
+    expect(screen.getByText('Mean Reversion')).toBeInTheDocument()
+    expect(screen.getByText('HOLD')).toBeInTheDocument()
+    expect(screen.queryByText('auto-hidden')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button',{name:'Start auto mode'}))
+    expect(mocks.post).toHaveBeenCalledWith('/api/auto-mode/start')
+    expect(refresh).toHaveBeenCalledOnce()
+  })
+
   it('adds stocks from a clearly labeled quick-select dropdown',async()=>{
     const user=userEvent.setup()
     renderPage()

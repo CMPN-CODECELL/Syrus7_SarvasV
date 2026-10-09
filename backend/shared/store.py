@@ -114,18 +114,37 @@ class Store:
                 """INSERT INTO closed_candles
                 (provider,symbol,interval,start_time,end_time,open,high,low,close,volume,is_closed,volume_available,data_source)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(provider,symbol,interval,start_time) DO NOTHING""",
-                (provider, candle.symbol, candle.interval, candle.start_time, candle.end_time,
-                 str(candle.open), str(candle.high), str(candle.low), str(candle.close), candle.volume,
-                 int(candle.is_closed), int(candle.volume_available), candle.data_source),
+                (
+                    provider,
+                    candle.symbol,
+                    candle.interval,
+                    candle.start_time,
+                    candle.end_time,
+                    str(candle.open),
+                    str(candle.high),
+                    str(candle.low),
+                    str(candle.close),
+                    candle.volume,
+                    int(candle.is_closed),
+                    int(candle.volume_available),
+                    candle.data_source,
+                ),
             )
 
     def candle_rows(self, symbol=None, interval=None, limit=200):
         clauses, args = [], []
-        if symbol: clauses.append("symbol=?"); args.append(symbol.upper())
-        if interval: clauses.append("interval=?"); args.append(interval)
+        if symbol:
+            clauses.append("symbol=?")
+            args.append(symbol.upper())
+        if interval:
+            clauses.append("interval=?")
+            args.append(interval)
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
         args.append(min(max(int(limit), 1), 1000))
-        return self.rows(f"SELECT * FROM closed_candles{where} ORDER BY start_time DESC LIMIT ?", tuple(args))
+        return self.rows(
+            f"SELECT * FROM closed_candles{where} ORDER BY start_time DESC LIMIT ?",
+            tuple(args),
+        )
 
     def audit(self, event_type, payload, correlation_id=None):
         # Caller holds the transaction; event commits atomically with its transition.
