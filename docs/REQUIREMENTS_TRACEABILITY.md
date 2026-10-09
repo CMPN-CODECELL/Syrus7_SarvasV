@@ -71,13 +71,13 @@ substitutes for sponsor sandbox proof.
 | React/evidence | frontend/src; presentation.py, tracing.py, proof.py | Scope and exact strings verified; scripts/browser_smoke.py uses legacy selectors, port needs trusted Origin |
 | Failure Lab/SafetyBench | platform.fail-scenario guard; failure_lab.py/safety_bench.py | SQLite/mock-only verified; never use live/PG faults; no benchmark-as-live-safety claim |
 | SQLite migration/restart | store.py v12; test_database upgrades; mock_persistence.py | VERIFIED_CURRENT_COMMIT; old applied files unchanged in promotion |
-| PostgreSQL | PostgresStore advisory lock/checksum validation; opt-in rollback test | IMPLEMENTED_UNVERIFIED real transactions/controller parity; isolated test skipped; packaged through migration011 (two distinct historical002 names) |
+| PostgreSQL | PostgresStore advisory lock/checksum validation; opt-in rollback test | Production schema deployment VERIFIED on authorized empty Neon target with 14 matching migration checksums and successful store initialization; real transaction/controller parity remains IMPLEMENTED_UNVERIFIED because rollback tests require an isolated non-production DB |
 | CI/packaging | tests.yml, Dockerfile, pyproject package-data | Prior CI pytest prerequisite missing, reproduced cloud failure; fixed push-only workflow succeeds at E2. Docker image not built here |
 | Deployment scripts | run_app.sh; SECURITY_OPERATIONS | run_app lacks --no-proxy-headers; mark mismatch for SEC01, do not silently pick a Neon project |
 | 021/feed | Strict normalizer, bounded REST adapter, durable mapping and sampled WS provider | IMPLEMENTED_UNVERIFIED; sandbox identity/history/fees/corrections/kill remain BLOCKED_EXTERNAL |
 | Hidden/change tests | tests and seven isolated rehearsals | PARTIAL readiness; actual hidden harness/change request unknown |
 
-Unresolved human inputs: isolated DB authorization, which Neon identity/environment,
+Unresolved human inputs: isolated PostgreSQL test-database authorization,
 deployment domain/TLS/identity/operator governance, sponsor-authenticated statement
 and API/fee/netting/SLA semantics. GitHub collaborator access is separate server
 administration; main direct push acceptance does not grant every teammate write access.

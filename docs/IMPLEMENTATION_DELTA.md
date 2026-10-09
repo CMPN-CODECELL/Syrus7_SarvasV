@@ -8,7 +8,9 @@ Confirmed remaining gaps:
 
 - P0: wire the policies into subscription/runtime composition; run an approved sandbox read-only smoke test; resolve provider charges/correction semantics, full-history coverage, external/manual trade attribution, and verified live kill behavior.
 - P0: verify 021 orders, per-order trade association, asynchronous cancellation, today's-history coverage and charges in an authorized sandbox; no fabricated adapter behavior.
-- P0: isolated PostgreSQL transaction, restart and ownership evidence; production access is excluded.
+- P0: isolated PostgreSQL transaction, restart and ownership evidence. The
+  authorized empty production schema is migrated and checksum-verified under
+  DEC-041, but production remains excluded from rollback/integration testing.
 - P0: real-provider reconciliation coverage and verified kill/flatten semantics, including opposing strategies.
 - P1: actual React browser smoke, deployment Origin/proxy configuration and reproducible runtime evidence.
 - Conditional: correction/late-fee accounting only after an accepted provider event contract.

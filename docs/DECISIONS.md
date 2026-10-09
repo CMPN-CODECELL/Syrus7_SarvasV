@@ -983,3 +983,33 @@ Continuous strategies retain fresh broker evidence without operator polling,
 while the existing one-call serialization and non-bypassable risk boundary are
 preserved. The heartbeat adds provider read load and auditable refresh events;
 it does not fabricate fills, retry writes or weaken explicit resume.
+
+## DEC-041 — Authorized Neon production target and schema-only deployment
+
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Context
+
+DEC-009 recorded `muddy-tooth-14996153` as an intended, unauthenticated Neon
+target while progress evidence separately mentioned `soft-glade-57602806`.
+The owner has now explicitly selected project `soft-glade-57602806`, branch
+`production`, and supplied authorized connectivity.
+
+### Decision
+
+Supersede only DEC-009's project identity: the durable PostgreSQL target is Neon
+project `soft-glade-57602806`, branch `production`. Inspect before applying the
+existing checksum-locked additive migrations. Never reset production, copy
+local demo/trading rows, run rollback integration tests, or provision identities
+or operator grants as part of schema deployment.
+
+### Evidence and impact
+
+Inspection found the managed `algoshield` schema. Additive migration completed
+transactionally; all 14 migration name/checksum pairs match the repository, all
+17 expected application tables exist, `PostgresStore` initializes, and the
+financial/identity tables inspected remain empty. This verifies schema
+deployment, not runtime deployment, transaction parity, production identity,
+021 readiness or safety certification. Those require separate authorized
+environments and evidence.

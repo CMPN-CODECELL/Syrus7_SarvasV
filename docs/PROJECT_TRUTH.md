@@ -58,7 +58,11 @@ Uploaded 2026-10-08 integration progress reports merge builds with **311 Python 
 
 - 021 write-side order/reject/cancel/partial-fill behavior and execution-ID scope; completeness and consistency of historical snapshots; charges and correction events. Read-only endpoint and WebSocket connectivity are no longer blockers.
 - Live shorting/netted opposing virtual positions and emergency close sequencing; the exact sponsor interpretation of ten-second success.
-- Isolated Postgres tests, remote Neon project identity and production deployment/identity readiness. Explicit operator authorization and account response isolation are implemented and locally verified under DEC-026; see the current integration record. DEC-009 names `muddy-tooth-14996153`; a member log mentions `soft-glade-57602806`. These may be separate environments: inspect and obtain authorization; never choose blindly or touch production data.
+- Isolated Postgres transaction tests and production runtime/identity readiness.
+  DEC-041 records the owner's explicit selection of Neon project
+  `soft-glade-57602806`, branch `production`, and the verified empty-schema
+  migration. No demo rows, production identity, operator grant, or integration
+  test was created there.
 
 ## Non-negotiable change rules
 
@@ -74,4 +78,4 @@ password, bounded login and execution-display changes preserve DEC-026 and the
 existing architecture. Member reports describe different baselines, not current
 certification. [Archive inventory](archive/README.md) preserves earlier proposals.
 
-DEC-026 establishes durable explicit operators for global actions and a shared nested account response boundary. Ordinary users retain own-account actions; even operator responses are scoped to the operator's account. Global gate, proof verdict, kill result/timing and aggregate operational diagnostics are permitted summaries, never filtered internal financial inputs. SQLite schema v12 adds operator_grants; PostgreSQL migration 011 is packaged but unverified on a real database. See `SECURITY_OPERATIONS.md` and the integration evidence for IMPLEMENTED_VERIFIED / IMPLEMENTED_UNVERIFIED / BLOCKED status.
+DEC-026 establishes durable explicit operators for global actions and a shared nested account response boundary. Ordinary users retain own-account actions; even operator responses are scoped to the operator's account. Global gate, proof verdict, kill result/timing and aggregate operational diagnostics are permitted summaries, never filtered internal financial inputs. SQLite schema v12 adds operator_grants; the current PostgreSQL migration ledger is checksum-verified on the authorized empty Neon production schema under DEC-041. Transactional parity still requires an isolated non-production database. See `SECURITY_OPERATIONS.md` and the integration evidence for IMPLEMENTED_VERIFIED / IMPLEMENTED_UNVERIFIED / BLOCKED status.

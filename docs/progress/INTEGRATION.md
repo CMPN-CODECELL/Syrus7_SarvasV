@@ -805,3 +805,18 @@ Focused coverage (`test_auto_mode`, market-pipeline visibility, strategy lifecyc
   1 expected xfail** (the documented cross-account provider-order-ID scope
   blocker); frontend **51 passed**; TypeScript, Ruff, ESLint, Vite production
   build, all seven deterministic mock rehearsals and `git diff --check` passed.
+
+## 2026-10-09 — Authorized Neon production schema migration
+
+- The owner explicitly designated Neon project `soft-glade-57602806`, branch
+  `production`; DEC-041 supersedes DEC-009's earlier intended project identity.
+- Inspection found an existing managed `algoshield` schema. The repository's
+  additive migration runner completed transactionally with no reset, deletion,
+  local-row copy, demo seed, identity provisioning or operator grant.
+- Post-apply verification found all **14** migration names/checksums equal to the
+  repository set, all **17** application tables present, successful
+  `PostgresStore` initialization, and zero rows in accounts, users,
+  subscriptions, orders, fills and operator grants.
+- This verifies production schema deployment only. Rollback-only PostgreSQL
+  integration, transaction parity, restart/controller evidence and application
+  deployment require a separately authorized non-production database/runtime.
