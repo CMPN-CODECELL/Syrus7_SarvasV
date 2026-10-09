@@ -19,6 +19,11 @@ def test_environment_precedence_and_local_file(monkeypatch, tmp_path):
         "database_url": "local-test-value",
         "sqlite_path": "fallback.db",
         "021_enabled": False,
+        "demo_role_mode": False,
+        "demo_trader_username": "demo_trader",
+        "demo_trader_account": "acc_demo_trader",
+        "demo_operator_username": "demo_operator",
+        "demo_operator_account": "acc_demo_operator",
         "021_product": "INTRADAY",
         "market_data_provider": "replay",
         "secure_cookie": False,
@@ -37,6 +42,16 @@ def test_environment_precedence_and_local_file(monkeypatch, tmp_path):
     }
     monkeypatch.setenv("DATABASE_URL", "process-test-value")
     assert settings()["database_url"] == "process-test-value"
+
+
+def test_demo_role_mode_refuses_production_database(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://example.invalid/app")
+    monkeypatch.setenv("NEON_BRANCH", "production")
+    monkeypatch.setenv("ALGOSHIELD_DEMO_ROLE_MODE", "true")
+
+    with pytest.raises(ValueError, match="cannot provision identities"):
+        settings()
 
 
 def test_021_live_mode_requires_021_market_data(monkeypatch, tmp_path):

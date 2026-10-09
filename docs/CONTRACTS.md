@@ -22,7 +22,11 @@ Canonical executable definitions: `backend/shared/contracts.py`. Documentation d
 - `RiskPolicy`: finite positive Decimal max_daily_loss, positive integer max_position/max_orders_per_minute. Gateway mapping persists configurable policies by globally unique strategy ID; durable strategy_controls preserve manual/loss halts. Unconfigured strategies use documented defaults.
 - Subscription rows: globally unique strategy instance ID, account, kind, symbol and durable `enabled` flag. Disabled subscriptions emit no callbacks and are rejected independently by risk. `READY` means enabled while the global runtime is stopped; it is not a claim of broker connectivity.
 - Account-scoped subscription projections include backend-derived `financial_position`. A subscription with no attributed fills has zero quantity/P&L/charges and `evidence_status=NO_FILLS`; it is not inserted into the authoritative positions list. A fill-derived projection has `evidence_status=FILL_DERIVED`. React renders these values and never invents missing financial state.
-- Dashboard subscription commands never accept a client-selected account ID. The API derives `account_id` from the verified HttpOnly session created by login/registration; registration assigns `acc_<normalized username>` in the local bootstrap.
+- Dashboard subscription commands never accept a client-selected account ID.
+  In explicit demo-role mode the API derives `account_id` from the HttpOnly
+  session issued by `POST /api/demo-role` for one configured Trader or Operator
+  database principal. Role selection accepts only the role name, never an
+  account ID or authority bit.
 - `POST /api/subscriptions/batch` accepts `{kind, symbols, instance_prefix?}` for the authenticated account. Symbols are trimmed, uppercased, order-preserving deduplicated, and limited to 1–20; the prefix is trimmed and limited to 48 characters. IDs are deterministic `{slug(prefix-or-kind)}-{slug(symbol)}` while the normalized trading symbol remains unchanged in `subscriptions.symbol`. All target IDs are checked before one transaction inserts any rows. A collision returns HTTP 409 with `SUBSCRIPTION_BATCH_CONFLICT` and `existing`; no partial batch is permitted. Success returns `{created, count, symbols}` and records `SUBSCRIPTIONS_BATCH_CREATED` plus existing per-instance subscription evidence.
 - `GET /api/auto-mode` and authenticated account-owner `POST /api/auto-mode/start|stop` expose a process-local adaptive orchestrator. It may create internal `auto_adaptive` subscriptions but emits only canonical `OrderIntent` values. Its selected strategy/score is decision evidence, not a fill or profitability claim. Start/stop never opens the global gate; stop does not liquidate positions.
 - `BrokerSnapshot`: orders/fills history and positions keyed by `(account_id,symbol)`, is_complete (defaults False), observed_at (optional provider UTC epoch time). Mock explicitly attests completeness. Query completion time is used if no provider timestamp exists; stale/uncertain/incomplete evidence blocks reconciliation. Real adapters must attest complete paginated history for the configured platform scope and keep provider-specific identity mapping inside the adapter.
@@ -339,7 +343,7 @@ Every broker adapter (including `MockBrokerAdapter` and the eventual `Broker021A
    - Streaming loops continuously revalidate the session token before pushing snapshots.
    - Upon user logout or session expiration, SSE streams terminate immediately and WebSockets close with status code 1008 (`WS_1008_POLICY_VIOLATION`).
 5. **Stale UI Clearance on Invalidation**:
-   - On HTTP 401 responses or WebSocket close code 1008, the React providers clear the current account snapshot, clearing subscriptions, positions, orders, fills, signals, errors, budgets, and safety indicators, and redirects to `/login`.
+   - On HTTP 401 responses or WebSocket close code 1008, the React providers clear the current account snapshot, clearing subscriptions, positions, orders, fills, signals, errors, budgets, and safety indicators, then reselect the default Trader role in demo mode. No stale account evidence survives a role change.
 6. **Historical pre-DEC-026 authorization gap**:
    - Ownership: Member 3 (Ram) owns risk, security, reliability, global trading gates, kill switch, and platform-level reconciliation. Member 1 (Akshat) owns accounting, fill ledgers, and financial positions. Member 4 owns market data, strategy runtimes, and user workflow.
    - The following list records the earlier gap inventory. DEC-026 supersedes it: global mutations now require durable operator authority; own strategy policies/controls and order cancellation require ownership. Current rules and provisioning are in SECURITY_OPERATIONS.md.
@@ -372,7 +376,9 @@ Every broker adapter (including `MockBrokerAdapter` and the eventual `Broker021A
 ## React presentation contract
 
 - Browser sessions use the HttpOnly cookie through `credentials: include`; no token is stored in local storage.
-- Protected routes render no account data until `/api/auth/me` succeeds. HTTP 401 or WebSocket close 1008 clears the current snapshot.
+- Protected routes render no account data until `/api/auth/me` succeeds or the
+  server confirms a demo-role selection. HTTP 401 or WebSocket close 1008 clears
+  the current snapshot before Trader recovery.
 - One telemetry provider owns `/api/stream/ws`, reconnects with a bounded backoff, and refreshes from `/api/state`; pages do not open independent streams.
 - Yahoo market-data telemetry exposes configured provider symbols, their canonical mappings, and one bounded latest-accepted quote row per configured symbol. Missing quote fields remain null; prices remain decimal strings, raw timestamps remain unchanged, and volume remains explicitly unavailable. This public feed evidence is visible to authenticated accounts even before they create a strategy subscription; account-scoped orders, positions, P&L and strategy evidence remain filtered.
 - Mutations wait for backend responses and then refresh backend state. They never optimistically set `VERIFIED`, `MATCHED`, `SUCCESS`, positions, P&L, or fill status.
@@ -386,6 +392,13 @@ Every broker adapter (including `MockBrokerAdapter` and the eventual `Broker021A
 ## DEC-026 current authorization contract
 
 Verified sessions include is_operator (0/1), resolved from durable operator_grants on each request. No public API grants authority. Anonymous global actions return 401; authenticated ordinary users return 403 before mutation. Operators may execute global controls but account-facing responses still exclude other accounts. Own policy/start/stop/cancel actions remain owner-only even for operators. AccountResponseScope is the shared nested projection; unknown/unowned trace access is denied. Exceptions from global domain operations expose a generic conflict message rather than broker/private IDs. SQLite v12 and PostgreSQL migration 011 add only operator_grants; earlier migration files are immutable. Global gate/health/verdict, historical kill status/timing and aggregate diagnostics are explicitly permitted, while financial/identity records remain scoped. See SECURITY_OPERATIONS.md for provisioning and current environment limits.
+
+DEC-042 adds a demo-only exception to public identity UX, not to authorization:
+`POST /api/demo-role` may select only configured Trader/Operator principals and
+is disabled unless `ALGOSHIELD_DEMO_ROLE_MODE=true`. Operator status is never
+accepted from the request; it is re-read from `operator_grants`. Login,
+registration and logout endpoints return 404 in this mode. Configuration must
+reject the mode when a PostgreSQL URL is paired with `NEON_BRANCH=production`.
 
 ## Admission and Recovery Safety Contract (DEC-034)
 

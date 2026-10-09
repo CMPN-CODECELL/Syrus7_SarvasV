@@ -37,7 +37,16 @@ npm --prefix frontend run build
 python -m uvicorn backend.api:create_app --factory --host 127.0.0.1 --port 8000 --no-proxy-headers
 ```
 
-Open http://127.0.0.1:8000, register or sign in, explicitly provision the intended operator as described below, and click **Run replay** from that operator session. Registration assigns a trading account ID from the authenticated username; the dashboard never asks users to type or choose it. Four built-in strategies consume completed candles concurrently in one serialized event loop: a 3/5 EMA crossover, five-period mean reversion, a 5-minute range breakout and 14-period RSI reversal. The Strategies page accepts one or many stock symbols and atomically creates one independent single-symbol strategy instance for each; each instance retains its own warm-up, failure state, risk, position and P&L. The demo stops after replay and displays actual signals, orders, unique fills, charges, virtual positions, market-data counters and audit events. The dashboard supports durable per-strategy start/stop controls. Click **Kill all** to cancel, flatten and verify. API docs: http://127.0.0.1:8000/docs.
+For a debugging/demo database, set `ALGOSHIELD_DEMO_ROLE_MODE=true`, open
+http://127.0.0.1:8000, and use the top-bar **Trader / Operator** selector. There
+is no signup, sign-in or sign-out workflow in this mode. Both configured roles
+are durable database principals with separate accounts; Operator authority is
+still read from `operator_grants` on every request. Demo-role mode is refused
+when `NEON_BRANCH=production`: use SQLite or a dedicated non-production Neon
+branch. Four built-in strategies consume completed candles concurrently in one
+serialized event loop: a 3/5 EMA crossover, five-period mean reversion, a
+5-minute range breakout and 14-period RSI reversal. API docs:
+http://127.0.0.1:8000/docs.
 
 The Strategies page also provides an explicit **Auto mode**. It scans a bounded,
 catalogue-derived cash-equity universe, compares momentum, breakout and
@@ -91,7 +100,16 @@ The dashboard exposes candles, orders/fills/P&L and compact backend-derived safe
 
 Kill latches durably and converges through verified cancellation/fill evidence and attributed exits, with bounded broker waits and a nine-second default deadline. SUCCESS means verified flat under ten seconds; SAFE_LATE is verified but misses the SLA; FAILED retains uncertainty. A timed-out external operation may complete later; it is never blindly retried. Verified kill reset requires no open orders and zero broker/virtual positions, leaves STOPPED, and retains the historical certificate. Fresh broker evidence is required within five seconds and LIVE market event/receive evidence within fifteen seconds; offline REPLAY is labeled and uses receive freshness.
 
-This is a local development tool, not a production service. It has a basic durable local login/session boundary and authenticated local WebSocket telemetry, but no production identity provider or arbitrary strategy upload. The documented 021 REST/auth transport, durable order mapping, sampled market provider, reconnect workers and telemetry are implemented behind an explicit server-side feature flag. Credentials, charges, corrections, complete history and live kill semantics are not claimed. Failure Lab and SafetyBench run only in a fresh isolated mock sandbox even while the primary provider is 021; they never inject fake events into 021 state. No profitability or live kill SLA claim is made.
+This is a development/demo tool, not a production identity service. Demo-role
+mode replaces username/password screens with two explicitly configured database
+principals and an HttpOnly role session; choosing Operator is intentionally not
+authentication and must never be enabled on production. The documented 021
+REST/auth transport, durable order mapping, sampled market provider, reconnect
+workers and telemetry are implemented behind an explicit server-side feature
+flag. Credentials, charges, corrections, complete history and live kill
+semantics are not claimed. Failure Lab and SafetyBench run only in a fresh
+isolated mock sandbox even while the primary provider is 021; they never inject
+fake events into 021 state. No profitability or live kill SLA claim is made.
 
 Provider selection is explicit: when `ALGOSHIELD_021_ENABLED=true`, 021 is the primary market/broker provider and `ALGOSHIELD_MARKET_DATA_PROVIDER` must be `021` (or omitted). The dashboard labels it `021 LIVE / REAL MARKET DATA`. A failed 021 connection fails closed; it never triggers automatic fallback, source mixing, backfill or trading resume. To use Yahoo as the fallback, stop the process and start a fresh mock-broker timeline with `ALGOSHIELD_021_ENABLED=false`, `ALGOSHIELD_MARKET_DATA_PROVIDER=yahoo`, and the `yahoo` dependency extra installed. The default with 021 disabled and no explicit provider is `MOCK / REPLAY`. The Market Data page's Source card, `market_data.provider`, `market_data.source`, `market_data.label`, and candle `data_source` are the authoritative indicators.
 

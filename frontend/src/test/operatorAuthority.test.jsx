@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   post: vi.fn(),
   auth: {
     user: { username: 'ordinary_trader', account_id: 'acc_ord', is_operator: 0 },
-    logout: vi.fn(),
+    selectRole: vi.fn(),
     refresh: vi.fn(),
   },
   telemetry: { snapshot: {}, status: 'live', refresh: vi.fn() },
@@ -84,7 +84,7 @@ describe('Operator authority and account control boundaries', () => {
     vi.clearAllMocks()
     mocks.telemetry.snapshot = sampleSnapshot
     mocks.telemetry.status = 'live'
-    mocks.auth.logout = vi.fn()
+    mocks.auth.selectRole = vi.fn()
     mocks.auth.refresh = vi.fn()
   })
 
@@ -188,6 +188,25 @@ describe('Operator authority and account control boundaries', () => {
     expect(mocks.post).not.toHaveBeenCalled()
   })
 
+  it('switches between the two configured demo roles without sign-in controls', async () => {
+    const user = userEvent.setup()
+    mocks.auth.user = { username: 'ordinary_trader', account_id: 'acc_ord', is_operator: 0 }
+    mocks.auth.selectRole.mockResolvedValue({ username: 'demo_operator', account_id: 'acc_ops', is_operator: 1 })
+
+    render(
+      <MemoryRouter>
+        <Routes>
+          <Route element={<AppShell />}>
+            <Route index element={<div>Content</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    )
+    expect(screen.queryByRole('button', { name: /sign out/i })).not.toBeInTheDocument()
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Demo role' }), 'operator')
+    expect(mocks.auth.selectRole).toHaveBeenCalledWith('operator')
+  })
+
   it('operators retain access, confirmation flow, and error handling', async () => {
     const user = userEvent.setup()
     mocks.auth.user = { username: 'operator_admin', account_id: 'acc_ops', is_operator: 1 }
@@ -203,7 +222,8 @@ describe('Operator authority and account control boundaries', () => {
         </Routes>
       </MemoryRouter>
     )
-    expect(screen.getByText(/operator_admin · acc_ops · Operator/i)).toBeInTheDocument()
+    expect(screen.getByText(/operator_admin · acc_ops/i)).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Demo role' })).toHaveValue('operator')
     const killBtn = screen.getByRole('button', { name: 'Kill all strategies' })
     expect(killBtn).toBeEnabled()
     mocks.post.mockResolvedValueOnce({ gate: 'KILLED' })
@@ -246,7 +266,7 @@ describe('Operator authority and account control boundaries', () => {
 
     // Verify 403 was caught, identity was refreshed, and user was NOT logged out
     expect(mocks.auth.refresh).toHaveBeenCalledOnce()
-    expect(mocks.auth.logout).not.toHaveBeenCalled()
+    expect(mocks.auth.selectRole).not.toHaveBeenCalled()
     expect(await screen.findByRole('alert')).toHaveTextContent('Forbidden: operator authority required')
 
     // Re-render with the updated user identity returned by refreshAuth

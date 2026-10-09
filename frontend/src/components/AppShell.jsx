@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { useTelemetry } from '../telemetry/TelemetryContext'
 import { api } from '../api/client'
@@ -11,13 +11,14 @@ const groups = [
 ]
 
 export function AppShell() {
-  const { user, logout, refresh: refreshAuth } = useAuth()
+  const { user, selectRole, refresh: refreshAuth } = useAuth()
   const { snapshot, status, refresh } = useTelemetry()
-  const navigate = useNavigate()
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [killPending, setKillPending] = useState(false)
   const [killError, setKillError] = useState('')
+  const [rolePending, setRolePending] = useState(false)
+  const [roleError, setRoleError] = useState('')
   const isOperator = Boolean(user?.is_operator)
 
   useEffect(() => setMenuOpen(false), [location.pathname])
@@ -50,6 +51,20 @@ export function AppShell() {
     }
   }
 
+  const changeRole = async event => {
+    const role = event.target.value
+    if (rolePending || role === (isOperator ? 'operator' : 'trader')) return
+    setRolePending(true)
+    setRoleError('')
+    try {
+      await selectRole(role)
+    } catch (error) {
+      setRoleError(error.message || 'Role change failed.')
+    } finally {
+      setRolePending(false)
+    }
+  }
+
   return <div className="app-shell">
     <aside className="sidebar">
       <div className="sidebar-head">
@@ -78,9 +93,10 @@ export function AppShell() {
     <div className="workspace">
       <header className="topbar">
         <div className="connection"><i className={status}/><span>{status === 'live' ? 'Backend telemetry connected' : `Backend telemetry ${status}`}</span><span className="feed-indicator">Market feed: {snapshot?.market_data?.feed_status||'unknown'} · {snapshot?.market_data?.source||snapshot?.market_data?.label||'source unknown'}</span></div>
-        <div><span className="user">{user?.username} · {user?.account_id}{isOperator ? ' · Operator' : ''}</span><button className="ghost" onClick={async () => { await logout(); navigate('/login') }}>Sign out</button></div>
+        <div className="role-controls"><span className="user">{user?.username} · {user?.account_id}</span><label>Demo role<select aria-label="Demo role" value={isOperator ? 'operator' : 'trader'} disabled={rolePending} onChange={changeRole}><option value="trader">Trader</option><option value="operator">Operator</option></select></label></div>
       </header>
       {killError && <div className="shell-alert error" role="alert">{killError}</div>}
+      {roleError && <div className="shell-alert error" role="alert">{roleError}</div>}
       <main className="content"><Outlet context={{ snapshot, refresh, accountId:user?.account_id }}/></main>
     </div>
   </div>

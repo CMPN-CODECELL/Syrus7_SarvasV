@@ -1013,3 +1013,35 @@ financial/identity tables inspected remain empty. This verifies schema
 deployment, not runtime deployment, transaction parity, production identity,
 021 readiness or safety certification. Those require separate authorized
 environments and evidence.
+
+## DEC-042 — Database-backed passwordless demo roles
+
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Context
+
+The demonstration needs immediate Trader and Operator views without account
+signup or credential debugging. Removing server-side identity entirely would
+break account scoping and let the browser fabricate operator authority.
+
+### Decision
+
+Add an explicit `ALGOSHIELD_DEMO_ROLE_MODE`. The backend owns two configurable,
+durable, password-disabled principals with separate accounts. The browser may
+select only `trader` or `operator`; the backend rotates the HttpOnly session and
+re-reads Operator authority from `operator_grants`. Login, registration and
+logout routes are unavailable in this mode, and React exposes only the role
+selector.
+
+Because this is not authentication, refuse the mode when `DATABASE_URL` is set
+and `NEON_BRANCH=production`. Debug with SQLite or a dedicated non-production
+Neon branch. The role switch never bypasses account projection, ownership,
+RiskGateway, reconciliation, kill, or broker evidence requirements.
+
+### Impact
+
+Demo troubleshooting has two predictable database identities while the
+production branch remains free of fake demo principals. Existing password auth
+code remains only for demo-disabled compatibility and security tests; it is not
+reachable from the demo UI.

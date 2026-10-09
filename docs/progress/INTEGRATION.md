@@ -820,3 +820,18 @@ Focused coverage (`test_auto_mode`, market-pipeline visibility, strategy lifecyc
 - This verifies production schema deployment only. Rollback-only PostgreSQL
   integration, transaction parity, restart/controller evidence and application
   deployment require a separately authorized non-production database/runtime.
+
+## 2026-10-09 — Passwordless Trader/Operator demo roles
+
+- Added an explicit demo-only role selector and removed signup, sign-in and
+  sign-out from the React flow. Anonymous demo browsers default to Trader and may
+  switch to Operator from the top bar.
+- Both roles are configurable durable database principals with separate account
+  projections. Sessions remain HttpOnly; requests cannot provide account IDs or
+  authority bits; Operator authority still comes from `operator_grants`.
+- Demo-role mode is fail-closed on `NEON_BRANCH=production`. It must use SQLite
+  or a dedicated non-production Neon branch and cannot seed the authorized
+  production database.
+- Full verification: backend **491 passed, 1 skipped, 1 expected xfail**;
+  frontend **55 passed**; Ruff, TypeScript, ESLint, Vite production build, all
+  seven deterministic mock rehearsals and `git diff --check` passed.

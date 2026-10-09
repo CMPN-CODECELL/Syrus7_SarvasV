@@ -61,6 +61,70 @@ def test_auth_service_tokens():
     assert auth.verify_token(token) is None
 
 
+def test_demo_roles_are_durable_scoped_and_password_disabled():
+    store = Store(":memory:")
+    auth = AuthService(store)
+
+    trader = auth.select_demo_role(
+        "trader",
+        username="demo_trader",
+        account_id="acc_demo_trader",
+        is_operator=False,
+    )
+    operator = auth.select_demo_role(
+        "operator",
+        username="demo_operator",
+        account_id="acc_demo_operator",
+        is_operator=True,
+    )
+
+    assert trader["user"]["account_id"] == "acc_demo_trader"
+    assert trader["user"]["is_operator"] == 0
+    assert operator["user"]["account_id"] == "acc_demo_operator"
+    assert operator["user"]["is_operator"] == 1
+    assert auth.login("demo_trader", "anything") is None
+    assert len(store.rows("SELECT * FROM accounts")) == 2
+    assert len(store.rows("SELECT * FROM users")) == 2
+    assert len(store.rows("SELECT * FROM operator_grants")) == 1
+
+
+def test_demo_role_api_replaces_auth_screens_and_uses_database_roles():
+    platform = Platform(":memory:")
+    client = TestClient(create_app(platform, demo_role_mode=True))
+
+    assert client.get("/").status_code == 200
+    assert client.get("/login", follow_redirects=False).headers["location"] == "/"
+    assert client.get("/register", follow_redirects=False).headers["location"] == "/"
+    assert (
+        client.post(
+            "/api/auth/register", json={"username": "xuser", "password": "password"}
+        ).status_code
+        == 404
+    )
+    assert (
+        client.post(
+            "/api/auth/login", json={"username": "xuser", "password": "password"}
+        ).status_code
+        == 404
+    )
+
+    trader = client.post("/api/demo-role", json={"role": "Trader"})
+    assert trader.status_code == 200
+    assert trader.json()["user"]["account_id"] == "acc_demo_trader"
+    assert trader.json()["user"]["is_operator"] == 0
+    assert "HttpOnly" in trader.headers["set-cookie"]
+    assert client.post("/api/reconcile").status_code == 403
+
+    operator = client.post("/api/demo-role", json={"role": "Operator"})
+    assert operator.status_code == 200
+    assert operator.json()["user"]["account_id"] == "acc_demo_operator"
+    assert operator.json()["user"]["is_operator"] == 1
+    assert client.get("/api/auth/me").json()["demo_role_mode"] is True
+    assert len(platform.store.rows("SELECT * FROM accounts")) == 2
+    assert len(platform.store.rows("SELECT * FROM operator_grants")) == 1
+    assert client.post("/api/demo-role", json={"role": "admin"}).status_code == 422
+
+
 def test_auth_api_endpoints():
     platform = Platform(":memory:")
     app = create_app(platform)

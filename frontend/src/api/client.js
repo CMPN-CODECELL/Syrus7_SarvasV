@@ -20,7 +20,5 @@ export const api={
   get:(path)=>request(path),
   post:(path,body)=>request(path,{method:'POST',body:body===undefined?undefined:JSON.stringify(body)}),
   put:(path,body)=>request(path,{method:'PUT',body:JSON.stringify(body)}),
-  login:(values)=>request('/api/auth/login',{method:'POST',body:JSON.stringify(values)}),
-  register:(values)=>request('/api/auth/register',{method:'POST',body:JSON.stringify(values)}),
-  logout:()=>request('/api/auth/logout',{method:'POST'}),
+  selectDemoRole:(role)=>request('/api/demo-role',{method:'POST',body:JSON.stringify({role})}),
 }
