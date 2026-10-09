@@ -156,6 +156,17 @@ class Platform:
             return self.external_market_data.stop()
         return True
 
+    def validate_external_market_symbols(self, symbols):
+        """Validate symbols only when an external provider owns the universe."""
+        normalized = [str(symbol).strip().upper() for symbol in symbols if symbol]
+        if not normalized or self.external_market_data is None:
+            return True
+        validator = getattr(self.external_market_data, "validate_symbols", None)
+        if validator is None:
+            return True
+        validator(normalized)
+        return True
+
     def account(self, account_id):
         if not account_id:
             raise ValueError("account ID required")
