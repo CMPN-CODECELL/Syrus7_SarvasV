@@ -21,6 +21,7 @@ def test_environment_precedence_and_local_file(monkeypatch, tmp_path):
         "021_enabled": False,
         "021_product": "INTRADAY",
         "market_data_provider": "replay",
+        "secure_cookie": False,
         "021_max_timestamp_skew_seconds": 10.0,
         "broker_read_timeout_seconds": 8.0,
         "broker_write_timeout_seconds": 8.0,
@@ -94,6 +95,8 @@ def test_additive_migration_constraints_and_checksum():
     assert "REFERENCES algoshield.orders(id)" in items[0][2]
     assert "ALTER TABLE algoshield.subscriptions" in items[2][2]
     assert "enabled INTEGER NOT NULL DEFAULT 1" in items[2][2]
+    assert "PRIMARY KEY(provider, symbol, interval_seconds, start_time)" in items[-1][2]
+    assert "open NUMERIC NOT NULL" in items[-1][2]
 
 
 def test_postgres_placeholder_binding():

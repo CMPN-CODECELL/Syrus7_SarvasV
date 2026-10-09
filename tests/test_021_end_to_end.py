@@ -113,6 +113,8 @@ def test_fake_021_quote_to_reconciled_fill_pipeline(tmp_path):
             return {
                 "provider": "021",
                 "source": "021_LIVE",
+                "connected": True,
+                "subscribed_symbols": ["RELIANCE"],
                 "latest_quotes": [{"symbol": "RELIANCE", "official_open": "100"}],
             }
 

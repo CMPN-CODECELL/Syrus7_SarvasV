@@ -42,7 +42,7 @@ def test_websocket_invalid_token_rejected():
         platform.close()
 
 
-def test_websocket_token_channels_cookie_query_and_header():
+def test_websocket_token_channels_cookie_and_header_only():
     platform = Platform()
     try:
         app = create_app(platform)
@@ -54,18 +54,21 @@ def test_websocket_token_channels_cookie_query_and_header():
             assert reg.status_code == 201
             token = reg.json()["token"]
 
-            # 1. Via Query Parameter
-            with client.websocket_connect(f"/api/stream/ws?token={token}") as ws:
-                snap = ws.receive_json()
-                assert "gate" in snap
-                assert "counts" in snap
+            # Query credentials are rejected when no approved credential exists.
+            with (
+                TestClient(app) as query_client,
+                pytest.raises(WebSocketDisconnect) as exc,
+            ):
+                with query_client.websocket_connect(f"/api/stream/ws?token={token}"):
+                    pass
+            assert exc.value.code == 1008
 
-            # 2. Via Cookie (automatically set in client during register)
+            # Via Cookie (automatically set in client during register)
             with client.websocket_connect("/api/stream/ws") as ws:
                 snap = ws.receive_json()
                 assert "gate" in snap
 
-            # 3. Via Authorization Header (new client with no cookies)
+            # Via Authorization Header (new client with no cookies)
             with TestClient(app) as fresh_client:
                 with fresh_client.websocket_connect(
                     "/api/stream/ws", headers={"Authorization": f"Bearer {token}"}

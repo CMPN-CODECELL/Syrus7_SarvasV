@@ -121,6 +121,29 @@ Action semantics remain distinct:
   a latched KILLING gate. Capability/readiness projection alone never authorizes
   or verifies a close.
 
+### Reducing-intent classification handoff (Task 4)
+
+`OrderIntent` currently has no structured, trusted classification for an
+ordinary strategy exit or reducing intent; its `reason` is descriptive text and
+must not authorize a reduction. Therefore the RiskGateway can enforce
+non-crossing residual proof only for the existing persisted `emergency=1`
+reservation path. At both reservation and serialized dispatch it requires an
+opposite-side, positive quantity no greater than the current attributed virtual
+residual, with every other non-terminal order for that strategy/account/symbol
+(including `UNKNOWN`) treated as competing exposure. The emergency reservation
+itself is excluded at dispatch so it cannot conflict with itself. A changed
+residual, competing exposure, kill/gate/connection failure, or unsettled broker
+call blocks before broker submission and releases the never-dispatched
+reservation through the existing `RESERVED -> REJECTED` transition.
+
+Member 2 must review and write the smallest shared-contract addition before
+ordinary exit enforcement: a validated enum-like intent action/classification
+(for example `EXPOSURE` versus `REDUCE_ONLY`), defaulting to exposure for
+backwards compatibility, preserved through strategy/runtime/provider mappings.
+Only that structured field—not strategy names or free-text reasons—may enable
+the same residual proof for normal exits. Until then, ordinary reversal behavior
+and its existing risk limits remain unchanged.
+
 Required provider-contract additions are intentionally not added to
 `backend/shared/contracts.py` in this task. Member 2 review must define provider
 subscription acknowledgement and snapshot coverage/horizon fields before they
@@ -345,3 +368,37 @@ Every broker adapter (including `MockBrokerAdapter` and the eventual `Broker021A
 ## DEC-026 current authorization contract
 
 Verified sessions include is_operator (0/1), resolved from durable operator_grants on each request. No public API grants authority. Anonymous global actions return 401; authenticated ordinary users return 403 before mutation. Operators may execute global controls but account-facing responses still exclude other accounts. Own policy/start/stop/cancel actions remain owner-only even for operators. AccountResponseScope is the shared nested projection; unknown/unowned trace access is denied. Exceptions from global domain operations expose a generic conflict message rather than broker/private IDs. SQLite v12 and PostgreSQL migration 011 add only operator_grants; earlier migration files are immutable. Global gate/health/verdict, historical kill status/timing and aggregate diagnostics are explicitly permitted, while financial/identity records remain scoped. See SECURITY_OPERATIONS.md for provisioning and current environment limits.
+
+## Admission and Recovery Safety Contract (DEC-034)
+
+1. **Canonical Safety-Evidence Evaluator**:
+   - `Reliability.evaluate_safety_evidence(*, account_id=None, symbols=None, external_market_data=None, broker_connected=None)` is the single canonical evidence evaluator. It evaluates underlying physical evidence dimensions:
+     - Broker transport connectivity and settlement/uncertainty state (`broker.connected`, `broker.settled`).
+     - Market data freshness for evaluated symbols (within configured max quote age, default 15s; mock/replay replay-mode exempt).
+     - Broker evidence freshness (`_evidence_fresh()`).
+     - Provider-attested snapshot completeness/coverage (`snapshot_coverage == "COMPLETE"`).
+     - Reconciliation state (`last_reconciliation_ok == True` and matching snapshot age).
+     - External provider subscription review (`subscription == "VERIFIED"`; missing or unverified provider subscriptions remain `UNKNOWN` and block affected exposure actions).
+     - Unresolved ambiguous order presence (total count of `UNKNOWN` status orders across evaluated accounts must be 0).
+   - Evidence readiness is strictly decoupled from execution gate state (`CLOSED`, `RUNNING`, `REDUCE_ONLY`) and subscription/strategy runtime flags (`is_enabled`).
+   - The read-only `readiness_projection()` and internal admission gates consume identical underlying evidence fields. No artificial `READY` or `RESUME_ELIGIBLE` enums are invented.
+
+2. **Action-Specific Readiness Enforcement**:
+   - **New Exposure**: Requires fully verified broker/market evidence, verified external provider subscriptions (if external feed configured), complete reconciliation snapshot coverage, and zero unresolved `UNKNOWN` orders. Blocked at admission with specific canonical risk reason codes (`RISK_BROKER_DISCONNECTED`, `RISK_PROVIDER_SUBSCRIPTION_UNAVAILABLE`, `RISK_UNKNOWN_ORDERS_PRESENT`, `RISK_STALE_MARKET_DATA`, `RISK_STALE_BROKER_STATE`, `RISK_RECONCILIATION_REQUIRED`, `RISK_MARKET_HALTED`, `RISK_MARKET_CLOSED`).
+   - **Emergency Exits and Reducing Orders**: Risk policy reducing-order logic bypasses max position checks and staleness checks to ensure positions can be flattened during adverse conditions. Cancellation endpoints remain accessible to cancel open orders.
+   - **Mock/Replay Preservation**: Replay market data providers and mock broker adapters retain deterministic local contracts without requiring live external provider acknowledgements.
+
+3. **Serialized Pre-Dispatch Revalidation**:
+   - Evaluated immediately before broker dispatch inside `RiskGateway.authorize_dispatch(intent, row)` under `with self.store.lock:` at the exact boundary before `dispatch_started=1`/`UNKNOWN` is persisted and before `broker.submit()` is called.
+   - Zero network or external I/O calls are made under the store lock.
+   - Revalidates global gate state, kill latch, strategy status, and calls `evidence_gate(intent)`.
+   - If safety evidence or gate authorization invalidates between initial risk reservation and dispatch, authorization returns `False`.
+   - `OrderManager._start_reserved()` transitions the order to `REJECTED` (with `rejection_reason="PRE_DISPATCH_AUTHORIZATION_FAILED"` or specific evidence code), releasing the directional reservation safely without submitting to the broker and without fabricating a broker rejection.
+   - Once dispatch has commenced (`dispatch_started=1`), network/timeout errors retain `UNKNOWN` status and retain potential directional exposure without blind retry.
+
+4. **Global Resume and Reduce-Only Hardening**:
+   - `Reliability.resume(*, reduce_only=False)` evaluates cross-account safety evidence across all active accounts and configured symbols before opening the execution gate.
+   - Does not require the gate to already be `RUNNING`.
+   - Re-evaluates kill latch, broker connectivity, settlement state, snapshot completeness, reconciliation status, and unknown order count under `with self.store.lock:`.
+   - If evidence evaluation fails, the trading gate remains strictly `CLOSED`, logging an audit event and returning an explicit failure reason.
+   - Reconnection or feed resumption never automatically re-opens the execution gate; resume requires an explicit operator command following complete, clean reconciliation.

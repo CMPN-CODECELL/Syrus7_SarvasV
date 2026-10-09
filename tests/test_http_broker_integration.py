@@ -293,7 +293,10 @@ def test_http_broker_replay_stream_continues_after_explicit_start():
     platform = Platform(path=":memory:", broker=adapter, demo_enabled=True)
     try:
         assert platform.start_replay_stream(interval=0.01)
-        time.sleep(0.08)
+        deadline = time.monotonic() + 1.0
+        while platform.snapshot()["market_data"]["accepted_ticks"] == 0:
+            assert time.monotonic() < deadline, "replay stream produced no tick"
+            time.sleep(0.01)
         assert platform.snapshot()["market_data"]["accepted_ticks"] > 0
     finally:
         platform.stop_replay_stream()

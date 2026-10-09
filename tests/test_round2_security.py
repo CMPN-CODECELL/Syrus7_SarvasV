@@ -61,6 +61,45 @@ def test_trusted_origin_and_explicit_bearer_keep_authority(security_client):
     )
 
 
+def test_cookie_security_attributes_follow_explicit_configuration():
+    for secure in (False, True):
+        p = Platform(":memory:")
+        try:
+            with TestClient(create_app(p, cookie_secure=secure)) as client:
+                response = client.post(
+                    "/api/auth/register",
+                    json={
+                        "username": f"cookie-{secure}",
+                        "password": "secure-password",
+                    },
+                )
+                assert response.status_code == 201
+                assert ("secure" in response.headers["set-cookie"].lower()) is secure
+                logout = client.post("/api/auth/logout")
+                assert logout.status_code == 200
+                cleared = logout.headers["set-cookie"].lower()
+                assert ("secure" in cleared) is secure
+                assert "samesite=strict" in cleared
+        finally:
+            p.close()
+
+
+def test_sse_query_token_is_rejected_but_cookie_and_bearer_work(security_client):
+    p, client = security_client
+    user = p.auth.register("sse-user", "secure-password", "a")
+    assert client.get(f"/api/stream/telemetry?token={user['token']}").status_code == 401
+    client.cookies.set("algoshield_session", user["token"])
+    assert client.get("/api/stream/telemetry?max_events=1").status_code == 200
+    with TestClient(create_app(p)) as bearer_client:
+        assert (
+            bearer_client.get(
+                "/api/stream/telemetry?max_events=1",
+                headers={"Authorization": f"Bearer {user['token']}"},
+            ).status_code
+            == 200
+        )
+
+
 def test_anonymous_and_untrusted_host_cannot_bypass_origin(security_client):
     _, c = security_client
     assert (

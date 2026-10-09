@@ -180,5 +180,6 @@ export function StrategiesPage(){
         {key:'reason',label:'Reason'}, {key:'candle_start',label:'Candle start (UTC epoch)'},
       ]}/>
     </Card>
+    <Card title="Exit evidence"><p className="muted">Provider-derived fill WAP, explicit trigger/exit lifecycle, and verified residual-close evidence are unavailable until Members 1 and 2 provide durable attributed execution and provider lifecycle evidence. Displayed position, charges, and P&amp;L remain backend-derived.</p></Card>
   </Page>
 }

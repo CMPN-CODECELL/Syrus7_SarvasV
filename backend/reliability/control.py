@@ -49,6 +49,7 @@ class Reliability:
         self.max_feed_age = 15
         self.metrics = None
         self.report = {"verified": False, "reason": "STARTUP_RECONCILIATION_REQUIRED"}
+        self.external_market_data = None
         for mark in store.rows("SELECT * FROM risk_marks"):
             ledger.marks[mark["symbol"]] = Decimal(mark["price"])
         self.risk.evidence_gate = self.check_evidence
@@ -82,37 +83,263 @@ class Reliability:
         self.safety.mark(tick, self.clock(), "REPLAY" if replay else "LIVE")
         self.ledger.marks[tick.symbol] = tick.price
 
-    def check_evidence(self, intent):
+    def evaluate_safety_evidence(
+        self,
+        *,
+        account_id=None,
+        symbols=None,
+        external_market_data=None,
+        broker_connected=None,
+    ):
+        """Canonical evaluator of platform safety evidence.
+
+        Separates evidence readiness from gate/runtime authorization.
+        Admission, pre-dispatch, resume and readiness projection consume
+        this consistent underlying evidence.
+        """
         now = self.clock()
-        if self.health not in {Health.HEALTHY, Health.DEGRADED} or not self.report.get(
-            "verified"
-        ):
-            return "RISK_RECONCILIATION_REQUIRED"
-        if (
-            self.last_broker_at is None
-            or not -1 <= now - self.last_broker_at <= self.max_broker_age
-        ):
-            self.fail_closed("RISK_STALE_BROKER_STATE", Health.DEGRADED)
-            return "RISK_STALE_BROKER_STATE"
+        evidence = self.evidence()
+        report = evidence["reconciliation"]
+        broker = evidence["broker"]
+        adapter = getattr(self.broker, "adapter", self.broker)
+
+        if broker_connected is not None:
+            connected = broker_connected
+        else:
+            connected = getattr(adapter, "connected", True)
+
+        has_external = (
+            self.external_market_data is not None
+            if external_market_data is None
+            else external_market_data
+        )
+
+        if symbols is not None:
+            required_symbols = set(symbols)
+        elif account_id:
+            subscriptions = self.store.rows(
+                "SELECT symbol FROM subscriptions WHERE account=? AND enabled=1",
+                (account_id,),
+            )
+            required_symbols = {row["symbol"] for row in subscriptions}
+        else:
+            subscriptions = self.store.rows(
+                "SELECT symbol FROM subscriptions WHERE enabled=1"
+            )
+            required_symbols = {row["symbol"] for row in subscriptions}
+
+        marks = {
+            row["symbol"]: row
+            for row in self.store.rows("SELECT * FROM risk_marks")
+            if row["symbol"] in required_symbols
+        }
+        market_observed_at = (
+            min((row["received_at"] for row in marks.values()), default=None)
+            if required_symbols
+            else None
+        )
+        event_observed_at = (
+            min((row["event_timestamp"] for row in marks.values()), default=None)
+            if required_symbols
+            else None
+        )
+        missing_marks = required_symbols - set(marks)
+        stale_marks = {
+            symbol
+            for symbol, row in marks.items()
+            if not -1 <= now - row["received_at"] <= self.max_feed_age
+            or (
+                row["source"] == "LIVE"
+                and not -1 <= now - row["event_timestamp"] <= self.max_feed_age
+            )
+        }
+        if not required_symbols or missing_marks:
+            market_status = "UNKNOWN"
+            market_reason = "MARKET_EVIDENCE_UNAVAILABLE"
+        elif stale_marks:
+            market_status = "STALE"
+            market_reason = "MARKET_EVIDENCE_STALE"
+        else:
+            market_status = "VERIFIED"
+            market_reason = "MARKET_EVIDENCE_FRESH"
+
+        if connected is False:
+            broker_status, broker_reason = "DISCONNECTED", "BROKER_DISCONNECTED"
+        elif broker["call_unsettled"]:
+            broker_status, broker_reason = "UNKNOWN", "BROKER_CALL_UNSETTLED"
+        elif broker["requires_reconciliation"]:
+            broker_status, broker_reason = "UNKNOWN", "BROKER_RECONCILIATION_REQUIRED"
+        elif broker["last_verified_at"] is None:
+            broker_status, broker_reason = "UNKNOWN", "BROKER_EVIDENCE_UNAVAILABLE"
+        elif not broker["fresh"]:
+            broker_status, broker_reason = "STALE", "BROKER_EVIDENCE_STALE"
+        else:
+            broker_status, broker_reason = "VERIFIED", "BROKER_EVIDENCE_FRESH"
+
+        coverage_verified = report.get("verified") is True and self.health in {
+            Health.HEALTHY,
+            Health.DEGRADED,
+        }
+        coverage_status = "VERIFIED" if coverage_verified else "UNKNOWN"
+        coverage_reason = (
+            "SNAPSHOT_COVERAGE_VERIFIED"
+            if coverage_verified
+            else report.get("reason") or "SNAPSHOT_COVERAGE_UNKNOWN"
+        )
+        reconciliation_status = "VERIFIED" if coverage_verified else "UNKNOWN"
+        reconciliation_reason = report.get("reason") or "RECONCILIATION_UNAVAILABLE"
+
+        provider_state = {}
+        if has_external and self.external_market_data is not None:
+            telemetry = getattr(self.external_market_data, "telemetry", None)
+            if telemetry is not None:
+                provider_state = telemetry()
+        subscribed_symbols = set(provider_state.get("subscribed_symbols") or ())
+        subscription_observed = bool(
+            has_external
+            and required_symbols
+            and provider_state.get("connected") is True
+            and required_symbols <= subscribed_symbols
+        )
+        subscription_status = (
+            "NOT_APPLICABLE"
+            if not required_symbols
+            else "VERIFIED"
+            if subscription_observed
+            else "UNKNOWN"
+            if has_external
+            else "NOT_APPLICABLE"
+        )
+        subscription_reason = (
+            "NO_REQUIRED_MARKET_SYMBOLS"
+            if not required_symbols
+            else "PROVIDER_SUBSCRIPTION_OBSERVED"
+            if subscription_observed
+            else "PROVIDER_SUBSCRIPTION_EVIDENCE_UNAVAILABLE"
+            if has_external
+            else "NO_EXTERNAL_PROVIDER_SUBSCRIPTION"
+        )
+
+        if account_id:
+            unknown_order_count = self.store.rows(
+                "SELECT COUNT(*) AS n FROM orders WHERE account=? AND status=?",
+                (account_id, OrderStatus.UNKNOWN.value),
+            )[0]["n"]
+        else:
+            unknown_order_count = self.store.rows(
+                "SELECT COUNT(*) AS n FROM orders WHERE status=?",
+                (OrderStatus.UNKNOWN.value,),
+            )[0]["n"]
+
+        session_open = True
+        session_reason = "SESSION_OPEN"
         if self.market_session is not None:
             if self.market_session.status_at(now) == "HALTED":
-                return "RISK_MARKET_HALTED"
-            if not self.market_session.is_open(now):
-                return "RISK_MARKET_CLOSED"
-        marks = self.store.rows(
-            "SELECT * FROM risk_marks WHERE symbol=?", (intent.symbol,)
-        )
-        if (
-            not marks
-            or not -1 <= now - marks[0]["received_at"] <= self.max_feed_age
-            or (
-                marks[0]["source"] == "LIVE"
-                and not -1 <= now - marks[0]["event_timestamp"] <= self.max_feed_age
+                session_open = False
+                session_reason = "RISK_MARKET_HALTED"
+            elif not self.market_session.is_open(now):
+                session_open = False
+                session_reason = "RISK_MARKET_CLOSED"
+
+        evidence_ready = all(
+            (
+                market_status == "VERIFIED",
+                broker_status == "VERIFIED",
+                coverage_status == "VERIFIED",
+                reconciliation_status == "VERIFIED",
+                subscription_status in {"VERIFIED", "NOT_APPLICABLE"},
+                unknown_order_count == 0,
+                session_open,
+                not self.kill_latched,
             )
+        )
+
+        blocking_reasons = []
+        for status, reason in (
+            (subscription_status, subscription_reason),
+            (market_status, market_reason),
+            (broker_status, broker_reason),
+            (coverage_status, coverage_reason),
+            (reconciliation_status, reconciliation_reason),
         ):
+            if status not in {"VERIFIED", "NOT_APPLICABLE"}:
+                blocking_reasons.append(reason)
+        if unknown_order_count:
+            blocking_reasons.append("UNKNOWN_ORDERS_PRESENT")
+        if not session_open:
+            blocking_reasons.append(
+                "MARKET_SESSION_NOT_OPEN"
+                if session_reason == "RISK_MARKET_CLOSED"
+                else session_reason
+            )
+        if self.kill_latched:
+            blocking_reasons.append("KILL_LATCHED")
+
+        return {
+            "evidence_ready": evidence_ready,
+            "coverage_verified": coverage_verified,
+            "market_status": market_status,
+            "market_reason": market_reason,
+            "market_observed_at": market_observed_at,
+            "event_observed_at": event_observed_at,
+            "broker_status": broker_status,
+            "broker_reason": broker_reason,
+            "broker_connected": connected,
+            "coverage_status": coverage_status,
+            "coverage_reason": coverage_reason,
+            "reconciliation_status": reconciliation_status,
+            "reconciliation_reason": reconciliation_reason,
+            "subscription_status": subscription_status,
+            "subscription_reason": subscription_reason,
+            "unknown_order_count": unknown_order_count,
+            "session_open": session_open,
+            "session_reason": session_reason,
+            "kill_latched": self.kill_latched,
+            "blocking_reasons": list(dict.fromkeys(blocking_reasons)),
+            "report": report,
+            "broker": broker,
+            "has_external": has_external,
+        }
+
+    def check_evidence(self, intent):
+        evidence = self.evaluate_safety_evidence(
+            account_id=intent.account_id,
+            symbols=(intent.symbol,),
+        )
+        if evidence["evidence_ready"]:
+            return ""
+
+        if not evidence["coverage_verified"]:
+            return "RISK_RECONCILIATION_REQUIRED"
+
+        if evidence["broker_status"] == "DISCONNECTED":
+            self.fail_closed("RISK_BROKER_DISCONNECTED", Health.DEGRADED)
+            return "RISK_BROKER_DISCONNECTED"
+
+        if evidence["broker_reason"] in {
+            "BROKER_CALL_UNSETTLED",
+            "BROKER_RECONCILIATION_REQUIRED",
+        }:
+            return "RISK_RECONCILIATION_REQUIRED"
+
+        if evidence["broker_status"] in {"STALE", "UNKNOWN"}:
+            self.fail_closed("RISK_STALE_BROKER_STATE", Health.DEGRADED)
+            return "RISK_STALE_BROKER_STATE"
+
+        if not evidence["session_open"]:
+            return evidence["session_reason"]
+
+        if evidence["subscription_status"] == "UNKNOWN":
+            return "RISK_PROVIDER_SUBSCRIPTION_UNAVAILABLE"
+
+        if evidence["market_status"] in {"STALE", "UNKNOWN"}:
             self.fail_closed("RISK_STALE_MARKET_DATA", Health.DEGRADED)
             return "RISK_STALE_MARKET_DATA"
-        return ""
+
+        if evidence["unknown_order_count"] > 0:
+            return "RISK_UNKNOWN_ORDERS_PRESENT"
+
+        return "RISK_RECONCILIATION_REQUIRED"
 
     def reconcile(self, *, timeout=None):
         metric_started = time.perf_counter()
@@ -334,97 +561,15 @@ class Reliability:
         evidence that the provider accepted or is serving the subscription.
         """
         now = self.clock()
-        evidence = self.evidence()
-        report = evidence["reconciliation"]
-        broker = evidence["broker"]
+        evidence = self.evaluate_safety_evidence(
+            account_id=account_id,
+            external_market_data=external_market_data,
+            broker_connected=broker_connected,
+        )
         gate = Gate(self.risk.state)
-
-        subscriptions = self.store.rows(
-            "SELECT symbol FROM subscriptions WHERE account=? AND enabled=1",
-            (account_id,),
-        )
-        required_symbols = {row["symbol"] for row in subscriptions}
-        marks = {
-            row["symbol"]: row
-            for row in self.store.rows("SELECT * FROM risk_marks")
-            if row["symbol"] in required_symbols
-        }
-        market_observed_at = (
-            min((row["received_at"] for row in marks.values()), default=None)
-            if required_symbols
-            else None
-        )
-        event_observed_at = (
-            min((row["event_timestamp"] for row in marks.values()), default=None)
-            if required_symbols
-            else None
-        )
-        missing_marks = required_symbols - set(marks)
-        stale_marks = {
-            symbol
-            for symbol, row in marks.items()
-            if not -1 <= now - row["received_at"] <= self.max_feed_age
-            or (
-                row["source"] == "LIVE"
-                and not -1 <= now - row["event_timestamp"] <= self.max_feed_age
-            )
-        }
-        if not required_symbols or missing_marks:
-            market_status = "UNKNOWN"
-            market_reason = "MARKET_EVIDENCE_UNAVAILABLE"
-        elif stale_marks:
-            market_status = "STALE"
-            market_reason = "MARKET_EVIDENCE_STALE"
-        else:
-            market_status = "VERIFIED"
-            market_reason = "MARKET_EVIDENCE_FRESH"
-
-        if broker["call_unsettled"]:
-            broker_status, broker_reason = "UNKNOWN", "BROKER_CALL_UNSETTLED"
-        elif broker["requires_reconciliation"]:
-            broker_status, broker_reason = "UNKNOWN", "BROKER_RECONCILIATION_REQUIRED"
-        elif broker["last_verified_at"] is None:
-            broker_status, broker_reason = "UNKNOWN", "BROKER_EVIDENCE_UNAVAILABLE"
-        elif not broker["fresh"]:
-            broker_status, broker_reason = "STALE", "BROKER_EVIDENCE_STALE"
-        else:
-            broker_status, broker_reason = "VERIFIED", "BROKER_EVIDENCE_FRESH"
-
-        coverage_verified = report.get("verified") is True
-        coverage_status = "VERIFIED" if coverage_verified else "UNKNOWN"
-        coverage_reason = (
-            "SNAPSHOT_COVERAGE_VERIFIED"
-            if coverage_verified
-            else report.get("reason") or "SNAPSHOT_COVERAGE_UNKNOWN"
-        )
-        reconciliation_status = "VERIFIED" if coverage_verified else "UNKNOWN"
-        reconciliation_reason = report.get("reason") or "RECONCILIATION_UNAVAILABLE"
-
-        # A send acknowledgement is insufficient, but fresh accepted marks for
-        # every required symbol prove that the provider is actively serving the
-        # requested subscription set.
-        subscribed_symbols = set(market_data.get("subscribed_symbols") or ())
-        subscription_observed = bool(
-            external_market_data
-            and required_symbols
-            and market_data.get("connected") is True
-            and required_symbols <= subscribed_symbols
-            and not missing_marks
-        )
-        subscription_status = (
-            "VERIFIED"
-            if subscription_observed
-            else "UNKNOWN"
-            if external_market_data
-            else "NOT_APPLICABLE"
-        )
-        subscription_reason = (
-            "PROVIDER_SUBSCRIPTION_OBSERVED"
-            if subscription_observed
-            else "PROVIDER_SUBSCRIPTION_EVIDENCE_UNAVAILABLE"
-            if external_market_data
-            else "NO_EXTERNAL_PROVIDER_SUBSCRIPTION"
-        )
+        report = evidence["report"]
+        broker = evidence["broker"]
+        connected = evidence["broker_connected"]
 
         market_connected = market_data.get("connected")
         market_connection_status = (
@@ -436,29 +581,13 @@ class Reliability:
         )
         broker_connection_status = (
             "CONNECTED"
-            if broker_connected is True
+            if connected is True
             else "DISCONNECTED"
-            if broker_connected is False
+            if connected is False
             else "UNKNOWN"
         )
 
-        unknown_order_count = self.store.rows(
-            "SELECT COUNT(*) AS n FROM orders WHERE account=? AND status=?",
-            (account_id, OrderStatus.UNKNOWN),
-        )[0]["n"]
-        session_open = self.market_session is None or self.market_session.is_open(now)
-        evidence_ready = all(
-            (
-                market_status == "VERIFIED",
-                broker_status == "VERIFIED",
-                coverage_status == "VERIFIED",
-                reconciliation_status == "VERIFIED",
-                subscription_status in {"VERIFIED", "NOT_APPLICABLE"},
-                unknown_order_count == 0,
-                session_open,
-                not self.kill_latched,
-            )
-        )
+        evidence_ready = evidence["evidence_ready"]
         resume_required = gate in {Gate.RECOVERING, Gate.STOPPED, Gate.UNCERTAIN}
         resume_eligible = resume_required and evidence_ready
         new_exposure_allowed = (
@@ -472,9 +601,9 @@ class Reliability:
         emergency_candidate = (
             gate == Gate.KILLING
             and self.kill_latched
-            and broker_status == "VERIFIED"
-            and coverage_status == "VERIFIED"
-            and reconciliation_status == "VERIFIED"
+            and evidence["broker_status"] == "VERIFIED"
+            and evidence["coverage_status"] == "VERIFIED"
+            and evidence["reconciliation_status"] == "VERIFIED"
             and supports_virtual_closes
         )
         certificate = self.certificate
@@ -482,18 +611,18 @@ class Reliability:
             certificate
             and certificate.status in {"SUCCESS", "SAFE_LATE"}
             and gate == Gate.KILLED
-            and broker_status == "VERIFIED"
-            and reconciliation_status == "VERIFIED"
+            and evidence["broker_status"] == "VERIFIED"
+            and evidence["reconciliation_status"] == "VERIFIED"
         )
 
         missing_core = any(
             status == "UNKNOWN"
             for status in (
-                subscription_status,
-                market_status,
-                broker_status,
-                coverage_status,
-                reconciliation_status,
+                evidence["subscription_status"],
+                evidence["market_status"],
+                evidence["broker_status"],
+                evidence["coverage_status"],
+                evidence["reconciliation_status"],
             )
         )
         overall = (
@@ -505,22 +634,6 @@ class Reliability:
             if missing_core
             else "NOT_READY"
         )
-        blocking_reasons = []
-        for status, reason in (
-            (subscription_status, subscription_reason),
-            (market_status, market_reason),
-            (broker_status, broker_reason),
-            (coverage_status, coverage_reason),
-            (reconciliation_status, reconciliation_reason),
-        ):
-            if status not in {"VERIFIED", "NOT_APPLICABLE"}:
-                blocking_reasons.append(reason)
-        if unknown_order_count:
-            blocking_reasons.append("UNKNOWN_ORDERS_PRESENT")
-        if not session_open:
-            blocking_reasons.append("MARKET_SESSION_NOT_OPEN")
-        if self.kill_latched:
-            blocking_reasons.append("KILL_LATCHED")
 
         return {
             "status": overall,
@@ -539,30 +652,30 @@ class Reliability:
                 },
             },
             "subscription": {
-                "status": subscription_status,
+                "status": evidence["subscription_status"],
                 "observed_at": None,
-                "reason_code": subscription_reason,
+                "reason_code": evidence["subscription_reason"],
             },
             "market_freshness": {
-                "status": market_status,
-                "observed_at": market_observed_at,
-                "event_observed_at": event_observed_at,
-                "reason_code": market_reason,
+                "status": evidence["market_status"],
+                "observed_at": evidence["market_observed_at"],
+                "event_observed_at": evidence["event_observed_at"],
+                "reason_code": evidence["market_reason"],
             },
             "broker_freshness": {
-                "status": broker_status,
+                "status": evidence["broker_status"],
                 "observed_at": broker["last_verified_at"],
-                "reason_code": broker_reason,
+                "reason_code": evidence["broker_reason"],
             },
             "snapshot_coverage": {
-                "status": coverage_status,
+                "status": evidence["coverage_status"],
                 "observed_at": report.get("observed_at"),
-                "reason_code": coverage_reason,
+                "reason_code": evidence["coverage_reason"],
             },
             "reconciliation": {
-                "status": reconciliation_status,
+                "status": evidence["reconciliation_status"],
                 "observed_at": report.get("observed_at"),
-                "reason_code": reconciliation_reason,
+                "reason_code": evidence["reconciliation_reason"],
             },
             "resume": {
                 "required": resume_required,
@@ -608,8 +721,8 @@ class Reliability:
                     ),
                 },
             },
-            "unknown_order_count": unknown_order_count,
-            "blocking_reason_codes": list(dict.fromkeys(blocking_reasons)),
+            "unknown_order_count": evidence["unknown_order_count"],
+            "blocking_reason_codes": evidence["blocking_reasons"],
             "kill_verification": {
                 "status": "VERIFIED" if current_kill_verified else "UNKNOWN",
                 "observed_at": certificate.completed_at if certificate else None,
@@ -631,10 +744,46 @@ class Reliability:
                     "kill is durably latched; verified operator reset required"
                 )
             if not self.reconcile():
-                raise ValueError("reconciliation required")
+                reason = self.report.get("reason", "RECONCILIATION_REQUIRED")
+                raise ValueError(f"reconciliation required: {reason}")
+
+            evidence = self.evaluate_safety_evidence(account_id=None)
+            if not evidence["session_open"]:
+                raise ValueError(f"market session closed: {evidence['session_reason']}")
+            if evidence["broker_status"] == "DISCONNECTED":
+                raise ValueError(
+                    f"broker evidence not ready: {evidence['broker_reason']}"
+                )
+            if evidence["broker_reason"] in {
+                "BROKER_CALL_UNSETTLED",
+                "BROKER_RECONCILIATION_REQUIRED",
+            }:
+                raise ValueError(
+                    f"broker evidence not ready: {evidence['broker_reason']}"
+                )
+            if evidence["coverage_status"] != "VERIFIED":
+                raise ValueError(
+                    f"snapshot coverage not verified: {evidence['coverage_reason']}"
+                )
+            if evidence["reconciliation_status"] != "VERIFIED":
+                raise ValueError(
+                    f"reconciliation not verified: {evidence['reconciliation_reason']}"
+                )
+            if evidence["subscription_status"] not in {"VERIFIED", "NOT_APPLICABLE"}:
+                raise ValueError(
+                    f"provider subscription evidence unavailable: {evidence['subscription_reason']}"
+                )
+            if evidence["unknown_order_count"] > 0:
+                raise ValueError(
+                    "unresolved unknown orders present across accounts; reconciliation required"
+                )
+
+            adapter = getattr(self.broker, "adapter", self.broker)
             with self.store.lock:
                 if self.kill_latched or self.risk.kill_requested.is_set():
                     raise ValueError("kill is latched")
+                if getattr(adapter, "connected", True) is False:
+                    raise ValueError("broker connection offline: BROKER_DISCONNECTED")
                 self.risk.state = Gate.REDUCE_ONLY if reduce_only else Gate.RUNNING
                 self.runtime.enabled = True
                 with self.store.transaction():

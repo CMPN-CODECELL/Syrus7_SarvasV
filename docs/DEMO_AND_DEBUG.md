@@ -1,8 +1,8 @@
 # AlgoShield â€” Demo, Rehearsal & Debug Guide
 
-The runnable demo remains **OFFLINE MOCK/REPLAY**. The official 021 fixture suite is a developer/parser demonstration only; do not label its prices, fills, fees, reconnect behavior or kill timing as sandbox evidence. A bounded 021 transport now exists, but live mode is opt-in, server-side only, and remains `IMPLEMENTED_UNVERIFIED` until a read-only sandbox smoke test is recorded. Never use the failure lab to submit live 021 orders.
+The runnable demo remains **OFFLINE MOCK/REPLAY**. The official 021 fixture suite is a developer/parser demonstration only; do not label its prices, fills, fees, reconnect behavior or kill timing as sandbox evidence. A bounded 021 transport now exists, but live mode is opt-in, server-side only, and remains `IMPLEMENTED_UNVERIFIED` until a read-only sandbox smoke test is recorded. Never use the failure lab to submit live 021 orders. Provider readiness, UNKNOWN orders and historical kill certificates are evidence fields: connection, a past certificate or a submitted request never proves current execution readiness or flatness.
 
-Use [TEAM_EXECUTION_PLAN](TEAM_EXECUTION_PLAN.md) for the current demo/browser tasks. Seven mock rehearsals passed in the release candidate; the browser script still uses legacy selectors and has not established current React browser coverage. Label mock demonstrations explicitly.
+Use [TEAM_EXECUTION_PLAN](TEAM_EXECUTION_PLAN.md) for the current demo/browser tasks. Run `python scripts/browser_smoke.py --output data/browser-evidence` for the current React smoke: it starts a fresh loopback-only rehearsal SQLite database, grants its disposable `demo_user` operator authority through the offline CLI, and tears down the server afterward. It refuses non-loopback URLs. The Playwright package/browser is unavailable in this checkout, so no browser PASS is claimed here. Label mock demonstrations explicitly.
 
 ## Overview
 This document outlines deterministic demonstration scenarios, execution commands, and a step-by-step 4–5 minute live walkthrough script for technical vivas, hackathon evaluation, and regression validation.

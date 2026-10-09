@@ -72,7 +72,7 @@ security negatives explicitly override it. It changes transport only, not auth.
 
 021 integration tests use an in-process HTTP transport fixture containing the documented auth, gzipped instruments, order, per-order trade, and position envelopes. They verify exact paise/signed-quantity encoding, durable order mapping, fill identity requirements, and snapshot/drain behavior. On 2026-10-09 a separate credentialed read-only smoke test passed auth-backed orders, instruments, trades, positions, ephemeral keys, a two-symbol market snapshot, normalization and order-WS handshake. It submitted no order and does not prove fees, corrections, cross-day completeness, reconciliation or kill behavior.
 
-DEC-037 tests verify that 021 selects a distinct SQLite ledger, a simultaneously
+DEC-038 tests verify that 021 selects a distinct SQLite ledger, a simultaneously
 empty orders/trades/positions/holdings response bootstraps only an execution-empty
 store, any local execution or non-empty provider view keeps the snapshot
 incomplete, and subscription readiness requires fresh accepted marks for every

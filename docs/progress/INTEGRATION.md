@@ -1,6 +1,57 @@
 # Integration Progress
 
-## 2026-10-09 — Guarded auto-mode integration
+## 2026-10-09 — `origin/main` integration checkpoint
+
+- Merged main's canonical admission/recovery safety, operator-aware React controls,
+  durable candle visibility, and secure telemetry work with the 021 REST/market,
+  order lifecycle, Auto mode, and provider-evidence implementation on
+  `codex/021-integration`.
+- Conflict resolution preserved the mandatory intent → risk → order manager →
+  broker path. Auto and documented 021 strategies again consume normalized ticks;
+  REST trades remain fill authority and optional order WebSocket events remain
+  lifecycle telemetry only.
+- Provider subscription acknowledgement, quote freshness, broker snapshot coverage,
+  and reconciliation remain separate safety evidence. Missing evidence does not
+  become a success state.
+- Current merged-tree validation: Ruff passed; backend **480 passed, 1 skipped**;
+  frontend **51 passed**; ESLint and the Vite production build passed;
+  `git diff --check` passed.
+
+## 2026-10-09 — Admission and recovery safety enforcement (Member 3 Task 3, DEC-034)
+
+- Implemented unified canonical safety evidence evaluator `Reliability.evaluate_safety_evidence(*, account_id=None, symbols=None, external_market_data=None, broker_connected=None)` that evaluates underlying evidence dimensions: broker transport connectivity, settlement/uncertainty state, market quote freshness, broker evidence freshness, snapshot completeness, reconciliation status, external provider subscription review, and unresolved unknown orders.
+- Decoupled evidence readiness from gate/runtime state: readiness does not depend on whether the gate is `RUNNING` or strategy runtime is enabled. Refactored `readiness_projection()` to consume this evaluator.
+- Enforced action-specific readiness: new exposure requires fresh broker/market evidence, verified external subscription, complete reconciliation, and zero unresolved unknown orders across accounts, failing closed with granular reason codes (`RISK_BROKER_DISCONNECTED`, `RISK_PROVIDER_SUBSCRIPTION_UNAVAILABLE`, `RISK_UNKNOWN_ORDERS_PRESENT`, `RISK_STALE_MARKET_DATA`, `RISK_STALE_BROKER_STATE`, `RISK_RECONCILIATION_REQUIRED`). Order cancellation and emergency reducing-order exits retain their permissive exit contracts.
+- Serialized pre-dispatch revalidation: re-evaluates gate/kill authorization and safety evidence inside `RiskGateway.authorize_dispatch(intent, row)` under the store lock at the exact boundary before `dispatch_started=1`/`UNKNOWN` is committed and before `broker.submit()` is called. No network calls under the lock. If invalidated between reservation and dispatch, authorization is rejected and the reservation released safely via `OrderManager._start_reserved`'s never-dispatched transition with zero broker calls. Preserved durable `UNKNOWN` and exposure retention without retry once dispatch has begun.
+- Hardened global resume across all execution-relevant accounts and symbols without scoping to the operator's account alone; re-checked kill latch, disconnect, and snapshot completeness inside the store lock, leaving the gate `CLOSED` with an explicit reason on failure; reconnect or feed resumption never auto-resumes trading.
+- Clean ownership preserved: zero edits to raw provider modules or `orders.py`.
+- Validation:
+  - 10 new tests in `tests/test_admission_recovery_safety.py` passed.
+  - Full backend test suite: 447 passed, 1 skipped (isolated PostgreSQL).
+  - Ruff linter: all checks passed.
+
+## 2026-10-09 — Frontend operator awareness & client authority boundaries (Member 3 Task 2)
+
+- Reused authoritative authenticated user state `useAuth().user.is_operator`; missing or unknown roles strictly default to non-operator (`isOperator = Boolean(user?.is_operator)`).
+- Topbar navigation prominently displays ` · Operator` badge only when the active session holds verified operator authority.
+- All global mutating operator actions are disabled and clearly labeled with concise "Operator required" guidance when signed in as an ordinary or unranked user:
+  - AppShell: Kill all strategies (`/api/kill`).
+  - OverviewPage: Replay (`/api/demo`), Reconcile (`/api/reconcile`), Reset kill latch (`/api/kill/reset`), Resume (`/api/resume`).
+  - ReconciliationPage: Sync broker updates (`/api/broker/updates/sync`), Reconnect and reconcile (`/api/broker/reconnect`), Disconnect broker (`/api/broker/disconnect`), Reconcile (`/api/reconcile`).
+  - FailureLabPage: Scenario inspector run (`/api/lab/run`) and scenario card run actions.
+  - SafetyBenchPage: Benchmark run (`/api/safety-bench/run`).
+  - MarketDataPage: Open and Close market session overrides (`/api/market/session`).
+- Account-owned controls remain fully accessible:
+  - Strategy subscriptions start/stop and atomic batch creation (`/api/subscriptions/*`).
+  - Order cancellation for open orders (`/api/orders/{id}/cancel`).
+  - Account risk policy inspection (`/api/risk/account-policy`).
+- Backend enforcement remains authoritative: UI restrictions never substitute for `require_operator(request)`. When an operator grant is revoked while a session is active, any mutating operator request returning 403 triggers identity refresh via `refreshAuth()` without logging the user out (403 is never treated as 401/logout), instantly removing operator controls from the UI. Duplicate/re-entrant clicks while in-flight or during identity refresh are prevented.
+- Existing operator provisioning commands documented (never executed):
+  - SQLite: `python -m backend.shared.provision_operator --sqlite-path <db_path> --username <username> [--revoke]`
+  - PostgreSQL: `python -m backend.shared.provision_operator --username <username> [--revoke]`
+- Validation:
+  - Frontend: 47 passed across 10 test files (including 5 new focused tests in `frontend/src/test/operatorAuthority.test.jsx`); ESLint clean (0 errors, 0 warnings); Vite production build passed.
+  - Backend: 38 passed in `tests/test_operator_authority.py`, including strengthened revocation zero-mutation verification on gate, order rows, and fill rows, with session remaining valid for ordinary authenticated endpoints.
 
 - Added a process-local, explicitly activated auto strategy orchestrator over
   the existing one-instance/one-symbol contract. It scans a bounded cash-equity
@@ -25,6 +76,51 @@ Work started from `main` `2490e82a4f6c1dc60ab8cc8d61f0523899dc80de` after fetch;
 - Phase: integrated mock/replay hardening with optional supervised Yahoo quote evidence
 - Status: BLOCKED
 - Last updated: 2026-10-09 Asia/Kolkata
+
+## 2026-10-09 â€” Candle visibility, chart bootstrap, and account projection follow-up
+
+- Root-cause review of the supplied dashboard evidence found that recent closed
+  bars were only carried in a small in-memory snapshot, the Market Data route did
+  not bootstrap from the authenticated historical endpoint, and the shared
+  frontend bundle predated the current source. The UI now distinguishes account
+  telemetry connectivity from upstream feed state and displays provider/source,
+  latest quote age/staleness, forming versus closed candles, and explicit empty,
+  loading, error, or unavailable reasons. Overview and Market Data share the
+  authenticated 1m/5m chart/history path; symbol and timeframe controls remain
+  available when there are no closed bars.
+- Historical candle reads now select the active provider and return bounded,
+  chronological rows. SQLite and PostgreSQL repositories use the migrated
+  PostgreSQL `interval_seconds` field consistently, support provider filtering,
+  and prune per-symbol history beyond the bounded retention window. Existing
+  finalized-candle writes remain idempotent and restart-restored.
+- Account response review found replay quote/forming-bar observations could
+  bypass the existing symbol filter in nested market telemetry, especially in
+  global-action responses. Replay chart evidence is now restricted to the
+  requesting account's subscribed symbols; public external-provider quote
+  evidence remains available for configured watchlists, including before a
+  strategy is subscribed.
+- Reconciliation now labels startup-without-broker-evidence as pending, not a
+  confirmed position mismatch. The Strategies page explains when there are no
+  subscriptions and callbacks/orders therefore are not running. No fake fills,
+  successful reconciliation, strategy activation, or live market status was
+  added.
+- Current-checkout verification on rebased `main`: full backend suite
+  `437 passed, 1 skipped`; all 49 React tests passed; ESLint, Vite production
+  build, root TypeScript,
+  Ruff lint, seven mock rehearsals and documentation links passed. A
+  `ruff format --check` audit reports eight files would be reformatted; the
+  pre-change `backend/api.py` also fails that formatter check, so broad
+  reformatting was not mixed into this gap-focused change.
+- Local HTTP check served the rebuilt Vite bundle and `/health` returned
+  `process=UP`, `trading=UNCERTAIN`, `reconciliation=DRIFTED`. Authenticated
+  data routes returned 401 without a session as expected; no browser session
+  token was accessed. The currently running process predates the backend edits
+  and was not restarted, preserving its feed connection. Its new backend
+  telemetry/history behavior therefore requires a controlled restart.
+- Live 021 access and isolated PostgreSQL server connectivity remain
+  unverified; the outbound provider probe was blocked before authentication.
+  No broker traffic, production database, or migration was used. The screenshot
+  tick counters alone do not prove that the active feed was 021.
 
 ## 2026-10-09 — Subscription-free Yahoo quote visibility
 
@@ -504,7 +600,6 @@ readiness/recovery tests passed; full backend regression passed 428 tests with 1
 optional PostgreSQL test skipped. Focused Ruff check/format and `git diff
 --check` passed. The existing Starlette/httpx deprecation warning remains; no
 dependency was changed.
-# 2026-10-09 — 021 end-to-end hardening checkpoint
 
 - Merged current `origin/main` into `codex/021-integration` without discarding
   existing work. Removed whole-catalogue default subscription; live desired
@@ -552,7 +647,7 @@ dependency was changed.
   empty; the catalogue contained 104,969 rows. Order-specific reads were not
   callable because no order ID exists; no write endpoint was invoked.
 - The previous shared SQLite file contained offline mock history and no 021
-  mappings. DEC-037 now selects a dedicated 021 SQLite ledger and permits only a
+  mappings. DEC-038 now selects a dedicated 021 SQLite ledger and permits only a
   simultaneous four-view empty bootstrap when that ledger has no execution
   history. Any non-empty/cross-day state remains incomplete.
 - Fresh accepted marks for every provider-reported subscribed symbol now provide
@@ -578,3 +673,47 @@ dependency was changed.
 - The optional order WebSocket no longer owns safety authority; disconnects are
   audited while REST order/trade evidence remains authoritative. Market-feed or
   REST uncertainty still fails closed.
+
+## 2026-10-09 — Member 3 Task 4 risk-only emergency dispatch revalidation
+
+`RiskGateway.authorize_dispatch()` now re-proves a persisted `emergency=1`
+reservation at the serialized pre-dispatch boundary: latched KILLING gate,
+broker connection/settlement, reservation identity, current attributed virtual
+residual, side/quantity bound, and absence of every other non-terminal or
+UNKNOWN order for that strategy/account/symbol. The emergency reservation is
+excluded from its own competing-exposure query. A late fill that reduces the
+residual blocks dispatch before `UNKNOWN`/`dispatch_started` and before any
+broker call; the existing never-dispatched `RESERVED -> REJECTED` transition
+releases it. No provider, `orders.py`, accounting, migration, or shared contract
+changed.
+
+Ordinary explicit-exit enforcement is BLOCKED on Member 2’s shared-contract
+review: canonical `OrderIntent` has no trusted structured reducing/exit class,
+and free-text reasons or strategy names are not used as authorization evidence.
+Required follow-up is a backwards-compatible validated action classification,
+propagated by strategy/runtime/provider code, after which Member 3 can apply the
+same non-crossing residual proof without changing ordinary entry/reversal
+semantics. Member 2’s status/fill ordering, cancel terminal-outcome and scoped
+provider-mapping fixes remain separate live-execution blockers; Member 1 + 2
+still own durable fill identity/attribution. Cancellation coordination and live
+kill adaptation are not complete.
+
+Verification: focused offline risk/recovery/kill/021-fixture suite passed **77
+tests** (`tests/test_admission_recovery_safety.py`, `test_kill.py`,
+`test_execution_state_machine.py`, `test_recovery.py`, `test_safety.py`,
+`test_account_risk.py`, `test_official021_rest.py`) using
+`--basetemp=data/member3-task4-risk-focused`; source Ruff lint and format check
+passed, and `git diff --check` passed. The complete backend regression was
+started once with a fresh ignored basetemp and JUnit output path, but remained
+CPU-active beyond the historical duration and produced no JUnit file; it was
+stopped after bounded observation. It is **not** claimed as a pass. The modified
+test file has six pre-existing Ruff-format findings outside this change; they
+were not mechanically reformatted in this scoped safety task.
+
+## 2026-10-09 — Member 3 Task 5 truthful dashboard and deployment preparation
+
+The local launcher now runs one Uvicorn worker with `--no-proxy-headers` and no longer supplies an implicit PostgreSQL URL: an explicit `DATABASE_URL` remains authoritative and connection failures do not fall back. `ALGOSHIELD_SECURE_COOKIE` is explicit (local HTTP false; approved TLS deployment true), with matching login and logout cookie attributes. Telemetry accepts only the session cookie or explicit Bearer token; URL query credentials are rejected for SSE and WebSocket. Native browser WebSocket remains cookie-authenticated because it cannot attach an arbitrary Authorization header.
+
+The Overview renders backend readiness dimensions and immutable historical kill evidence directly; it does not calculate readiness, infer flatness, or turn UNKNOWN/SAFE_LATE/FAILED into success. WAP/trigger/exit lifecycle remains unavailable pending Member 1 durable fills and Member 2 provider lifecycle evidence. `scripts/browser_smoke.py` now launches an isolated loopback mock rehearsal and offline-provisions its disposable operator, but Playwright is unavailable in this checkout, so browser execution is not claimed. Focused results: React `integrationGaps.test.jsx`: 14 passed; all React suites: 50 passed (JUnit); backend security transport tests: 23 passed (JUnit XML, 34.982s); configuration tests: 7 passed; Ruff touched-file lint/format and `git diff --check` passed; ESLint and Vite production build passed.
+
+Initial full regression exposed a stale configuration expectation and a replay-stream test timing race; both were corrected without weakening provider/readiness behavior. The final verbose full backend regression completed: 451 passed, 1 skipped in 157.345s (JUnit XML). The replay assertion still requires a genuine accepted tick but now polls it with a one-second bounded deadline rather than assuming the first background tick appears within 80 ms. No 021 sandbox, TLS proxy, production DB, or live deployment validation occurred. Member 2 cancel/status/fill ordering/provider mapping and Members 1+2 durable fill attribution remain live-execution blockers; Task 4 cancellation coordination/live kill adaptation remains blocked.

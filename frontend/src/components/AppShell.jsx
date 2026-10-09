@@ -11,13 +11,14 @@ const groups = [
 ]
 
 export function AppShell() {
-  const { user, logout } = useAuth()
+  const { user, logout, refresh: refreshAuth } = useAuth()
   const { snapshot, status, refresh } = useTelemetry()
   const navigate = useNavigate()
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [killPending, setKillPending] = useState(false)
   const [killError, setKillError] = useState('')
+  const isOperator = Boolean(user?.is_operator)
 
   useEffect(() => setMenuOpen(false), [location.pathname])
   useEffect(() => {
@@ -32,7 +33,7 @@ export function AppShell() {
   }, [menuOpen])
 
   const kill = async () => {
-    if (killPending) return
+    if (killPending || !isOperator) return
     if (!confirm('Close the global gate and begin verified flattening?')) return
     setKillPending(true)
     setKillError('')
@@ -40,6 +41,9 @@ export function AppShell() {
       await api.post('/api/kill')
       await refresh()
     } catch (error) {
+      if (error?.status === 403) {
+        await refreshAuth?.()
+      }
       setKillError(error.message || 'Kill request failed.')
     } finally {
       setKillPending(false)
@@ -61,16 +65,23 @@ export function AppShell() {
             {items.map(([to, text]) => <NavLink end={to === '/'} to={to} key={to}>{text}</NavLink>)}
           </div>)}
         </nav>
-        <button className="kill" disabled={killPending} onClick={kill}>{killPending ? 'Kill in progress…' : 'Kill all strategies'}</button>
+        <button
+          className="kill"
+          disabled={killPending || !isOperator}
+          title={!isOperator ? 'Operator authority required' : undefined}
+          onClick={kill}
+        >
+          {killPending ? 'Kill in progress…' : !isOperator ? 'Kill all strategies (Operator required)' : 'Kill all strategies'}
+        </button>
       </div>
     </aside>
     <div className="workspace">
       <header className="topbar">
-        <div className="connection"><i className={status}/><span>{status === 'live' ? 'Live backend evidence' : status}</span></div>
-        <div><span className="user">{user?.username} · {user?.account_id}</span><button className="ghost" onClick={async () => { await logout(); navigate('/login') }}>Sign out</button></div>
+        <div className="connection"><i className={status}/><span>{status === 'live' ? 'Backend telemetry connected' : `Backend telemetry ${status}`}</span><span className="feed-indicator">Market feed: {snapshot?.market_data?.feed_status||'unknown'} · {snapshot?.market_data?.source||snapshot?.market_data?.label||'source unknown'}</span></div>
+        <div><span className="user">{user?.username} · {user?.account_id}{isOperator ? ' · Operator' : ''}</span><button className="ghost" onClick={async () => { await logout(); navigate('/login') }}>Sign out</button></div>
       </header>
       {killError && <div className="shell-alert error" role="alert">{killError}</div>}
-      <main className="content"><Outlet context={{ snapshot, refresh }}/></main>
+      <main className="content"><Outlet context={{ snapshot, refresh, accountId:user?.account_id }}/></main>
     </div>
   </div>
 }

@@ -131,7 +131,7 @@ class Store:
                 ),
             )
 
-    def candle_rows(self, symbol=None, interval=None, limit=200):
+    def candle_rows(self, symbol=None, interval=None, limit=200, provider=None):
         clauses, args = [], []
         if symbol:
             clauses.append("symbol=?")
@@ -139,12 +139,25 @@ class Store:
         if interval:
             clauses.append("interval=?")
             args.append(interval)
+        if provider:
+            clauses.append("provider=?")
+            args.append(provider)
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
         args.append(min(max(int(limit), 1), 1000))
         return self.rows(
             f"SELECT * FROM closed_candles{where} ORDER BY start_time DESC LIMIT ?",
             tuple(args),
         )
+
+    def candle_count(self, provider=None):
+        if provider:
+            row = self.rows(
+                "SELECT COUNT(*) AS n FROM closed_candles WHERE provider=?",
+                (provider,),
+            )[0]
+        else:
+            row = self.rows("SELECT COUNT(*) AS n FROM closed_candles")[0]
+        return row["n"]
 
     def audit(self, event_type, payload, correlation_id=None):
         # Caller holds the transaction; event commits atomically with its transition.

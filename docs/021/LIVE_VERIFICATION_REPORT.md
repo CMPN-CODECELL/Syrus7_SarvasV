@@ -19,7 +19,7 @@ Safety scope: authenticated reads and WebSocket handshakes only; no order write
 | FILL INGESTION | PASS (fixture) | REST trade ID is authoritative, fill precedes status and duplicate application is idempotent. |
 | POSITION | NOT RUN (write lifecycle) | Positions read passed; no new position was created. |
 | RECONCILIATION | BLOCKED | Today/current endpoints do not prove complete cross-day history; `is_complete=False` is preserved. |
-| EMPTY ACCOUNT BOOTSTRAP | PASS (read + guarded implementation) | Fresh authenticated orders, trades, positions and holdings simultaneously returned empty. DEC-037 accepts this only in a separate execution-empty 021 ledger; any later/non-empty or cross-day state remains blocked without complete history. |
+| EMPTY ACCOUNT BOOTSTRAP | PASS (read + guarded implementation) | Fresh authenticated orders, trades, positions and holdings simultaneously returned empty. DEC-038 accepts this only in a separate execution-empty 021 ledger; any later/non-empty or cross-day state remains blocked without complete history. |
 | REACT LIVE QUOTES | PASS (automated projection) | Backend telemetry fields are rendered; no credential appears in React. |
 | REACT CANDLES | PASS (automated projection) | Backend-closed candles only; browser does not calculate prices. |
 | SECRET LEAK CHECK | PASS | `.env` and `.env.local` are ignored; tracked example contains placeholders only. |
@@ -36,6 +36,6 @@ must remain fail-closed for live risk-increasing execution after startup or
 reconnect. A separately authorized quantity-one sandbox write is still required
 to verify submit → status → trade ID → fill → position → reconciliation.
 
-The narrow exception is DEC-037's unused-account bootstrap: four simultaneous
+The narrow exception is DEC-038's unused-account bootstrap: four simultaneous
 empty account views plus an execution-empty dedicated 021 ledger can verify an
 empty starting point. It does not solve recovery after the first trade.

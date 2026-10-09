@@ -94,8 +94,19 @@ def test_grants_survive_restart_and_revoke_existing_session(tmp_path):
             client.cookies.set("algoshield_session", result["token"])
             assert client.post("/api/reconcile").status_code == 200
             p.auth.provision_operator("operator-user", granted=False)
+            gate_before = p.risk.state
+            orders_before = len(p.store.rows("SELECT * FROM orders"))
+            fills_before = len(p.store.rows("SELECT * FROM fills"))
             assert client.post("/api/kill").status_code == 403
-            assert p.risk.state == "STOPPED"
+            assert client.post("/api/reconcile").status_code == 403
+            assert client.post("/api/resume").status_code == 403
+            assert p.risk.state == gate_before == "STOPPED"
+            assert len(p.store.rows("SELECT * FROM orders")) == orders_before
+            assert len(p.store.rows("SELECT * FROM fills")) == fills_before
+            me_res = client.get("/api/auth/me")
+            assert me_res.status_code == 200
+            assert me_res.json()["user"]["is_operator"] == 0
+            assert client.get("/api/state").status_code == 200
         with pytest.raises(ValueError, match="existing registered"):
             p.auth.provision_operator("missing-user", granted=True)
     finally:

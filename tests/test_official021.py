@@ -220,6 +220,8 @@ def test_official_open_strategy_is_registered_and_routes_through_platform_risk()
             return {
                 "provider": "021",
                 "source": "021_LIVE",
+                "connected": True,
+                "subscribed_symbols": ["RELIANCE"],
                 "latest_quotes": [{"symbol": "RELIANCE", "official_open": "100"}],
             }
 

@@ -146,7 +146,7 @@ def test_account_snapshot_exposes_configured_symbols_and_latest_quotes_without_s
         market_data = platform.snapshot("trader")["market_data"]
         assert market_data["canonical_symbols"] == ["TCS", "INFY"]
         assert market_data["symbols"] == ["TCS.NS", "INFY.NS"]
-        assert market_data["latest_quotes"] == [
+        expected_quotes = [
             {
                 "symbol": "TCS",
                 "provider_symbol": "TCS.NS",
@@ -168,6 +168,13 @@ def test_account_snapshot_exposes_configured_symbols_and_latest_quotes_without_s
                 "data_source": SOURCE,
             },
         ]
+        projected_quotes = [
+            {key: quote[key] for key in expected}
+            for quote, expected in zip(market_data["latest_quotes"], expected_quotes)
+        ]
+        assert projected_quotes == expected_quotes
+        assert market_data["latest_quotes"][0]["stale"] is True
+        assert market_data["latest_quotes"][1]["stale"] is False
         assert platform.snapshot("trader")["subscriptions"] == []
     finally:
         platform.close()
