@@ -312,3 +312,11 @@ Member 4 tasks 1 through 8 are 100% complete and fully verified. User workflows 
 - Preserved all Member 4 Tasks 1–8 functionality: isolated bounded callbacks/shutdown, generation invalidation, sequential indicator updates, monotonic replay, candle/session correctness, authenticated account scoping, truthful historical evidence, deterministic restart/kill scenarios, rehearsal runner (`scripts/rehearsal_runner.py`), and operational UX.
 - Standalone single-file operational dashboard preserved in `frontend/static_dashboard.html`; canonical Vite entrypoint in `frontend/index.html` with production build in `frontend/dist/`.
 - Full regression verification: Python tests, Vitest frontend tests, rehearsal runner scenarios, and linters all passing cleanly.
+## 2026-10-09 — Telemetry and scoped workflow follow-up
+
+- Replaced the stale Python assertion tied to the former `setSnapshot` identifier.
+  Behavioral Vitest tests remain authoritative for account switch/logout, HTTP
+  401, WebSocket 1008, stale socket closure and snapshot clearing.
+- Account-facing snapshots and streams use the DEC-026 nested response boundary.
+  Owned subscription/policy/order workflows remain permitted; global replay and
+  market controls require an explicit operator.

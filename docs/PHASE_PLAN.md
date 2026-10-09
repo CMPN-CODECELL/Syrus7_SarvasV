@@ -4,7 +4,7 @@ Active work: [IMPLEMENTATION_DELTA.md](IMPLEMENTATION_DELTA.md). Fresh evidence:
 
 ## Historical bootstrap phases (superseded as active backlog)
 
-Implemented: contracts, modular monolith, SQLite schema v2, API and backend-fed dashboard, accounts/subscriptions, three built-in candle strategies, 1m/5m candles, max position/rate/daily loss, atomic directional reservations, mock partial/rejected orders, idempotent accounting, reconciliation, explicit recovery/resume and verified mock kill. Safety/invariant tests cover mandatory S1-S7 and additional failures.
+Historically implemented at this phase: contracts, modular monolith, SQLite schema v2, API and backend-fed dashboard, accounts/subscriptions, three built-in candle strategies, 1m/5m candles, max position/rate/daily loss, atomic directional reservations, mock partial/rejected orders, idempotent accounting, reconciliation, explicit recovery/resume and verified mock kill. Current SQLite is schema v12; use the active delta and integration evidence for present status.
 
 This is a vertical slice, **not completion of the official PS**. Runtime is serialized, so simultaneous strategies share one account/event loop rather than run in separate threads. Demo ends STOPPED; do not label subscriptions RUNNING after replay.
 

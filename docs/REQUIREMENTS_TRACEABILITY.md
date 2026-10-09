@@ -6,21 +6,21 @@ Status legend: IMPLEMENTED_VERIFIED means fresh scoped mock evidence linked in `
 
 | ID | Required outcome | Likely current owner/file | Acceptance fixture | Demo/evidence | Status |
 |---|---|---|---|---|---|
-| PS01 | User account creation/login | `backend/api.py`, auth/Store, React auth | Registration, login, logout, expiry, denied anonymous access | Account session | REPORTED→VERIFY |
-| PS02 | Strategy subscriptions | `backend/strategies/runtime.py`, `backend/platform.py` | Subscribe, stop/start, durable ownership, warmup | Strategy lifecycle | REPORTED→VERIFY |
-| PS03 | Raw tick → 1m and 5m OHLCV | `backend/market_data/candles.py` | Boundary, gap, duplicate, late, per-tick volume fixtures | Candle evidence | REPORTED→VERIFY |
-| PS04 | At least one candle-based entry | `backend/strategies/runtime.py` | Closed 1m/5m candle causes valid signal, incomplete cannot | Signal trace | REPORTED→VERIFY |
+| PS01 | User account creation/login | `backend/api.py`, auth/Store, React auth | Registration, login, logout, expiry, denied anonymous access | Account session | IMPLEMENTED_VERIFIED (mock) |
+| PS02 | Strategy subscriptions | `backend/strategies/runtime.py`, `backend/platform.py` | Subscribe, stop/start, durable ownership, warmup | Strategy lifecycle | IMPLEMENTED_VERIFIED (mock) |
+| PS03 | Raw tick → 1m and 5m OHLCV | `backend/market_data/candles.py` | Boundary, gap, duplicate, late, per-tick volume fixtures | Candle evidence | IMPLEMENTED_VERIFIED (mock) |
+| PS04 | At least one candle-based entry | `backend/strategies/runtime.py` | Closed 1m/5m candle causes valid signal, incomplete cannot | Signal trace | IMPLEMENTED_VERIFIED (mock) |
 | PS05 | Place orders via 021 developer sandbox | `backend/broker/adapters.py` and future verified 021 boundary | Actual authenticated order and ID response | Broker-native evidence | BLOCKED (021) |
-| PS06 | Track broker executions, partial fills, rejects | `backend/execution/orders.py`, broker events | 100 order → 40 fill → 60 outstanding; reject has zero fill | Order/fill table | Mock REPORTED→VERIFY; live BLOCKED |
-| PS07 | Exact strategy trades, positions, net P&L after charges | `backend/accounting/ledger.py` | Decimal weighted average, partial exit, reversal, charge, unique execution, attribution | Independent ledgers | Mock REPORTED→VERIFY; live charge model OPEN |
-| PS08 | Maximum position per strategy | `backend/risk/gateway.py` | Filled+pending directional endpoints | Reasoned rejection | REPORTED→VERIFY |
-| PS09 | Maximum daily loss per strategy | ledger/risk + marks | IST day, realized+unrealized−charges, stale mark, loss halt | Loss budget | REPORTED→VERIFY; exact sponsor formula OPEN |
-| PS10 | Orders/minute per strategy | `backend/risk/gateway.py` | Rolling (now−60,now] admitted orders incl later broker reject | Rate evidence | REPORTED→VERIFY |
-| PS11 | Platform, not strategy, enforces risk | `backend/platform.py`, risk, execution | Unapproved/stopped intent cannot reach broker | Trace | REPORTED→VERIFY |
-| PS12 | Emergency stop strategies, cancel orders, close positions within ten seconds | `backend/reliability/control.py` | Paused dispatch, late fill, pending cancel, restart, timestamped final broker verification | Historical certificate | Mock REPORTED→VERIFY; 021 close semantics OPEN |
-| PS13 | ≥3 simultaneous strategies on shared account | Runtime/subscription | Three active instances process same feed/account | Strategy cards | REPORTED→VERIFY |
-| PS14 | Opposing long/short positions separately accounted | Ledger + account projection | A+100 B−60 C+20 → account+60, gross180; net0 A+100 B−100 | Dual-scope view | Mock REPORTED→VERIFY; live liquidation OPEN |
-| PS15 | Live subscriptions and P&L dashboard | `frontend/src`, `backend/api.py` | Authenticated snapshot/WebSocket updates, 401/1008 clears stale state | UI | REPORTED→VERIFY |
+| PS06 | Track broker executions, partial fills, rejects | `backend/execution/orders.py`, broker events | 100 order → 40 fill → 60 outstanding; reject has zero fill | Order/fill table | Mock IMPLEMENTED_VERIFIED; live BLOCKED |
+| PS07 | Exact strategy trades, positions, net P&L after charges | `backend/accounting/ledger.py` | Decimal weighted average, partial exit, reversal, charge, unique execution, attribution | Independent ledgers | Mock IMPLEMENTED_VERIFIED; live charge model OPEN |
+| PS08 | Maximum position per strategy | `backend/risk/gateway.py` | Filled+pending directional endpoints | Reasoned rejection | IMPLEMENTED_VERIFIED (mock) |
+| PS09 | Maximum daily loss per strategy | ledger/risk + marks | IST day, realized+unrealized−charges, stale mark, loss halt | Loss budget | IMPLEMENTED_VERIFIED (mock); exact sponsor formula OPEN |
+| PS10 | Orders/minute per strategy | `backend/risk/gateway.py` | Rolling (now−60,now] admitted orders incl later broker reject | Rate evidence | IMPLEMENTED_VERIFIED (mock) |
+| PS11 | Platform, not strategy, enforces risk | `backend/platform.py`, risk, execution | Unapproved/stopped intent cannot reach broker | Trace | IMPLEMENTED_VERIFIED (mock) |
+| PS12 | Emergency stop strategies, cancel orders, close positions within ten seconds | `backend/reliability/control.py` | Paused dispatch, late fill, pending cancel, restart, timestamped final broker verification | Historical certificate | Mock IMPLEMENTED_VERIFIED; 021 close semantics OPEN |
+| PS13 | ≥3 simultaneous strategies on shared account | Runtime/subscription | Three active instances process same feed/account | Strategy cards | IMPLEMENTED_VERIFIED (mock) |
+| PS14 | Opposing long/short positions separately accounted | Ledger + account projection | A+100 B−60 C+20 → account+60, gross180; net0 A+100 B−100 | Dual-scope view | Mock IMPLEMENTED_VERIFIED; live liquidation OPEN |
+| PS15 | Live subscriptions and P&L dashboard | `frontend/src`, `backend/api.py` | Authenticated snapshot/WebSocket updates, 401/1008 clears stale state | UI | IMPLEMENTED_VERIFIED (mock) |
 | PS16 | Evaluation: hidden tests, change request, viva; profitability not basis | `tests/`, `scripts/rehearsal_runner.py`, docs | Reproducible end-to-end, extension/change regression | Demo + test report | Prep ongoing |
 
 ## Global correctness/release assertions

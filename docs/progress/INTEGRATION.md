@@ -5,6 +5,23 @@
 - Status: BLOCKED
 - Last updated: 2026-10-09 Asia/Kolkata
 
+## 2026-10-09 — Branch convergence on multi-stock feature branch
+
+- Fetched and compared every local/remote branch tip: `main`, `dev`, and
+  `feature/multi-stock-strategies`. Main was already an ancestor of the feature
+  branch. The sole unintegrated change was `origin/dev` commit `de126de`, whose
+  operator implementation was already in main but whose DEC-026 evidence,
+  traceability updates, and security-operations runbook were missing.
+- Integrated `origin/dev` without changing runtime behavior. Resolved append-only
+  documentation conflicts by preserving DEC-026 before DEC-027 and retaining both
+  operator-boundary and multi-stock progress evidence. Added
+  `docs/SECURITY_OPERATIONS.md`; no schema, provider, dependency, or live 021
+  behavior changed during branch convergence.
+- Validation after convergence: 360 Python tests passed / 1 environment-gated
+  PostgreSQL test skipped; 35 React tests passed; Ruff check/format, ESLint and
+  Vite production build passed; all seven deterministic rehearsal scenarios
+  passed with zero errors.
+
 ## 2026-10-09 — Atomic multi-stock strategy orchestration
 
 - Added authenticated `POST /api/subscriptions/batch` without changing the one-instance/one-symbol schema or the existing single-subscription endpoint. Up to 20 normalized unique symbols are preflighted and inserted with durable evidence in one transaction; any ID collision creates zero rows and returns the conflicting IDs.
@@ -222,3 +239,26 @@ Neon CLI 8.0.11 installed. Requested project/branch not yet authenticated/linked
     - Vitest frontend tests: 14 passed across 4 test suites.
     - Deterministic rehearsal runner: all 7 scenarios passed with zero errors.
     - Ruff check, Ruff format, ESLint, and TypeScript (`npm run check`) all clean.
+- 2026-10-09 DEC-026 remediation on `dev`:
+  - Audited base: `b0930c52056f175539e8fe9be7a1fabd2cd075eb`.
+  - Implementation/research integration commit: `dd21746051119edf58fbdd85f333d54c67fe8260`.
+    During the session this commit was authored and published to `origin/main`
+    by `acchasujal` outside this agent's git operations; this agent did not push
+    main. The follow-up evidence/runbook commit targets only `origin/dev`.
+  - Added durable explicit operator grants, offline SQLite provisioning, shared
+    nested account response scoping, strict trace ownership, and generic domain
+    error responses. Ordinary users retain owned controls and cannot mutate
+    global state. Mock fault/benchmark operations require operator authority and
+    the existing isolated-mock guard.
+  - Added SQLite migration 012 and packaged PostgreSQL migration 011. No prior
+    migration changed. SQLite upgrade/provision/restart/revoke paths are verified.
+    PostgreSQL remains skipped without an isolated test URL.
+  - Replaced the obsolete Python source-string telemetry assertion with existing
+    behavioral Vitest coverage for logout/account changes, HTTP 401 and WS 1008;
+    backend restart/lifecycle coverage remains.
+  - Final validation: Python **351 passed / 1 PostgreSQL skipped** in 48.98s.
+    Vitest **28 passed in 6 files**; ESLint, Vite build, root TypeScript,
+    Ruff check/format and all 7 rehearsals passed. Node 23.6.0 emitted package
+    engine warnings; use supported Node 24.15+ for release validation.
+  - No 021 sandbox, remote Neon, production database or browser-driver access.
+    No lockfile or generated frontend artifact changed.

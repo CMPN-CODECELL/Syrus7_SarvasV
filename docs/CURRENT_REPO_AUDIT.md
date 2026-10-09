@@ -108,7 +108,9 @@ remain unresolved and require no database action during this work.
 After review: implement small regressions, repeat affected/full validation,
 review staged paths for secrets/generated artifacts, commit logically on dev,
 recheck remote refs and push only `git push origin HEAD:dev` when safe.
-The current failing suite means no commit/push completion is claimed.
+This is the pre-remediation audit. DEC-026 and
+`docs/progress/INTEGRATION.md` record the implemented resolution and current
+validation. The earlier failures and review items remain historical evidence.
 
 ## Next three tasks
 

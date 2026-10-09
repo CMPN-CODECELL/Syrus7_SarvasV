@@ -587,6 +587,42 @@ The operational surface now spans independent workflows that need routing, share
 ### Impact
 `frontend/src` becomes the UI source, `frontend/dist` remains generated and ignored, legacy login/register pages are removed, and direct-route refresh requires a completed frontend build. Backend-only environments receive an explicit 503 build instruction when assets are absent.
 
+## DEC-026 — Explicit operators and shared account response projection
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Context
+Authenticated ordinary users could invoke platform-wide mutations, and several
+action/evidence endpoints returned global snapshots. A two-account probe proved
+that `POST /api/reconcile` disclosed another account's subscription. Public
+registration could not safely imply administrative authority.
+
+### Decision
+Add durable `operator_grants` through forward-only SQLite migration 012 and
+PostgreSQL migration 011. Resolve grants during existing session validation. No
+HTTP endpoint grants authority; a local offline command provisions an existing
+registered user. Global controls require an operator while own-account actions
+retain ownership checks.
+
+Apply reusable `AccountResponseScope` after authoritative calculations to
+snapshots, streams, actions, proof, reconciliation, traces, broker evidence and
+nested audit payloads. Operators also receive only their account's private
+evidence. Preserve global gate/health/proof verdicts, kill result/timing and
+aggregate diagnostics. Internal reconciliation, ledger and risk inputs remain
+unfiltered. Unknown or unattributed traces are denied.
+
+### Reason
+This closes function-level authorization and response leakage without changing
+financial truth or adding an external dependency to the kill path. Durable
+grants support restart and immediate revocation for existing sessions.
+
+### Impact
+SQLite provisioning and two-account/operator regressions are
+IMPLEMENTED_VERIFIED. PostgreSQL migration/provisioning is
+IMPLEMENTED_UNVERIFIED pending an isolated database. Production identity,
+cookie/TLS and operator governance remain BLOCKED. Existing migrations are
+immutable and 021 semantics are unchanged.
+
 ## DEC-027 — Atomic multi-stock subscription orchestration
 Date: 2026-10-09
 Status: ACCEPTED
