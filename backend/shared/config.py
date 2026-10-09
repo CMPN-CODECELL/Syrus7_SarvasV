@@ -2,6 +2,28 @@ import os
 from dotenv import dotenv_values
 
 
+def _positive_float(values, name: str, default: float) -> float:
+    raw = os.getenv(name, values.get(name, str(default)))
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a positive number") from exc
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive number")
+    return value
+
+
+def _bounded_int(values, name: str, default: int, minimum: int, maximum: int) -> int:
+    raw = os.getenv(name, values.get(name, str(default)))
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+    if not minimum <= value <= maximum:
+        raise ValueError(f"{name} must be between {minimum} and {maximum}")
+    return value
+
+
 def settings():
     # Environment wins; ignored files never enter frontend state or diagnostics.
     values = dict(dotenv_values(".env")) | dict(dotenv_values(".env.local"))
@@ -71,6 +93,39 @@ def settings():
             for symbol in live_symbols.split(",")
             if symbol.strip()
         )
+    result["021_max_timestamp_skew_seconds"] = _positive_float(
+        values, "ALGOSHIELD_021_MAX_TIMESTAMP_SKEW_SECONDS", 10
+    )
+    result["broker_read_timeout_seconds"] = _positive_float(
+        values, "ALGOSHIELD_BROKER_READ_TIMEOUT_SECONDS", 8
+    )
+    result["broker_write_timeout_seconds"] = _positive_float(
+        values, "ALGOSHIELD_BROKER_WRITE_TIMEOUT_SECONDS", 8
+    )
+    result["reconciliation_timeout_seconds"] = _positive_float(
+        values, "ALGOSHIELD_RECONCILIATION_TIMEOUT_SECONDS", 10
+    )
+    result["auto_scan_limit"] = _bounded_int(
+        values, "ALGOSHIELD_AUTO_SCAN_LIMIT", 200, 1, 2000
+    )
+    result["auto_max_positions"] = _bounded_int(
+        values, "ALGOSHIELD_AUTO_MAX_POSITIONS", 3, 1, 20
+    )
+    result["auto_lookback_updates"] = _bounded_int(
+        values, "ALGOSHIELD_AUTO_LOOKBACK_UPDATES", 5, 2, 100
+    )
+    result["auto_entry_momentum"] = _positive_float(
+        values, "ALGOSHIELD_AUTO_ENTRY_MOMENTUM", 0.003
+    )
+    result["auto_take_profit"] = _positive_float(
+        values, "ALGOSHIELD_AUTO_TAKE_PROFIT", 0.01
+    )
+    result["auto_stop_loss"] = _positive_float(
+        values, "ALGOSHIELD_AUTO_STOP_LOSS", 0.005
+    )
+    result["auto_cooldown_seconds"] = _bounded_int(
+        values, "ALGOSHIELD_AUTO_COOLDOWN_SECONDS", 60, 0, 86400
+    )
     trusted_origins = os.getenv(
         "ALGOSHIELD_TRUSTED_ORIGINS", values.get("ALGOSHIELD_TRUSTED_ORIGINS")
     )

@@ -68,20 +68,68 @@ export function StrategiesPage(){
     }finally{setPending('')}
   }
 
-  const rows=strategyRows(s)
+  const setAutoMode=async enabled=>{
+    if(pending)return
+    setPending('auto');setError('');setSuccess(null)
+    try{await api.post(`/api/auto-mode/${enabled?'start':'stop'}`);await refresh()}
+    catch(actionError){setError(actionError.message||'Auto mode action failed.')}
+    finally{setPending('')}
+  }
+
+  const allRows=strategyRows(s)
+  const autoRows=allRows.filter(row=>String(row.kind).startsWith('auto_'))
+  const activeAutoRows=autoRows.filter(row=>Number(row.financial_position?.net_quantity)!==0)
+  const rows=allRows.filter(row=>!String(row.kind).startsWith('auto_'))
   const visibleRows=useMemo(()=>rows.filter(row=>(!filters.kind||row.kind===filters.kind)&&(!filters.symbol||row.symbol===filters.symbol)&&(!filters.state||row.state===filters.state)),[rows,filters])
   const knownSymbols=[...new Set(rows.map(row=>row.symbol))].sort()
   const observedSymbols=[...new Set([...(s?.candles||[]).map(item=>item.symbol),...knownSymbols])].filter(Boolean).sort()
   const presetSymbols=DEMO_STOCK_PRESETS.filter(symbol=>!observedSymbols.includes(symbol))
   const knownStates=[...new Set(rows.map(row=>row.state))].sort()
   const previewPrefix=idFragment(prefix||kind)
+  const warmingRows=rows.filter(row=>row.readiness?.ready!==true)
+  const demoRows=rows.filter(row=>String(row.symbol||'').toUpperCase()==='DEMO')
+  const live021=String(s?.mode||'').toUpperCase().includes('021')
+  const gate=String(s?.gate||'').toUpperCase()
+  const activityReasons=[]
+  if(live021&&demoRows.length)activityReasons.push(`DEMO is replay-only, so ${demoRows.length} DEMO ${demoRows.length===1?'subscription is':'subscriptions are'} not receiving 021 market ticks. Use a real 021 symbol (for example RELIANCE, TCS, or ICICIBANK).`)
+  if(warmingRows.length)activityReasons.push(`${warmingRows.length} ${warmingRows.length===1?'strategy instance is':'strategy instances are'} warming; each must receive its required closed candles before it can emit an intent.`)
+  if(gate&&gate!=='RUNNING')activityReasons.push(`New orders are paused because the platform trading gate is ${gate}. Reconcile the broker, then explicitly resume trading when the evidence is healthy.`)
+  const activityMessage=activityReasons.length?activityReasons.join(' '):'Strategies do not buy or sell on every tick. They emit an intent only when their indicator condition is met; otherwise no trade is expected.'
+  const auto=s?.auto_mode||{enabled:false,candidate_count:0,evaluated_count:0,decisions:[],policy:{}}
+  const pct=value=>value===undefined?'—':`${(Number(value)*100).toFixed(2)}%`
 
-  return <Page className="strategies-page" eyebrow="Subscriptions" title="Independent strategy ledgers" description="Each subscription is an independent symbol-level strategy ledger.">
+  return <Page eyebrow="Subscriptions" title="Run one strategy across many stocks" description="Independent strategy ledgers keep each stock isolated. Choose a strategy and stocks once; failures, positions, risk, and P&L stay independent.">
     {error&&<div className="error" role="alert">{error}</div>}
     {success&&<div className="success" role="status"><b>Created {success.count} strategy {success.count===1?'instance':'instances'}.</b><span>{success.symbols.join(', ')}</span></div>}
-    {!rows.length&&<div className="strategy-state-note" role="note"><strong>No strategies are subscribed.</strong><span>No strategy callbacks or order intents are running for this account. Select an available backend strategy and instrument below to create a subscription.</span>{s?.gate!=='RUNNING'&&<span>Trading gate: {s?.gate||'UNKNOWN'}. New exposure remains blocked until broker reconciliation and explicit resume succeed.</span>}</div>}
+    <Card title="Auto mode" meta={auto.enabled?'Scanning provider stocks':'Stopped'}>
+      <p>Automatically compares momentum, breakout, and mean-reversion evidence across a bounded set of broker-supported stocks, selects the strongest qualified stock-and-strategy combination, and manages explicit exits. Every order still passes platform risk and broker reconciliation.</p>
+      <div className="metric-grid compact">
+        <div><span>Stocks scanned</span><b>{auto.candidate_count}</b></div>
+        <div><span>Stocks observed</span><b>{auto.evaluated_count}</b></div>
+        <div><span>Max positions</span><b>{auto.policy?.max_positions??'—'}</b></div>
+        <div><span>Entry / profit / stop</span><b>{pct(auto.policy?.entry_momentum)} / {pct(auto.policy?.take_profit)} / {pct(auto.policy?.stop_loss)}</b></div>
+      </div>
+      <div className="warning"><b>Profit is not guaranteed.</b><span>Auto mode can lose money. It stays long-only, holds when evidence is insufficient, and cannot trade while the safety gate is not RUNNING. Stopping auto mode prevents new automatic decisions; it does not sell existing positions.</span></div>
+      <button className={auto.enabled?'':'primary'} disabled={!!pending} onClick={()=>setAutoMode(!auto.enabled)}>{pending==='auto'?'Working…':auto.enabled?'Stop auto mode':'Start auto mode'}</button>
+      <DataTable rows={auto.decisions} columns={[
+        {key:'symbol',label:'Stock'},
+        {key:'selected_strategy',label:'Selected strategy',render:r=>r.selected_strategy?displayName(r.selected_strategy):'Still comparing'},
+        {key:'action',label:'Decision',render:r=><Status value={r.action}/>},
+        {key:'result',label:'Risk result',render:r=>r.result?<Status value={r.result}/>:<span>Not submitted</span>},
+        {key:'momentum',label:'Momentum',render:r=>r.momentum===null?'Warming':pct(r.momentum)},
+        {key:'reason',label:'Why'},
+        {key:'observed_at',label:'Observed (UTC epoch)'},
+      ]}/>
+      {activeAutoRows.length>0&&<DataTable rows={activeAutoRows} columns={[
+        {key:'symbol',label:'Open auto position'},
+        {key:'net_quantity',label:'Quantity',render:r=>r.financial_position.net_quantity},
+        {key:'net_pnl',label:'Net P&L',render:r=><Money value={r.financial_position.net_pnl}/>},
+        {key:'charges',label:'Charges',render:r=><Money value={r.financial_position.charges}/>},
+      ]}/>}
+    </Card>
     <div className="grid strategy-grid">
       <Card title="Strategy instances" meta={`${visibleRows.length} shown · ${rows.length} total`}>
+        <div className="success strategy-explanation"><b>Why no new trades?</b><span>{activityMessage}</span></div>
         <div className="filter-row" aria-label="Strategy filters">
           <label>Kind<select aria-label="Filter by kind" value={filters.kind} onChange={event=>setFilters({...filters,kind:event.target.value})}><option value="">All kinds</option>{[...new Set(rows.map(row=>row.kind))].sort().map(value=><option key={value}>{value}</option>)}</select></label>
           <label>Symbol<select aria-label="Filter by symbol" value={filters.symbol} onChange={event=>setFilters({...filters,symbol:event.target.value})}><option value="">All symbols</option>{knownSymbols.map(value=><option key={value}>{value}</option>)}</select></label>

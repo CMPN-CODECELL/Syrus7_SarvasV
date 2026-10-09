@@ -28,11 +28,40 @@ class PendingCall:
 class BrokerSession:
     """At most one daemon broker call; the worker never writes platform DB state."""
 
-    def __init__(self, adapter, call_timeout=1.0):
-        self.adapter, self.call_timeout = adapter, call_timeout
+    def __init__(
+        self,
+        adapter,
+        call_timeout=1.0,
+        *,
+        read_timeout=None,
+        write_timeout=None,
+        reconciliation_timeout=None,
+    ):
+        self.adapter = adapter
+        self.read_timeout = read_timeout or call_timeout
+        self.write_timeout = write_timeout or call_timeout
+        self.reconciliation_timeout = reconciliation_timeout or self.read_timeout
         self.lock = Lock()
         self.active = None
         self.uncertain = False
+
+    @property
+    def call_timeout(self):
+        """Backward-compatible common timeout used by older tests/operators."""
+        return max(self.read_timeout, self.write_timeout, self.reconciliation_timeout)
+
+    @call_timeout.setter
+    def call_timeout(self, value):
+        self.read_timeout = value
+        self.write_timeout = value
+        self.reconciliation_timeout = value
+
+    def _operation_timeout(self, operation):
+        if operation == "snapshot":
+            return self.reconciliation_timeout
+        if operation in {"submit", "cancel", "execute"}:
+            return self.write_timeout
+        return self.read_timeout
 
     @property
     def unsettled(self):
@@ -62,10 +91,11 @@ class BrokerSession:
             return call
 
     def wait(self, call, timeout=None):
+        operation_timeout = self._operation_timeout(call.operation)
         limit = (
-            self.call_timeout
+            operation_timeout
             if timeout is None
-            else min(self.call_timeout, max(0, timeout))
+            else min(operation_timeout, max(0, timeout))
         )
         if not call.done.wait(limit):
             with self.lock:

@@ -2,7 +2,7 @@
 
 ## Official 021 focused fixtures
 
-Run `python -m pytest -q tests/test_official021.py tests/test_broker_adapter_contract.py --tb=short`. This verifies signed quantity/paise/tick validation, HTTP uncertainty classification, strict TC1/TC3/TC4 decoding, absence of fabricated WS fill identity, and once-per-session strategy triggers with WAP/residual gating. It is **MOCK_VERIFIED**, not a live sandbox test. No credentialed read or write occurs.
+Run `python -m pytest -q tests/test_official021.py tests/test_official021_market_data.py tests/test_official021_rest.py tests/test_official021_order_stream.py tests/test_broker_timeouts.py tests/test_broker_adapter_contract.py --tb=short`. This verifies signed quantity/paise/tick validation, HTTP uncertainty classification, strict TC1/TC3/TC4 decoding, duplicate/timestamp normalization, dynamic universe selection, market/order reconnect containment, fill-before-status ordering, durable-apply acknowledgement, operation-specific deadlines, absence of fabricated WS fill identity, and runtime-routed once-per-session policies. These are deterministic fixture tests, not live execution proof.
 
 Push CI builds the React SPA before the Python suite, then checks frontend tests/lint, Ruff, root TypeScript and rehearsals. Fresh local release evidence: 372 Python passed, one isolated PostgreSQL test skipped; 30 frontend tests passed; seven mock rehearsals passed. Browser automation remains unverified; the existing smoke script targets legacy selectors. Exact commands and setup failures are retained in [integration progress](progress/INTEGRATION.md).
 
@@ -25,6 +25,13 @@ Additional coverage: concurrent reservations, opposite pending exposure, rate-wi
 Member 4 coverage in `test_member4.py`: 3/5 EMA signal, five-candle EMA/mean-reversion warm-up, 5-minute breakout, callback fault quarantine, risk rejection for stopped strategies, durable start/stop state, additive SQLite v1-to-v2 upgrade, exact-decimal API projection, normalized account/subscription APIs, symbol-scoped bounded tick dedupe including mark idempotence, audited late-tick failure, dashboard structure and production-database replay guard.
 
 Multi-stock coverage in `test_multi_stock_subscriptions.py` verifies authentication and session ownership, normalization/deduplication, deterministic symbol slugs, the 20-symbol bound, unknown kinds, all-or-nothing collision behavior, same-kind multi-symbol execution, symbol routing, stop/failure isolation, replay generation for every selected symbol, and strategy+symbol financial attribution. `multiStockStrategies.test.jsx` verifies comma entry, chips/removal, ID preview, single batch submission, pending/success output, and atomic conflict messaging.
+
+`tests/test_auto_mode.py` verifies bounded account-scoped activation, warm-up and
+strongest-candidate selection, canonical risk/order/fill routing, profit-target
+exit, and refusal to create an order when the global gate is closed. The React
+strategy test verifies that policy thresholds, HOLD evidence, the no-profit-
+guarantee warning and authenticated start action are visible. These deterministic
+mock tests prove control flow, not strategy profitability or live 021 execution.
 
 ## Required extensions before live integration
 
@@ -55,7 +62,7 @@ concurrent legacy upgrades, malformed hashes, monotonic bounded limiter and
 secret-free audits. The TestClient fixture models a trusted browser Origin;
 security negatives explicitly override it. It changes transport only, not auth.
 
-021 integration tests use an in-process HTTP transport fixture containing the documented auth, gzipped instruments, order, per-order trade, and position envelopes. They verify exact paise/signed-quantity encoding, durable order mapping, fill identity requirements, and snapshot/drain behavior. They do not call the sandbox, submit live orders, or prove provider fees/corrections.
+021 integration tests use an in-process HTTP transport fixture containing the documented auth, gzipped instruments, order, per-order trade, and position envelopes. They verify exact paise/signed-quantity encoding, durable order mapping, fill identity requirements, and snapshot/drain behavior. On 2026-10-09 a separate credentialed read-only smoke test passed auth-backed orders, instruments, trades, positions, ephemeral keys, a two-symbol market snapshot, normalization and order-WS handshake. It submitted no order and does not prove fees, corrections, cross-day completeness, reconciliation or kill behavior.
 test_broker_updates adds OPEN rejection/duplicate/reservation/restart fixtures;
 existing timeout/cancel/fill suites remain. Broker contract tests deny identity
 collision across accounts for both mocks. round2Evidence.test.jsx renders backend

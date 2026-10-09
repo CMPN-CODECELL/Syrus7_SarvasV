@@ -22,7 +22,9 @@ from starlette.websockets import WebSocketDisconnect
 from backend.platform import Platform
 from backend.market_data.yahoo import YahooMarketDataProvider
 from backend.market_data.official021 import MarketData021Provider
+from backend.market_data.catalogue import demo_instruments
 from backend.broker.adapters import Broker021Adapter, MockBrokerAdapter
+from backend.broker.official021 import Provider021Error
 from backend.broker.http_adapter import HTTPMockBrokerAdapter
 from backend.reliability.failure_lab import FailureLab, SCENARIOS, SCENARIO_METADATA
 from backend.shared.config import settings
@@ -208,6 +210,8 @@ def create_app(platform=None, *, trusted_origins=None, cookie_secure=None):
             password=config.get("021_password"),
             access_token=config.get("021_token"),
             instrument_cache=config.get("021_instrument_cache"),
+            read_timeout=config["broker_read_timeout_seconds"],
+            write_timeout=config["broker_write_timeout_seconds"],
         )
     elif mock_broker_url:
         broker = HTTPMockBrokerAdapter(mock_broker_url)
@@ -226,6 +230,16 @@ def create_app(platform=None, *, trusted_origins=None, cookie_secure=None):
             if config.get("021_enabled")
             else not bool(config["database_url"]) or local_mock
         ),
+        broker_read_timeout=config["broker_read_timeout_seconds"],
+        broker_write_timeout=config["broker_write_timeout_seconds"],
+        reconciliation_timeout=config["reconciliation_timeout_seconds"],
+        auto_scan_limit=config["auto_scan_limit"],
+        auto_max_positions=config["auto_max_positions"],
+        auto_lookback=config["auto_lookback_updates"],
+        auto_entry_momentum=config["auto_entry_momentum"],
+        auto_take_profit=config["auto_take_profit"],
+        auto_stop_loss=config["auto_stop_loss"],
+        auto_cooldown_seconds=config["auto_cooldown_seconds"],
     )
     if platform is None and config.get("market_data_provider") == "021":
         if not isinstance(broker, Broker021Adapter):
@@ -245,6 +259,7 @@ def create_app(platform=None, *, trusted_origins=None, cookie_secure=None):
                 engine,
                 broker,
                 symbols,
+                max_timestamp_skew_seconds=config["021_max_timestamp_skew_seconds"],
             )
         )
     elif platform is None and config.get("market_data_provider") == "yahoo":
@@ -625,6 +640,14 @@ def create_app(platform=None, *, trusted_origins=None, cookie_secure=None):
     def list_strategies():
         return engine.strategies.list_registered()
 
+    @app.get("/api/instruments")
+    def list_instruments(request: Request, q: str | None = Query(None, max_length=32)):
+        """Return the bounded catalogue; it is not a claim of live availability."""
+        require_user(request)
+        if engine.demo_enabled and engine.external_market_data is None:
+            return demo_instruments(q)
+        return []
+
     @app.get("/api/market/session")
     def get_market_session():
         return financial_json(engine.market_session.to_dict(engine.clock()))
@@ -633,24 +656,13 @@ def create_app(platform=None, *, trusted_origins=None, cookie_secure=None):
     def historical_candles(
         request: Request,
         symbol: str | None = None,
-        interval: int = Query(60, ge=60, le=300),
+        interval: int | None = Query(None, ge=60, le=3600),
         limit: int = Query(200, ge=1, le=1000),
     ):
         require_user(request)
-        if interval not in {60, 300}:
-            raise HTTPException(422, "interval must be 60 or 300 seconds")
-        provider = (
-            engine.market_data_evidence().get("provider")
-            if engine.external_market_data is not None
-            else "replay"
+        return financial_json(
+            [dict(row) for row in engine.store.candle_rows(symbol, interval, limit)]
         )
-        rows = engine.store.candle_rows(
-            symbol=symbol,
-            interval=interval,
-            limit=limit,
-            provider=provider,
-        )
-        return financial_json([dict(row) for row in rows])
 
     @app.post("/api/market/session")
     def set_market_session(body: MarketSessionRequest, request: Request):
@@ -665,17 +677,22 @@ def create_app(platform=None, *, trusted_origins=None, cookie_secure=None):
     def subscribe(body: SubscriptionRequest, request: Request):
         user = require_user(request)
         try:
+            engine.validate_external_market_symbols([body.symbol])
             engine.strategies.subscribe(
                 user["account_id"], body.strategy_instance_id, body.kind, body.symbol
             )
+        except Provider021Error as exc:
+            raise HTTPException(422, str(exc)) from None
         except (sqlite3.IntegrityError, UniqueViolation):
             raise HTTPException(409, "strategy instance exists") from None
+        engine.refresh_external_market_universe()
         return engine.snapshot(user["account_id"])["subscriptions"]
 
     @app.post("/api/subscriptions/batch", status_code=201)
     def subscribe_batch(body: BatchSubscriptionRequest, request: Request):
         user = require_user(request)
         try:
+            engine.validate_external_market_symbols(body.symbols)
             created = engine.strategies.subscribe_many(
                 user["account_id"],
                 body.kind,
@@ -690,8 +707,11 @@ def create_app(platform=None, *, trusted_origins=None, cookie_secure=None):
                     "existing": exc.existing,
                 },
             ) from None
+        except Provider021Error as exc:
+            raise HTTPException(422, str(exc)) from None
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from None
+        engine.refresh_external_market_universe()
         return {
             "created": created,
             "count": len(created),
@@ -703,16 +723,36 @@ def create_app(platform=None, *, trusted_origins=None, cookie_secure=None):
         user = require_user(request)
         return engine.snapshot(account_id=user["account_id"])["subscriptions"]
 
+    @app.get("/api/auto-mode")
+    def auto_mode(request: Request):
+        user = require_user(request)
+        return financial_json(engine.auto_mode.evidence(user["account_id"]))
+
+    @app.post("/api/auto-mode/start")
+    def start_auto_mode(request: Request):
+        user = require_user(request)
+        try:
+            return financial_json(engine.auto_mode.start(user["account_id"]))
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+
+    @app.post("/api/auto-mode/stop")
+    def stop_auto_mode(request: Request):
+        user = require_user(request)
+        return financial_json(engine.auto_mode.stop(user["account_id"]))
+
     @app.post("/api/subscriptions/{strategy_instance_id}/start")
     def start_subscription(strategy_instance_id: str, request: Request):
         user = require_strategy_owner(request, strategy_instance_id)
         engine.strategies.set_enabled(user["account_id"], strategy_instance_id, True)
+        engine.refresh_external_market_universe()
         return engine.snapshot(user["account_id"])["subscriptions"]
 
     @app.post("/api/subscriptions/{strategy_instance_id}/stop")
     def stop_subscription(strategy_instance_id: str, request: Request):
         user = require_strategy_owner(request, strategy_instance_id)
         engine.strategies.set_enabled(user["account_id"], strategy_instance_id, False)
+        engine.refresh_external_market_universe()
         return engine.snapshot(user["account_id"])["subscriptions"]
 
     @app.post("/api/demo")
@@ -802,7 +842,11 @@ def create_app(platform=None, *, trusted_origins=None, cookie_secure=None):
     @app.post("/api/safety-bench/run")
     def run_safety_bench(body: SafetyBenchRequest, request: Request):
         user = require_operator(request)
-        engine.require_offline_demo()
+        # SafetyBench creates a fresh in-memory SQLite Platform for every case
+        # (see SafetyBench.run). It must not inspect or mutate the current
+        # provider, so it remains safe to run while the account is connected
+        # to the 021 virtual exchange. Failure Lab keeps the separate
+        # current-platform mock-only guard because it injects into that state.
         return account_response(user, engine.safety_bench.run(body.iterations))
 
     @app.get("/api/safety-bench/latest")

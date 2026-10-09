@@ -114,8 +114,17 @@ describe('backend-shaped React projections',()=>{
         connected:true,
         volume_available:false,
         symbols:['TCS','INFY'],
+        health:'CONNECTED',
+        connected_sockets:1,
+        expected_sockets:1,
+        desired_symbols:['TCS','INFY'],
+        subscribed_symbols:['TCS','INFY'],
+        provider_duplicates_dropped:3,
+        timestamp_fallbacks:2,
+        timestamp_reorder_fallbacks:1,
+        order_stream:{connected:true,frames_received:7,reconnect_attempts:1},
         latest_quotes:[
-          {symbol:'TCS',provider_symbol:'TCS',price:'3200.25',event_timestamp:1791521395,raw_event_timestamp:1791521395,received_at:1791521397,volume_available:false,data_source:'021_LIVE'},
+          {symbol:'TCS',provider_symbol:'TCS',price:'3200.25',official_open:'3150.00',event_timestamp:1791521395,raw_event_timestamp:1791521395,received_at:1791521397,volume_available:false,data_source:'021_LIVE'},
         ],
       },
     }})
@@ -124,6 +133,10 @@ describe('backend-shaped React projections',()=>{
     expect(within(selector).getByRole('option',{name:'INFY'})).toBeInTheDocument()
     expect(screen.getByText('021 LIVE / REAL MARKET DATA')).toBeInTheDocument()
     expect(screen.getByText('3200.25')).toBeInTheDocument()
+    expect(screen.getByText('3150.00')).toBeInTheDocument()
+    expect(screen.getByText('7 frames · 1 reconnects')).toBeInTheDocument()
+    expect(screen.getByText('3 duplicates')).toBeInTheDocument()
+    expect(screen.getByText('2 timestamp fallbacks · 1 reordered')).toBeInTheDocument()
     expect(screen.getByText('021_LIVE')).toBeInTheDocument()
     expect(screen.getAllByText('Unavailable').length).toBeGreaterThan(0)
   })
@@ -150,7 +163,8 @@ describe('backend-shaped React projections',()=>{
     expect(within(zero).getByText('WARMING')).toBeInTheDocument()
 
     const missing=screen.getByText('missing').closest('tr')
-    expect(within(missing).getAllByText('—')).toHaveLength(3)
+    expect(within(missing).getByText('0')).toBeInTheDocument()
+    expect(within(missing).getAllByText('₹0.00')).toHaveLength(2)
     expect(within(missing).queryByText('99')).not.toBeInTheDocument()
   })
 

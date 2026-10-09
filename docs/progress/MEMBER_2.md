@@ -164,3 +164,19 @@ real implementation deferred on sponsor evidence. No migration/lockfile change.
 
 
 2026-10-09 documentation integration: current ownership, dependencies and acceptance gates are consolidated in [TEAM_EXECUTION_PLAN](../TEAM_EXECUTION_PLAN.md), DEC-028. Direct branch pushes are allowed; PRs optional. No new member feature is claimed implemented by this planning update. Fresh cross-module evidence is in [INTEGRATION](INTEGRATION.md).
+# 2026-10-09 — 021 transport hardening and read-only live evidence
+
+- Reworked REST update sequencing so unique per-order REST fills precede terminal
+  state, and fill evidence is marked seen only after durable platform application.
+- Added a reconnecting order-status WebSocket worker. Trade packets without a
+  documented `tradeId` remain provisional and never manufacture fills; unknown
+  provider orders are audited.
+- Split broker read, write and reconciliation deadlines while retaining strict
+  kill deadline overrides and no blind write retry.
+- Live read-only checks passed orders, instruments, trades, positions, ephemeral
+  keys and order-WebSocket handshake. No sandbox order was submitted. Complete
+  snapshot history, charges, corrections and kill semantics remain blocked.
+- Deterministic fake-021 end-to-end coverage now proves quote → strategy → risk →
+  REST submit → unique REST fill → ledger position → complete fixture
+  reconciliation. Full backend regression: 441 passed, 1 optional PostgreSQL
+  test skipped.

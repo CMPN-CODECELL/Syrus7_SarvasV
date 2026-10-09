@@ -2,7 +2,7 @@
 
 ## Official 021 boundary (2026-10-09)
 
-`backend/broker/official021.py` and `backend/broker/official021_http.py` are the provider-only normalization/transport boundary for exchange/token instruments, integer paise, signed provider quantities, response shapes, HTTP uncertainty, and strict TC1/TC3/TC4/TC8 binary evidence. Sampled market snapshots are observations, not raw trades. An order-WS trade event has no documented `tradeId` and cannot create a canonical Fill; per-order REST trade evidence is required. `Broker021Adapter` is explicitly enabled only through server-side configuration and remains fail-closed by default. Mandatory strategy policies in `backend/strategies/official021.py` emit canonical intents only and are not yet wired into runtime composition.
+`backend/broker/official021.py` and `backend/broker/official021_http.py` are the provider-only normalization/transport boundary for exchange/token instruments, integer paise, signed provider quantities, response shapes, HTTP uncertainty, and strict TC1/TC3/TC4/TC8 binary evidence. Sampled market snapshots are observations, not raw trades. `official021_order_stream.py` consumes provisional lifecycle evidence on a reconnecting worker, but a trade notice has no documented `tradeId` and cannot create a canonical Fill; per-order REST trade evidence is required and is applied before queued status. `MarketData021Provider` owns duplicate suppression, bounded timestamp fallback, cumulative-volume deltas, dynamic enabled/pinned symbol sockets and reconnect. Both disconnect paths fail closed and never auto-resume. Mandatory policies emit canonical intents through the ordinary risk/order path and use provider-neutral quote, ledger and reconciliation evidence.
 
 Current operational boundaries and dependency gates are in [TEAM_EXECUTION_PLAN](TEAM_EXECUTION_PLAN.md). Member 1 owns persistence/accounting, Member 2 provider contracts/execution, Member 3 shared security/reliability integration, Member 4 frontend/feed consumers. SQLite mock evidence does not prove PostgreSQL or live-provider behavior.
 
@@ -17,6 +17,20 @@ Composition lives in `backend/platform.py`; domain modules import `backend/share
 Member 4 runtime uses completed 1-minute candles for 3/5 EMA crossover, five-period mean reversion and 14-period RSI reversal, and completed 5-minute candles for previous-range breakout. Indicator state is process-local and requires a complete warm-up after restart or explicit re-enable. Subscription enablement is durable; a callback exception atomically disables only that subscription and records a sanitized audit event. The risk gateway independently rejects intents from stopped subscriptions. Recent signal and callback evidence is restored from durable audit history for the dashboard. API money and price fields are exact decimal strings rather than binary JSON numbers.
 
 Multi-stock strategy execution is orchestration over the existing model: one strategy instance still owns exactly one symbol. `POST /api/subscriptions/batch` validates and normalizes up to 20 symbols, preflights every deterministic instance ID, and inserts all single-symbol rows plus audit evidence in one transaction. A collision or validation failure creates zero rows. Indicator state, callback quarantine, risk, execution attribution, accounting and start/stop control therefore remain isolated per generated instance. Replay derives its symbol set from enabled subscription rows and needs no separate multi-symbol strategy object.
+
+Auto mode is a process-local strategy orchestrator, not a broker shortcut. When
+explicitly started for an authenticated account, it observes a bounded,
+catalogue-derived cash-equity universe and maintains rolling price evidence. It
+compares momentum, breakout and rebound-confirmed mean-reversion scores, then
+selects the strongest qualified stock/policy combination after bounded coverage.
+It creates deterministic single-symbol `auto_adaptive` subscriptions only for an
+action (while retaining legacy `auto_momentum` compatibility), emits canonical
+`OrderIntent` values, and depends on the unchanged
+RiskGateway → OrderManager → adapter → fill-ledger path. It is long-only by
+default, bounds concurrent positions, and reports HOLD during warm-up, pending
+orders, cooldowns or missing thresholds. The provider retains symbols needed by
+open positions/orders. Auto mode is disabled on restart; its transient rankings
+are not recovery authority and profitability is never claimed.
 
 The dashboard route requires a valid HttpOnly local session cookie. Registration assigns the durable trading account identity; strategy subscription/start/stop endpoints derive account ownership from that verified session and reject caller-supplied account IDs. This is the bootstrap identity boundary, not a claim of Neon Auth or production authentication readiness.
 
