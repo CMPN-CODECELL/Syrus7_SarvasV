@@ -47,13 +47,15 @@ class MarketData021Provider:
         self._last_received_at = None
         self._last_event_timestamp = None
         self._last_raw_event_timestamp = None
+        self.timestamp_fallbacks = 0
         self.received = 0
         self.normalized = 0
         self.errors = []
-        if len(requested_symbols) > capacity:
-            self.errors.append(
-                f"UNIVERSE_TRUNCATED_021_LIMIT:{len(requested_symbols)}>{capacity}"
-            )
+        self.universe_truncated = (
+            f"{len(requested_symbols)}>{capacity}"
+            if len(requested_symbols) > capacity
+            else None
+        )
 
     def start(self):
         if any(thread.is_alive() for thread in self._threads):
@@ -201,7 +203,7 @@ class MarketData021Provider:
         if abs(timestamp - int(received_at)) > 86_400:
             timestamp = int(received_at)
             with self._lock:
-                self.errors.append("EXCHANGE_TIMESTAMP_FALLBACK_RECEIVE_TIME")
+                self.timestamp_fallbacks += 1
         raw_volume = (
             "na"
             if observation.cumulative_volume is None
@@ -252,6 +254,7 @@ class MarketData021Provider:
                 "connection_count": self._connected_count,
                 "connection_limit": self.MAX_CONNECTIONS,
                 "instrument_limit_per_connection": self.MAX_INSTRUMENTS_PER_CONNECTION,
+                "universe_truncated": self.universe_truncated,
                 "symbols": list(self.symbols),
                 "canonical_symbols": list(self.symbols),
                 "latest_quotes": [
@@ -262,6 +265,7 @@ class MarketData021Provider:
                 "last_received_at": self._last_received_at,
                 "last_event_timestamp": self._last_event_timestamp,
                 "last_raw_event_timestamp": self._last_raw_event_timestamp,
+                "timestamp_fallbacks": self.timestamp_fallbacks,
                 "volume_available": False,
                 "received_messages": self.received,
                 "accepted_updates": self.normalized,

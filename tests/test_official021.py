@@ -114,6 +114,17 @@ def test_zero_quote_fields_are_idle_market_observations_not_protocol_errors():
     assert observation.official_open is None
 
 
+def test_tc3_accepts_live_unix_second_exchange_timestamps():
+    frame = bytearray(220)
+    struct.pack_into(">HHI", frame, 0, 3, 1, 2885)
+    struct.pack_into(">I", frame, 8, 10100)
+    struct.pack_into(">I", frame, 216, 1791521395)
+
+    observation = parse_market_frame(bytes(frame))
+
+    assert observation.exchange_timestamp == 1791521395
+
+
 def test_time_strategy_persists_once_per_session_and_bounds_exit():
     store = Store()
     store.db.execute("INSERT INTO accounts VALUES ('a')")

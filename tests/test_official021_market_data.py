@@ -91,4 +91,5 @@ def test_implausible_exchange_epoch_uses_receive_time_for_candles(monkeypatch):
     tick = platform.ticks[0][0]
     assert tick.event_timestamp == 1_791_529_395
     assert tick.raw_event_timestamp == "2106901823"
-    assert "EXCHANGE_TIMESTAMP_FALLBACK_RECEIVE_TIME" in provider.telemetry()["errors"]
+    assert provider.telemetry()["timestamp_fallbacks"] == 1
+    assert provider.telemetry()["errors"] == []

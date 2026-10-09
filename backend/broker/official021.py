@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
 import struct
+import time
 from typing import Any
 
 from backend.shared.contracts import OrderStatus, Side
@@ -215,6 +216,17 @@ def _i32(frame: bytes, offset: int) -> int:
     return struct.unpack_from(">i", frame, offset)[0]
 
 
+def _normalize_exchange_timestamp(value: int) -> int:
+    """Accept both documented 1980-epoch and live Unix-second timestamps."""
+    if value == 0:
+        return 0
+    unix_candidate = value + 315513000
+    now = int(time.time())
+    if abs(value - now) <= 86_400:
+        return value
+    return unix_candidate
+
+
 def parse_market_frame(frame: bytes) -> MarketObservation021:
     if len(frame) < 2:
         raise Provider021ProtocolError("truncated 021 market frame")
@@ -285,7 +297,7 @@ def parse_market_frame(frame: bytes) -> MarketObservation021:
         _quote_paise_to_rupees(_u32(frame, open_offset)),
         _u32(frame, qty_offset) if qty_offset is not None else None,
         _u32(frame, volume_offset) if volume_offset is not None else None,
-        _u32(frame, time_offset) + 315513000,
+        _normalize_exchange_timestamp(_u32(frame, time_offset)),
     )
 
 
