@@ -586,6 +586,36 @@ class Platform:
     def strategy_readiness(self, strategy_id: str):
         return self.strategies.readiness_for(strategy_id)
 
+    def market_data_evidence(self):
+        market_data = self.candles.stats()
+        if self.external_market_data is not None:
+            market_data.update(self.external_market_data.telemetry())
+        else:
+            market_data.update(
+                {
+                    "provider": "MOCK_REPLAY",
+                    "label": "MOCK / REPLAY",
+                    "volume_available": True,
+                    "connected": bool(
+                        self._replay_thread and self._replay_thread.is_alive()
+                    ),
+                }
+            )
+        return market_data
+
+    def provider_readiness(self, account_id: str, market_data=None):
+        """Return account-scoped provider evidence without changing authority."""
+        adapter = getattr(self.broker_calls, "adapter", self.broker)
+        return self.reliability.readiness_projection(
+            account_id=account_id,
+            market_data=market_data or self.market_data_evidence(),
+            external_market_data=self.external_market_data is not None,
+            broker_connected=getattr(adapter, "connected", None),
+            supports_virtual_closes=bool(
+                getattr(adapter, "supports_virtual_closes", False)
+            ),
+        )
+
     def snapshot(self, account_id: str | None = None):
         with self.store.lock:
             if account_id is not None:
@@ -868,20 +898,7 @@ class Platform:
                     else None
                 )
 
-            market_data = self.candles.stats()
-            if self.external_market_data is not None:
-                market_data.update(self.external_market_data.telemetry())
-            else:
-                market_data.update(
-                    {
-                        "provider": "MOCK_REPLAY",
-                        "label": "MOCK / REPLAY",
-                        "volume_available": True,
-                        "connected": bool(
-                            self._replay_thread and self._replay_thread.is_alive()
-                        ),
-                    }
-                )
+            market_data = self.market_data_evidence()
             result = {
                 "demo_enabled": self.demo_enabled,
                 "mode": (
@@ -928,6 +945,11 @@ class Platform:
                 "signals": signals,
                 "strategy_errors": strategy_errors,
                 "market_data": market_data,
+                "provider_readiness": (
+                    self.provider_readiness(account_id, market_data)
+                    if account_id is not None
+                    else None
+                ),
                 "market_session": self.market_session.to_dict(self.clock()),
                 "audit": audit_rows,
                 "kill": kill_data,

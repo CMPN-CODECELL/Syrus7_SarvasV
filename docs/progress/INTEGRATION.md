@@ -464,3 +464,26 @@ Fresh Windows evidence: Python 3.13.1, Node 23.6.0, npm 10.9.2. Initial setup at
 Old GitHub workflow failed because pytest preceded SPA build. Commit 63266eb repairs that order, validates frontend and rehearsals, and triggers on pushes only. [GitHub CI](https://github.com/CMPN-CODECELL/Syrus7_SarvasV/actions/runs/37885956412/job/113675898318) succeeded on every step with Node 22. [PR #1](https://github.com/CMPN-CODECELL/Syrus7_SarvasV/pull/1) was closed without merge after the owner requested direct pushes. Protection/rules inspection returned HTTP 403; no permission grants or server settings were changed. A successful normal push proves this credential could push, not that every team account has write access.
 
 The separate documentation integration adds a single four-member execution plan and fresh requirement/module evidence. Real 021, isolated PG, deployment proxy/Origin configuration and current React browser smoke remain unverified. Legacy browser selectors need a future task. Unrelated feature/multi-stock-strategies was not merged. Historical source Markdown whitespace is retained; generated files and local deletions are excluded from commits.
+
+## 2026-10-09 — Member 3 Task 1 provider readiness freeze
+
+Added an account-scoped, read-only provider readiness projection to platform,
+reliability and API composition. It separately reports connectivity,
+subscription evidence, market/broker freshness, snapshot coverage,
+reconciliation, explicit-resume requirement/eligibility, action classes, UNKNOWN
+order count and current kill verification. Connection is never treated as
+subscription readiness; complete reconciliation alone does not prove the feed;
+historical kill certificates do not prove current flatness. Existing admission,
+cancellation, provider, runtime, accounting and migration behavior is unchanged.
+
+Live 021 execution readiness is BLOCKED. Member 2 owns cancel terminal evidence,
+status/fill ordering, compound instrument identity, scoped provider mapping,
+reconnect/order-WS lifecycle and mandatory-strategy wiring. Members 1+2 must
+approve durable fill identity/attribution. Member 3 later owns admission
+integration, cancellation coordination and kill adaptation after those inputs.
+
+Verification on HEAD plus the uncommitted Task 1 changes: 28 focused provider
+readiness/recovery tests passed; full backend regression passed 428 tests with 1
+optional PostgreSQL test skipped. Focused Ruff check/format and `git diff
+--check` passed. The existing Starlette/httpx deprecation warning remains; no
+dependency was changed.

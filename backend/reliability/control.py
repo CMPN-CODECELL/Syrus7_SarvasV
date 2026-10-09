@@ -318,6 +318,297 @@ class Reliability:
             "events": events,
         }
 
+    def readiness_projection(
+        self,
+        *,
+        account_id,
+        market_data,
+        external_market_data,
+        broker_connected,
+        supports_virtual_closes,
+    ):
+        """Compose provider readiness without granting execution authority.
+
+        This projection intentionally does not change the gate or runtime.  In
+        particular, transport connectivity and a subscription send are not
+        evidence that the provider accepted or is serving the subscription.
+        """
+        now = self.clock()
+        evidence = self.evidence()
+        report = evidence["reconciliation"]
+        broker = evidence["broker"]
+        gate = Gate(self.risk.state)
+
+        subscriptions = self.store.rows(
+            "SELECT symbol FROM subscriptions WHERE account=? AND enabled=1",
+            (account_id,),
+        )
+        required_symbols = {row["symbol"] for row in subscriptions}
+        marks = {
+            row["symbol"]: row
+            for row in self.store.rows("SELECT * FROM risk_marks")
+            if row["symbol"] in required_symbols
+        }
+        market_observed_at = (
+            min((row["received_at"] for row in marks.values()), default=None)
+            if required_symbols
+            else None
+        )
+        event_observed_at = (
+            min((row["event_timestamp"] for row in marks.values()), default=None)
+            if required_symbols
+            else None
+        )
+        missing_marks = required_symbols - set(marks)
+        stale_marks = {
+            symbol
+            for symbol, row in marks.items()
+            if not -1 <= now - row["received_at"] <= self.max_feed_age
+            or (
+                row["source"] == "LIVE"
+                and not -1 <= now - row["event_timestamp"] <= self.max_feed_age
+            )
+        }
+        if not required_symbols or missing_marks:
+            market_status = "UNKNOWN"
+            market_reason = "MARKET_EVIDENCE_UNAVAILABLE"
+        elif stale_marks:
+            market_status = "STALE"
+            market_reason = "MARKET_EVIDENCE_STALE"
+        else:
+            market_status = "VERIFIED"
+            market_reason = "MARKET_EVIDENCE_FRESH"
+
+        if broker["call_unsettled"]:
+            broker_status, broker_reason = "UNKNOWN", "BROKER_CALL_UNSETTLED"
+        elif broker["requires_reconciliation"]:
+            broker_status, broker_reason = "UNKNOWN", "BROKER_RECONCILIATION_REQUIRED"
+        elif broker["last_verified_at"] is None:
+            broker_status, broker_reason = "UNKNOWN", "BROKER_EVIDENCE_UNAVAILABLE"
+        elif not broker["fresh"]:
+            broker_status, broker_reason = "STALE", "BROKER_EVIDENCE_STALE"
+        else:
+            broker_status, broker_reason = "VERIFIED", "BROKER_EVIDENCE_FRESH"
+
+        coverage_verified = report.get("verified") is True
+        coverage_status = "VERIFIED" if coverage_verified else "UNKNOWN"
+        coverage_reason = (
+            "SNAPSHOT_COVERAGE_VERIFIED"
+            if coverage_verified
+            else report.get("reason") or "SNAPSHOT_COVERAGE_UNKNOWN"
+        )
+        reconciliation_status = "VERIFIED" if coverage_verified else "UNKNOWN"
+        reconciliation_reason = report.get("reason") or "RECONCILIATION_UNAVAILABLE"
+
+        # No current external provider contract supplies an authenticated
+        # subscription acknowledgement.  Socket connection and send success are
+        # deliberately insufficient, so external subscription evidence remains
+        # UNKNOWN until Member 2 adds reviewed provider evidence.
+        subscription_status = "UNKNOWN" if external_market_data else "NOT_APPLICABLE"
+        subscription_reason = (
+            "PROVIDER_SUBSCRIPTION_EVIDENCE_UNAVAILABLE"
+            if external_market_data
+            else "NO_EXTERNAL_PROVIDER_SUBSCRIPTION"
+        )
+
+        market_connected = market_data.get("connected")
+        market_connection_status = (
+            "CONNECTED"
+            if market_connected is True
+            else "DISCONNECTED"
+            if market_connected is False
+            else "UNKNOWN"
+        )
+        broker_connection_status = (
+            "CONNECTED"
+            if broker_connected is True
+            else "DISCONNECTED"
+            if broker_connected is False
+            else "UNKNOWN"
+        )
+
+        unknown_order_count = self.store.rows(
+            "SELECT COUNT(*) AS n FROM orders WHERE account=? AND status=?",
+            (account_id, OrderStatus.UNKNOWN),
+        )[0]["n"]
+        session_open = self.market_session is None or self.market_session.is_open(now)
+        evidence_ready = all(
+            (
+                market_status == "VERIFIED",
+                broker_status == "VERIFIED",
+                coverage_status == "VERIFIED",
+                reconciliation_status == "VERIFIED",
+                subscription_status in {"VERIFIED", "NOT_APPLICABLE"},
+                unknown_order_count == 0,
+                session_open,
+                not self.kill_latched,
+            )
+        )
+        resume_required = gate in {Gate.RECOVERING, Gate.STOPPED, Gate.UNCERTAIN}
+        resume_eligible = resume_required and evidence_ready
+        new_exposure_allowed = (
+            gate == Gate.RUNNING and self.runtime.enabled and evidence_ready
+        )
+        cancellation_possible = (
+            broker_connection_status == "CONNECTED"
+            and not broker["call_unsettled"]
+            and not broker["requires_reconciliation"]
+        )
+        emergency_candidate = (
+            gate == Gate.KILLING
+            and self.kill_latched
+            and broker_status == "VERIFIED"
+            and coverage_status == "VERIFIED"
+            and reconciliation_status == "VERIFIED"
+            and supports_virtual_closes
+        )
+        certificate = self.certificate
+        current_kill_verified = bool(
+            certificate
+            and certificate.status in {"SUCCESS", "SAFE_LATE"}
+            and gate == Gate.KILLED
+            and broker_status == "VERIFIED"
+            and reconciliation_status == "VERIFIED"
+        )
+
+        missing_core = any(
+            status == "UNKNOWN"
+            for status in (
+                subscription_status,
+                market_status,
+                broker_status,
+                coverage_status,
+                reconciliation_status,
+            )
+        )
+        overall = (
+            "READY"
+            if new_exposure_allowed
+            else "RESUME_ELIGIBLE"
+            if resume_eligible
+            else "UNKNOWN"
+            if missing_core
+            else "NOT_READY"
+        )
+        blocking_reasons = []
+        for status, reason in (
+            (subscription_status, subscription_reason),
+            (market_status, market_reason),
+            (broker_status, broker_reason),
+            (coverage_status, coverage_reason),
+            (reconciliation_status, reconciliation_reason),
+        ):
+            if status not in {"VERIFIED", "NOT_APPLICABLE"}:
+                blocking_reasons.append(reason)
+        if unknown_order_count:
+            blocking_reasons.append("UNKNOWN_ORDERS_PRESENT")
+        if not session_open:
+            blocking_reasons.append("MARKET_SESSION_NOT_OPEN")
+        if self.kill_latched:
+            blocking_reasons.append("KILL_LATCHED")
+
+        return {
+            "status": overall,
+            "generated_at": now,
+            "provider": market_data.get("provider", "UNKNOWN"),
+            "connectivity": {
+                "market": {
+                    "status": market_connection_status,
+                    "observed_at": market_data.get("last_received_at"),
+                    "reason_code": "CONNECTIVITY_IS_NOT_READINESS",
+                },
+                "broker": {
+                    "status": broker_connection_status,
+                    "observed_at": broker["last_verified_at"],
+                    "reason_code": "CONNECTIVITY_IS_NOT_READINESS",
+                },
+            },
+            "subscription": {
+                "status": subscription_status,
+                "observed_at": None,
+                "reason_code": subscription_reason,
+            },
+            "market_freshness": {
+                "status": market_status,
+                "observed_at": market_observed_at,
+                "event_observed_at": event_observed_at,
+                "reason_code": market_reason,
+            },
+            "broker_freshness": {
+                "status": broker_status,
+                "observed_at": broker["last_verified_at"],
+                "reason_code": broker_reason,
+            },
+            "snapshot_coverage": {
+                "status": coverage_status,
+                "observed_at": report.get("observed_at"),
+                "reason_code": coverage_reason,
+            },
+            "reconciliation": {
+                "status": reconciliation_status,
+                "observed_at": report.get("observed_at"),
+                "reason_code": reconciliation_reason,
+            },
+            "resume": {
+                "required": resume_required,
+                "eligible": resume_eligible,
+                "runtime_enabled": self.runtime.enabled,
+                "reason_code": (
+                    "EXPLICIT_RESUME_ELIGIBLE"
+                    if resume_eligible
+                    else "EXPLICIT_RESUME_REQUIRED"
+                    if resume_required
+                    else "KILL_RESET_REQUIRED"
+                    if self.kill_latched
+                    else "RESUME_NOT_REQUIRED"
+                ),
+            },
+            "actions": {
+                "new_exposure": {
+                    "status": "ALLOWED" if new_exposure_allowed else "BLOCKED",
+                    "reason_code": (
+                        "READINESS_VERIFIED"
+                        if new_exposure_allowed
+                        else "READINESS_NOT_VERIFIED"
+                    ),
+                },
+                "cancellation": {
+                    "status": (
+                        "CONDITIONALLY_ALLOWED" if cancellation_possible else "BLOCKED"
+                    ),
+                    "reason_code": (
+                        "KNOWN_WORKING_ORDERS_ONLY"
+                        if cancellation_possible
+                        else "BROKER_MUTATION_UNCERTAIN"
+                    ),
+                },
+                "verified_emergency_reduction": {
+                    "status": (
+                        "CONDITIONALLY_ALLOWED" if emergency_candidate else "BLOCKED"
+                    ),
+                    "reason_code": (
+                        "PER_INTENT_REDUCTION_PROOF_REQUIRED"
+                        if emergency_candidate
+                        else "EMERGENCY_REDUCTION_NOT_VERIFIED"
+                    ),
+                },
+            },
+            "unknown_order_count": unknown_order_count,
+            "blocking_reason_codes": list(dict.fromkeys(blocking_reasons)),
+            "kill_verification": {
+                "status": "VERIFIED" if current_kill_verified else "UNKNOWN",
+                "observed_at": certificate.completed_at if certificate else None,
+                "reason_code": (
+                    "CURRENT_KILL_VERIFIED"
+                    if current_kill_verified
+                    else "CURRENT_FLATNESS_NOT_VERIFIED"
+                ),
+                "latest_certificate_status": certificate.status
+                if certificate
+                else None,
+            },
+        }
+
     def resume(self, *, reduce_only=False):
         with self.operation_lock:
             if self.kill_latched or self.risk.kill_requested.is_set():

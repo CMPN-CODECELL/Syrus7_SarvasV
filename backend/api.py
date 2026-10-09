@@ -743,6 +743,11 @@ def create_app(platform=None, *, trusted_origins=None):
         user = require_user(request)
         return account_response(user, engine.reliability.reconciliation_center())
 
+    @app.get("/api/provider-readiness")
+    def provider_readiness(request: Request):
+        user = require_user(request)
+        return account_response(user, engine.provider_readiness(user["account_id"]))
+
     @app.get("/api/traces")
     def recent_traces(request: Request, limit: int = Query(20, ge=1, le=100)):
         user = require_user(request)
