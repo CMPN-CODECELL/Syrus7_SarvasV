@@ -232,11 +232,13 @@ class Platform:
             if tick.data_source == "UNSPECIFIED":
                 tick = replace(tick, data_source="MOCK_REPLAY")
         elif self.external_market_data is not None:
-            if tick.data_source != "YAHOO_EXTERNAL_QUOTES":
+            provider_telemetry = self.external_market_data.telemetry()
+            expected_source = provider_telemetry.get("source")
+            if not expected_source or tick.data_source != expected_source:
                 self.reliability.fail_closed("MARKET_DATA_SOURCE_MIXED")
-                raise ValueError(
-                    "only configured Yahoo updates may enter this timeline"
-                )
+                if provider_telemetry.get("provider") == "YAHOO_EXTERNAL_QUOTES":
+                    raise ValueError("only configured Yahoo updates may enter this timeline")
+                raise ValueError("market update source does not match configured provider")
         elif tick.data_source == "YAHOO_EXTERNAL_QUOTES":
             self.reliability.fail_closed("MARKET_DATA_SOURCE_NOT_CONFIGURED")
             raise ValueError("Yahoo market data requires explicit provider opt-in")
@@ -873,6 +875,7 @@ class Platform:
                     }
                 )
             result = {
+                "demo_enabled": self.demo_enabled,
                 "mode": (
                     self.external_market_data.telemetry().get(
                         "label", "EXTERNAL MARKET DATA"

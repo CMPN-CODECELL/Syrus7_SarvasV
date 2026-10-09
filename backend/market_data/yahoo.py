@@ -375,6 +375,7 @@ class YahooMarketDataProvider:
         with self._lock:
             return {
                 "provider": SOURCE,
+                "source": SOURCE,
                 "label": "YAHOO EXTERNAL QUOTES / MOCK EXECUTION",
                 "connected": self._connected,
                 "symbols": list(self.symbols),

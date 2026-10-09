@@ -230,11 +230,16 @@ def create_app(platform=None, *, trusted_origins=None):
     if platform is None and config.get("market_data_provider") == "021":
         if not isinstance(broker, Broker021Adapter):
             raise RuntimeError("021 market data requires ALGOSHIELD_021_ENABLED=true")
+        symbols = config.get("021_symbols")
+        if not symbols:
+            raise RuntimeError(
+                "021 market data requires ALGOSHIELD_021_SYMBOLS; no symbol default is used"
+            )
         engine.configure_external_market_data(
             MarketData021Provider(
                 engine,
                 broker,
-                config.get("021_symbols", ("RELIANCE",)),
+                symbols,
             )
         )
     elif platform is None and config.get("market_data_provider") == "yahoo":
