@@ -16,6 +16,74 @@ from test_recovery import intent, ready
 from tests.usp_helpers import authenticate
 
 
+@pytest.mark.parametrize("filled", [0, 40])
+def test_authoritative_rejection_after_open_preserves_execution_truth(filled):
+    p = ready()
+    try:
+        assert p.risk.submit(intent(p, "open-reject", 100)).allowed
+        if filled:
+            p.ingest(p.broker.execute("open-reject", filled, Decimal("100"), p.clock()))
+        update = BrokerUpdate(
+            update_id="reject-open",
+            order_id="open-reject",
+            update_type=BrokerUpdateType.ORDER_REJECTED,
+            status=OrderStatus.REJECTED,
+            timestamp=p.clock(),
+        )
+        if filled:
+            with pytest.raises(IllegalOrderTransition):
+                p.process_broker_update(update)
+            expected = "PARTIALLY_FILLED"
+        else:
+            p.process_broker_update(update)
+            expected = "REJECTED"
+        row = p.store.rows("SELECT status, filled FROM orders WHERE id='open-reject'")[
+            0
+        ]
+        assert (row["status"], row["filled"]) == (expected, filled)
+        assert p.ledger.quantity("a", "A", "X") == filled
+        budget = p.risk.budget("a", "A", "X")["position"]
+        assert (budget["reserved_buy"], budget["reserved_sell"]) == (
+            (60, 0) if filled else (0, 0)
+        )
+        if not filled:
+            p.process_broker_update(update)
+            assert p.risk.budget("a", "A", "X")["position"]["reserved_buy"] == 0
+    finally:
+        p.close()
+
+
+def test_zero_fill_rejection_survives_restart_and_conserves_reservation(tmp_path):
+    path = str(tmp_path / "rejection.db")
+    p = ready(path)
+    assert p.risk.submit(intent(p, "durable-reject", 100)).allowed
+    p.process_broker_update(
+        BrokerUpdate(
+            update_id="final-reject",
+            order_id="durable-reject",
+            update_type=BrokerUpdateType.ORDER_REJECTED,
+            timestamp=p.clock(),
+        )
+    )
+    p.close()
+    from backend.platform import Platform
+
+    restarted = Platform(path)
+    try:
+        assert restarted.risk.state == "RECOVERING"
+        assert (
+            restarted.store.rows("SELECT status FROM orders WHERE id='durable-reject'")[
+                0
+            ]["status"]
+            == "REJECTED"
+        )
+        assert restarted.risk.budget("a", "A", "X")["position"]["reserved_buy"] == 0
+        assert restarted.ledger.quantity("a", "A", "X") == 0
+        assert restarted.store.rows("SELECT * FROM fills") == []
+    finally:
+        restarted.close()
+
+
 def test_open_update_from_unknown():
     p = ready()
     # Insert order in UNKNOWN state

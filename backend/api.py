@@ -26,6 +26,11 @@ from backend.shared.config import settings
 from backend.shared.contracts import AccountRiskPolicy, RiskPolicy, StrategyState
 from backend.shared.postgres import PostgresStore
 from backend.shared.presentation import AccountResponseScope
+from backend.shared.browser_security import (
+    DEFAULT_ORIGINS,
+    LoginLimiter,
+    origin_allowed,
+)
 
 
 class AccountRequest(BaseModel):
@@ -132,7 +137,7 @@ def financial_json(value):
     return JSONResponse(content=jsonable_encoder(value, custom_encoder={Decimal: str}))
 
 
-def create_app(platform=None):
+def create_app(platform=None, *, trusted_origins=None):
     config = (
         settings()
         if platform is None
@@ -166,6 +171,37 @@ def create_app(platform=None):
 
     app = FastAPI(title="AlgoShield mock control plane", lifespan=lifespan)
     app.state.platform = engine
+    if trusted_origins is None:
+        import os
+
+        configured = os.environ.get(
+            "ALGOSHIELD_TRUSTED_ORIGINS", config.get("trusted_origins")
+        )
+        trusted_origins = (
+            configured.split(",") if configured is not None else DEFAULT_ORIGINS
+        )
+    trusted_origins = frozenset(
+        value.strip() for value in trusted_origins if value.strip()
+    )
+    app.state.login_limiter = LoginLimiter()
+
+    @app.middleware("http")
+    async def browser_boundary(request: Request, call_next):
+        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            bearer = request.headers.get("authorization", "").startswith("Bearer ")
+            if not origin_allowed(request.headers, trusted_origins, bearer=bearer):
+                result = JSONResponse(
+                    status_code=403, content={"detail": "untrusted browser origin"}
+                )
+            else:
+                result = await call_next(request)
+        else:
+            result = await call_next(request)
+        result.headers["X-Content-Type-Options"] = "nosniff"
+        result.headers["X-Frame-Options"] = "DENY"
+        result.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return result
+
     session_cookie = "algoshield_session"
     frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
     if (frontend_dist / "assets").is_dir():
@@ -286,8 +322,24 @@ def create_app(platform=None):
             raise HTTPException(400, msg) from None
 
     @app.post("/api/auth/login")
-    def login(body: LoginRequest, response: Response):
+    def login(body: LoginRequest, response: Response, request: Request):
+        # Use peer identity only; configure uvicorn --no-proxy-headers.
+        peer = request.client.host if request.client else "unknown"
+        ticket = app.state.login_limiter.acquire(peer)
+        if not ticket:
+            raise HTTPException(
+                429,
+                "authentication temporarily unavailable",
+                headers={"Retry-After": "60"},
+            )
         res = engine.auth.login(body.username, body.password)
+        if res:
+            app.state.login_limiter.succeeded(peer, ticket)
+        with engine.store.transaction():
+            engine.store.audit(
+                "LOGIN_SUCCEEDED" if res else "LOGIN_FAILED",
+                {"outcome": "success" if res else "failure"},
+            )
         if not res:
             raise HTTPException(401, "invalid credentials")
         set_session_cookie(response, res["token"])
@@ -375,6 +427,15 @@ def create_app(platform=None):
     @app.websocket("/api/stream/ws")
     async def stream_websocket(websocket: WebSocket):
         """Push backend snapshots over a persistent browser connection."""
+        cookie_token = websocket.cookies.get(session_cookie)
+        explicit_bearer = not cookie_token and websocket.headers.get(
+            "authorization", ""
+        ).startswith("Bearer ")
+        if not origin_allowed(
+            websocket.headers, trusted_origins, bearer=explicit_bearer
+        ):
+            await websocket.close(code=1008, reason="untrusted browser origin")
+            return
         token = (
             websocket.cookies.get(session_cookie)
             or websocket.query_params.get("token")
