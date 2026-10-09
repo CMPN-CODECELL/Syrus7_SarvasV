@@ -80,7 +80,7 @@ class Platform:
         self.safety_proof = SafetyProofService(
             self.store, self.ledger, self.risk, self.reliability, clock
         )
-        self.traces = TraceService(self.store)
+        self.traces = TraceService(self.store, ledger=self.ledger)
         self.safety_bench = SafetyBench(self.store, clock)
         self.candles = CandleBuilder()
         self.strategies.on_interval_registered = self.candles.add_interval
