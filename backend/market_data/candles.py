@@ -88,7 +88,9 @@ class CandleBuilder:
             raise ValueError("late tick: replay must be ordered before ingestion")
         if any(
             self.active.get((tick.symbol, interval)) is not None
-            and self.active[(tick.symbol, interval)].data_source != tick.data_source
+            and self.active[(tick.symbol, interval)].data_source
+            not in {"UNSPECIFIED", tick.data_source}
+            and tick.data_source != "UNSPECIFIED"
             for interval in self.intervals
         ):
             raise ValueError("mixed market-data sources in candle")
@@ -136,6 +138,11 @@ class CandleBuilder:
                     close=tick.price,
                     volume=c.volume + tick.quantity,
                     volume_available=c.volume_available and tick.volume_available,
+                    data_source=(
+                        tick.data_source
+                        if c.data_source == "UNSPECIFIED"
+                        else c.data_source
+                    ),
                 )
             self.active[key] = c
         return True, closed

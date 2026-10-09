@@ -296,6 +296,7 @@ def test_api_preserves_money_and_prices_as_decimal_strings():
             ).status_code
             == 201
         )
+        platform.auth.provision_operator("decimal", granted=True)
         response = client.post("/api/demo")
         assert response.status_code == 200
         state = response.json()
@@ -573,6 +574,8 @@ def test_market_session_api_and_snapshot():
             resp = client.get("/api/market/session")
             assert resp.status_code == 200
             assert resp.json()["status"] == "OPEN"
+
+            platform.auth.provision_operator("session_user", granted=True)
 
             # POST session endpoint: change to CLOSED
             post_resp = client.post("/api/market/session", json={"status": "CLOSED"})

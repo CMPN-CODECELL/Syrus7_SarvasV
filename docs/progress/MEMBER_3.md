@@ -35,6 +35,11 @@ Risk & Reliability; canonical responsibilities: ../TEAM_OWNERSHIP.md, Member 3.
 - Validate available PostgreSQL integration without touching production data.
 
 ## Handoff Notes
+
+2026-10-09 DEC-027: configured Origin boundary, versioned PBKDF2 legacy CAS
+upgrade, monotonic bounded peer login limiter, security headers and outcome-only
+audit. Operator/scoping regressions pass. SECURITY_OPERATIONS documents local
+proxy/cookie/Bearer policy and production TLS/identity/ingress blockers.
 One worker. UNKNOWN retains reservation. No synthetic drift fixes; opposing virtual exits need sponsor confirmation.
 
 - 2026-10-07 16:05 Asia/Kolkata validation: pytest 24 passed / 1 skipped (no isolated PostgreSQL URL); Ruff check + format passed; npm run check passed; npm audit 0 vulnerabilities. No live Neon connectivity/deployment claim.
@@ -43,3 +48,17 @@ One worker. UNKNOWN retains reservation. No synthetic drift fixes; opposing virt
 - 2026-10-07 16:03 Asia/Kolkata: commits `55beeb2` and `8dc8e34` pushed to `origin/bootstrap/safety-vertical-slice` before further Neon setup, as requested.
 - Neon CLI 8.0.11 login launched browser and is awaiting user authentication. Link to requested production branch, skills/MCP setup, remote schema inspection/migration, connectivity and deploy are paused. No remote schema changes or production seed performed.
 - Action needed: complete browser sign-in, then continue the requested Neon workflow. PostgreSQL implementation is locally tested only; isolated integration remains skipped.
+
+## 2026-10-09 — DEC-026 authority and response boundary
+
+- Added durable explicit operator grants and mutation-free 401/403 enforcement
+  for global controls. Public registration cannot self-promote; revocation affects
+  existing sessions.
+- Added shared nested account response projection without filtering internal
+  risk, reconciliation, kill or accounting inputs. Two-account adversarial tests
+  cover actions, evidence, traces, broker responses and audit payloads.
+- SQLite schema v12 is verified. PostgreSQL migration 011 is packaged but blocked
+  on an isolated database; no Neon or production access occurred.
+
+
+2026-10-09 documentation integration: current ownership, dependencies and acceptance gates are consolidated in [TEAM_EXECUTION_PLAN](../TEAM_EXECUTION_PLAN.md), DEC-028. Direct branch pushes are allowed; PRs optional. No new member feature is claimed implemented by this planning update. Fresh cross-module evidence is in [INTEGRATION](INTEGRATION.md).

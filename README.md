@@ -1,8 +1,14 @@
 # AlgoShield
 
+Current team workflow: [execution plan](docs/TEAM_EXECUTION_PLAN.md), [validation](docs/TESTING.md). Team members can directly push branches with repository write permission; PRs are optional. Integrate tested checkpoints on dev; only promote validated commits to main after successful CI. Never force-push or bypass server rules.
+
 Safety control plane for untrusted trading strategies, built for SYRUS 7.0 FinTech PS-06.
 
 `tick -> 1m/5m candle -> strategy -> intent -> risk reservation -> order manager -> broker -> fill ledger -> reconciliation -> dashboard`
+
+## Start here
+
+Read [Project Truth](docs/PROJECT_TRUTH.md), [Implementation Delta](docs/IMPLEMENTATION_DELTA.md), [requirement traceability](docs/REQUIREMENTS_TRACEABILITY.md), then [research decisions](docs/RESEARCH_DECISIONS.md). See [current verification](docs/progress/INTEGRATION.md) and [operator provisioning](docs/SECURITY_OPERATIONS.md).
 
 ## Run locally
 
@@ -16,10 +22,10 @@ python -m venv .venv
 python -m pip install -e ".[dev]"
 npm --prefix frontend ci
 npm --prefix frontend run build
-python -m uvicorn backend.api:create_app --factory --host 127.0.0.1 --port 8000
+python -m uvicorn backend.api:create_app --factory --host 127.0.0.1 --port 8000 --no-proxy-headers
 ```
 
-Open http://127.0.0.1:8000, register or sign in, and click **Run replay**. Registration assigns a trading account ID from the authenticated username; the dashboard never asks users to type or choose it. Four built-in strategies consume completed candles concurrently in one serialized event loop: a 3/5 EMA crossover, five-period mean reversion, a 5-minute range breakout and 14-period RSI reversal. The demo stops after replay and displays actual signals, orders, unique fills, charges, virtual positions, market-data counters and audit events. The dashboard supports strategy subscription and durable per-strategy start/stop controls. Click **Kill all** to cancel, flatten and verify. API docs: http://127.0.0.1:8000/docs.
+Open http://127.0.0.1:8000, register or sign in, explicitly provision the intended operator as described below, and click **Run replay** from that operator session. Registration assigns a trading account ID from the authenticated username; the dashboard never asks users to type or choose it. Four built-in strategies consume completed candles concurrently in one serialized event loop: a 3/5 EMA crossover, five-period mean reversion, a 5-minute range breakout and 14-period RSI reversal. The demo stops after replay and displays actual signals, orders, unique fills, charges, virtual positions, market-data counters and audit events. The dashboard supports strategy subscription and durable per-strategy start/stop controls. Click **Kill all** to cancel, flatten and verify. API docs: http://127.0.0.1:8000/docs.
 
 ```sh
 python -m pytest -q --basetemp=.pytest-tmp
@@ -46,7 +52,7 @@ Use `DATABASE_URL=postgresql:///algoshield_local` for the application. Run the r
 
 ## Current implementation and limits
 
-Mock/replay platform; **021 sandbox integration remains mandatory and incomplete**. FastAPI serves the compiled React/Vite SPA and pushes authenticated account-scoped snapshots through one WebSocket connection. SQLite offline schema v11 stores accounts, durable subscription enablement, policies, marks, approved orders, fills, dispatch/correlation evidence and safety/audit state. Strategy callback failures quarantine only the affected subscription; risk policies and live budgets are durable; Decimal amounts are serialized as strings. Start with `RECOVERING`; explicit reconciliation and resume are required. Configure the DB with `ALGOSHIELD_DB` (default `data/platform.db`); copy `.env.example` to ignored `.env.local` if needed. Process environment overrides `.env.local`, which overrides `.env`. Never put real values in tracked examples.
+Mock/replay platform; **021 sandbox integration remains mandatory and incomplete**. FastAPI serves the compiled React/Vite SPA and pushes authenticated account-scoped snapshots through one WebSocket connection. SQLite offline schema v12 stores accounts, durable subscription enablement, policies, marks, approved orders, fills, dispatch/correlation evidence and safety/audit state. Strategy callback failures quarantine only the affected subscription; risk policies and live budgets are durable; Decimal amounts are serialized as strings. Start with `RECOVERING`; explicit reconciliation and resume are required. Configure the DB with `ALGOSHIELD_DB` (default `data/platform.db`); copy `.env.example` to ignored `.env.local` if needed. Process environment overrides `.env.local`, which overrides `.env`. Never put real values in tracked examples.
 
 Offline SQLite mode persists external mock evidence separately in `<database>.broker.json`, using atomic file replacement. Restart loads both independent stores, keeps trading RECOVERING, and requires reconciliation/explicit resume. An explicitly injected fresh broker against existing local history still fails closed. Never discard execution history to pretend recovery succeeded. The JSON file is a mock fixture only, not an assumed 021 persistence format.
 
@@ -68,7 +74,7 @@ This is a local development tool, not a production service. It has a basic durab
 - `frontend/src`: modular React routes, session context, single telemetry provider, API client, components and responsive styles.
 - `tests/test_safety.py`: deterministic unit and integration foundation.
 - `tests/test_member4.py`: market-data, strategy, subscription and dashboard coverage.
-- `docs/PHASE_PLAN.md`: current completion status and remaining mandatory work.
+- `docs/IMPLEMENTATION_DELTA.md`: active gap-first plan; `docs/PHASE_PLAN.md` preserves historical phases.
 
 Read the [architecture](docs/ARCHITECTURE.md), [decisions](docs/DECISIONS.md), [contracts](docs/CONTRACTS.md), [safety invariants](docs/SAFETY_INVARIANTS.md) and [021 unknowns](docs/021_API_UNKNOWN.md) before extending the system.
 
@@ -96,3 +102,15 @@ On PowerShell where execution policy blocks npm/neon scripts, use `npm.cmd` and 
 `neon deploy` publishes the requested hello function/auth/private uploads policy; it does **not** deploy the Python trading service. Neon Auth configuration also does not automatically secure the existing FastAPI endpoints.
 
 If Windows denies access to a previous pytest temp directory, use a new directory under ignored `data/`, for example `python -m pytest -q -p no:cacheprovider --basetemp=data/new-test-run`. Do not change safety assertions to work around filesystem permissions.
+
+## Explicit operator provisioning
+
+Register the intended username normally. Stop the backend, then run:
+
+```powershell
+python -m backend.shared.provision_operator --sqlite-path data/platform.db --username alice
+# Revoke an existing grant:
+python -m backend.shared.provision_operator --sqlite-path data/platform.db --username alice --revoke
+```
+
+Restart the backend and sign in. The command requires an existing offline SQLite file and user, ignores DATABASE_URL, and records grants/revocations durably. It never assigns first-user privileges or accepts public promotion. All global kill/resume/reconcile, broker controls, replay, market overrides, account administration, and mock fault/benchmark mutations require an operator. Ordinary users retain own-account controls and scoped views. PostgreSQL migration 011 is additive and not applied remotely; isolated PostgreSQL validation/provisioning remains blocked here. See [security operations](docs/SECURITY_OPERATIONS.md).

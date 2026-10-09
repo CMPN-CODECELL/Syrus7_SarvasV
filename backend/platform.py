@@ -866,7 +866,7 @@ class Platform:
                         ),
                     }
                 )
-            return {
+            result = {
                 "mode": (
                     "YAHOO EXTERNAL QUOTES / MOCK EXECUTION"
                     if self.external_market_data is not None
@@ -913,6 +913,12 @@ class Platform:
                 "audit": audit_rows,
                 "kill": kill_data,
             }
+
+            if account_id is not None:
+                from backend.shared.presentation import AccountResponseScope
+
+                return AccountResponseScope(self.store, account_id).project(result)
+            return result
 
     def history_count(self, table, account_id: str | None = None):
         if table not in {"orders", "fills"}:

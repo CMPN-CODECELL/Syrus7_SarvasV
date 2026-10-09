@@ -273,4 +273,124 @@ Neon CLI 8.0.11 installed. Requested project/branch not yet authenticated/linked
     - Deterministic rehearsal runner: all 7 scenarios passed with zero errors.
     - Ruff check, Ruff format, ESLint, and TypeScript (`npm run check`) all clean.
 
+- 2026-10-09 DEC-026 remediation on `dev`:
+  - Audited base: `b0930c52056f175539e8fe9be7a1fabd2cd075eb`.
+  - Implementation/research integration commit: `dd21746051119edf58fbdd85f333d54c67fe8260`.
+    During the session this commit was authored and published to `origin/main`
+    by `acchasujal` outside this agent's git operations; this agent did not push
+    main. The follow-up evidence/runbook commit targets only `origin/dev`.
+  - Added durable explicit operator grants, offline SQLite provisioning, shared
+    nested account response scoping, strict trace ownership, and generic domain
+    error responses. Ordinary users retain owned controls and cannot mutate
+    global state. Mock fault/benchmark operations require operator authority and
+    the existing isolated-mock guard.
+  - Added SQLite migration 012 and packaged PostgreSQL migration 011. No prior
+    migration changed. SQLite upgrade/provision/restart/revoke paths are verified.
+    PostgreSQL remains skipped without an isolated test URL.
+  - Replaced the obsolete Python source-string telemetry assertion with existing
+    behavioral Vitest coverage for logout/account changes, HTTP 401 and WS 1008;
+    backend restart/lifecycle coverage remains.
+  - Final validation: Python **351 passed / 1 PostgreSQL skipped** in 48.98s.
+    Vitest **28 passed in 6 files**; ESLint, Vite build, root TypeScript,
+    Ruff check/format and all 7 rehearsals passed. Node 23.6.0 emitted package
+    engine warnings; use supported Node 24.15+ for release validation.
+  - No 021 sandbox, remote Neon, production database or browser-driver access.
+    No lockfile or generated frontend artifact changed.
 
+## 2026-10-09 (Asia/Calcutta) — DEC-027 targeted Round 2 integration
+
+Start `dev`: de126deb3af6fb26e6142ace54515fc2f2d9a4be, tracking origin/dev.
+Implementation: **89ea651990383ee640207a0bbebf85f10523e386**. Checks below ran
+against the exact source/test content committed there; only docs changed after
+the full run. Fresh fetch retained origin/main dd21746 and local main 8e5ee50;
+no main mutation/merge/push. A new unrelated feature/multi-stock-strategies remote
+appeared on final fetch and was not integrated. Member patches remain unavailable.
+
+Initial work included the earlier exploratory test and untracked research/audit.
+The four newly supplied member reports were read, preserved verbatim and adopted
+only where dev evidence showed gaps. No wholesale member branch merge. The
+ROUND2_RESEARCH_UPDATE backup was externally checksum verified before work.
+
+| Feature | Status / owner | Next |
+|---|---|---|
+| Zero-fill rejection and broker identity collisions | VERIFIED IMPLEMENTED, Member 2 | Real provider mapping depends on sponsor contract |
+| Origin, versioned password, login limiter/headers/audit | VERIFIED IMPLEMENTED, Member 3 | Deployment TLS/secure cookie/identity/ingress verification |
+| Filled/requested and candle-linked signal display | VERIFIED IMPLEMENTED, Member 4 | Browser-driver smoke |
+| Decimal ledger, risk/kill/UNKNOWN/recovery/candles/callback bounds, DEC-026 | VERIFIED EXISTING, Members 1–4 | Preserve; external fixture validation |
+| Correction/bust and later fee revisions | DEFERRED — DEPENDENCY, Members 1/2 | Define authenticated event semantics; no speculative adjustments |
+| PostgreSQL/021 | UNVERIFIED / DEFERRED — DEPENDENCY | Explicit isolated DB and sponsor sandbox evidence |
+
+Changed production: execution transition; mock collision check; API Origin and
+login handling; shared auth/KDF and browser_security helper; config and .env.example;
+Docker disables forwarded header trust; React Orders/Strategies evidence. No
+financial formula, candle strategy, migration, dependency or lockfile change.
+Tests: broker updates (3 new cases), adapter contracts (2 providers), round2
+security (16 cases), React evidence (2 cases). Conftest supplies a trusted browser
+Origin to existing workflows; negative security tests override it explicitly.
+
+Environment: Windows PowerShell, Python 3.13.1, Node 23.6.0, npm 10.9.2.
+Node 23 remains outside several locked package engine declarations; no dependency
+installation/change was performed in this round. Only isolated SQLite/mock/replay.
+
+| Executed command | Exact result |
+|---|---|
+| python -m pytest -q -p no:cacheprovider --basetemp=data/round2-baseline --tb=short | 351 passed, 1 skipped; 85.85s (before new tests/code) |
+| python -m pytest -q tests/test_broker_updates.py -k authoritative --basetemp=data/round2-red-fixed --tb=short | Before fix: 1 failed, 1 passed; genuine OPEN rejection defect only |
+| python -m pytest -q tests/test_round2_security.py --basetemp=data/round2-security-red --tb=short | Before fix: 9 failed, 5 passed |
+| npm.cmd --prefix frontend run test -- --run src/test/round2Evidence.test.jsx | Before display patch: 2 failed |
+| python -m pytest -q tests/test_broker_adapter_contract.py -k collision --basetemp=data/round2-identity-red --tb=short | Before collision fix: 2 failed |
+| Same collision selection, --basetemp=data/round2-identity-green | 2 passed, 22 deselected |
+| python -m pytest -q tests/test_round2_security.py tests/test_broker_updates.py tests/test_auth.py --basetemp=data/round2-focused --tb=short | 29 passed, 14.45s |
+| python -m pytest -q tests/test_round2_security.py tests/test_broker_updates.py tests/test_execution_state_machine.py tests/test_cancellation.py tests/test_operator_authority.py --basetemp=data/round2-cross --tb=short | 95 passed, 47.75s |
+| python -m pytest -q -p no:cacheprovider --basetemp=data/round2-final --tb=short | **372 passed, 1 PostgreSQL skipped, 128.46s** |
+| python -m ruff check . | Passed |
+| python -m ruff format --check . | Initial check identified 2 touched files; after formatting: passed, 95 files already formatted |
+| npm.cmd --prefix frontend run test | **30 passed, 7 files**, 16.57s (baseline 28/6 files) |
+| npm.cmd --prefix frontend run lint | Passed |
+| npm.cmd --prefix frontend run build | Passed; 37 modules, ignored assets only |
+| npm.cmd run check | Passed |
+| python -m scripts.rehearsal_runner (PYTHONIOENCODING=utf-8) | **7/7 passed**; observed mock kill SUCCESS 0.18s |
+| python scripts/check_docs.py | Before 42 / after 47 Markdown files; zero broken local file links |
+| git diff --check before research staging | Passed |
+| git diff --cached --check after research staging | Reports pre-existing hard-break trailing spaces/EOF blank lines in verbatim member reports and archived USP proposal; preserved intentionally |
+| git diff --check de126de HEAD excluding raw member reports and docs/archive/2026-10-09 | Passed for authored code/docs/redirects; originals retain source formatting |
+| Staged artifact/credential-pattern review | No DB/env/generated/private-key/credential-URL findings; no migration or lock changes |
+
+PostgreSQL skipped because no explicitly isolated test URL was configured; no
+production/Neon access, schema mutation or sandbox execution. Do not treat mock
+charges, corrections containment or kill latency as live 021 certification.
+
+Documentation: DEC-027 appended; current authority/security/contracts/traceability/
+testing/backlog and relevant member handoffs synchronized. Four historical files
+were moved with git mv into docs/archive/2026-10-09 with original-path redirects
+and repaired relative links. Inventory is in archive/README; research reports and
+all decision/progress history retained. Startup no longer mandates member logs.
+
+Residual risks: process-local limiter resets on restart and proxy peers may share
+capacity; origin does not authenticate nonbrowser clients; production TLS/secure
+cookies/identity/audit retention/public-registration limits need deployment work.
+Real scoped provider mapping, corrections/late fees require sponsor evidence.
+Ledger caching remains deferred pending measured workload. Browser smoke is
+UNVERIFIED. Next three tasks are the sponsor contract, isolated PG validation and
+deployment/browser validation recorded in IMPLEMENTATION_DELTA.
+
+Post-commit security check at 89ea651: `python -m pytest -q
+tests/test_round2_security.py --basetemp=data/round2-committed-security --tb=short`
+passed **16 tests in 8.50s**. Research whitespace is a source-formatting note,
+not a product regression; no original research text was rewritten to hide it.
+
+Documentation/research commit: 6a15db172725de23f887c170cfc22c0061101d92.
+Final delivery adds only this evidence clarification; no production change.
+
+
+
+
+## 2026-10-09 ? Safe main promotion and direct-push workflow (DEC-028)
+
+Validated dev baseline: 4782ca17ddc209e4543707375d18e5c28f80ff46. Isolated linked worktree preserves the original checkout and its four member-report deletions. Remote main before promotion: dd21746051119edf58fbdd85f333d54c67fe8260; after normal fast-forward push: 63266eb3aab1dfaa0c3934bae744d459df2184c4. No migrations, provider behavior or future member features changed.
+
+Fresh Windows evidence: Python 3.13.1, Node 23.6.0, npm 10.9.2. Initial setup attempt: 351 Python passed, 3 failed, 1 skipped, 18 errors (missing SPA/temp access); unavailable frontend dependencies. After dependencies were reused and SPA built, `python -m pytest -q -p no:cacheprovider --basetemp=.pytest-promotion-retry --tb=short`: 372 passed, 1 skipped, 75.39s. PostgreSQL opt-in was skipped; no production database was touched. Frontend test: 30 passed / 7 files, 11.46s; frontend lint/build, Ruff check/format (95 files) and root TypeScript check passed. UTF-8 `python -m scripts.rehearsal_runner`: seven mock scenarios passed; measured mock kill 0.12s. Local Node engine warnings remain a reproducibility limitation.
+
+Old GitHub workflow failed because pytest preceded SPA build. Commit 63266eb repairs that order, validates frontend and rehearsals, and triggers on pushes only. [GitHub CI](https://github.com/CMPN-CODECELL/Syrus7_SarvasV/actions/runs/37885956412/job/113675898318) succeeded on every step with Node 22. [PR #1](https://github.com/CMPN-CODECELL/Syrus7_SarvasV/pull/1) was closed without merge after the owner requested direct pushes. Protection/rules inspection returned HTTP 403; no permission grants or server settings were changed. A successful normal push proves this credential could push, not that every team account has write access.
+
+The separate documentation integration adds a single four-member execution plan and fresh requirement/module evidence. Real 021, isolated PG, deployment proxy/Origin configuration and current React browser smoke remain unverified. Legacy browser selectors need a future task. Unrelated feature/multi-stock-strategies was not merged. Historical source Markdown whitespace is retained; generated files and local deletions are excluded from commits.

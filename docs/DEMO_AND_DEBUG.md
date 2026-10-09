@@ -1,5 +1,7 @@
 # AlgoShield â€” Demo, Rehearsal & Debug Guide
 
+Use [TEAM_EXECUTION_PLAN](TEAM_EXECUTION_PLAN.md) for the current demo/browser tasks. Seven mock rehearsals passed in the release candidate; the browser script still uses legacy selectors and has not established current React browser coverage. Label mock demonstrations explicitly.
+
 ## Overview
 This document outlines deterministic demonstration scenarios, execution commands, and a step-by-step 4–5 minute live walkthrough script for technical vivas, hackathon evaluation, and regression validation.
 
@@ -16,25 +18,25 @@ No positions or P&L figures are ever fabricated. Local state is expected state; 
 ### 1. Automated Rehearsal Runner (Non-Interactive)
 Run all 7 deterministic scenarios sequentially in an isolated temporary SQLite database:
 ```bash
-python scripts/rehearsal_runner.py
+python -m scripts.rehearsal_runner
 ```
 
 Run a specific scenario:
 ```bash
 # Available: candles, partial, risk, recovery, restart, kill, drift
-python scripts/rehearsal_runner.py --scenario candles
-python scripts/rehearsal_runner.py --scenario partial
-python scripts/rehearsal_runner.py --scenario risk
-python scripts/rehearsal_runner.py --scenario recovery
-python scripts/rehearsal_runner.py --scenario restart
-python scripts/rehearsal_runner.py --scenario kill
-python scripts/rehearsal_runner.py --scenario drift
+python -m scripts.rehearsal_runner --scenario candles
+python -m scripts.rehearsal_runner --scenario partial
+python -m scripts.rehearsal_runner --scenario risk
+python -m scripts.rehearsal_runner --scenario recovery
+python -m scripts.rehearsal_runner --scenario restart
+python -m scripts.rehearsal_runner --scenario kill
+python -m scripts.rehearsal_runner --scenario drift
 ```
 
 ### 2. Interactive Dashboard Rehearsal (UI Inspection)
 Pre-populate an isolated database with authentic multi-strategy trades, orders, fills, and risk audit logs, then launch the local HTTP server:
 ```bash
-python scripts/rehearsal_runner.py --serve --port 8000
+python -m scripts.rehearsal_runner --serve --port 8000
 ```
 - **Dashboard UI**: `http://127.0.0.1:8000`
 - **Swagger API**: `http://127.0.0.1:8000/docs`
@@ -68,7 +70,7 @@ python -m pytest -q --basetemp=.pytest-tmp
 
 ## Operational UX Dashboard Components (Task 8)
 
-When running `python scripts/rehearsal_runner.py --serve --port 8000`, the interactive dashboard showcases the reliability-first operational UX:
+When running `python -m scripts.rehearsal_runner --serve --port 8000`, the interactive dashboard showcases the reliability-first operational UX:
 
 1. **Market Data & Feed Status Banner**:
    - Explicit `MOCK / REPLAY` badge and label indicating synthetic replay feeds (never claiming live 021 connectivity).
@@ -109,7 +111,7 @@ When running `python scripts/rehearsal_runner.py --serve --port 8000`, the inter
    - For sustained real-time replay streams, synthetic ticks advance at a 1:1 wall-clock cadence with continuous background heartbeat sync.
 
 2. **Ram's Operator Authorization Boundary (Dependency)**:
-   - Global mutation endpoints (`POST /api/kill`, `POST /api/reconcile`, `POST /api/resume`, `PUT /api/risk/policies/{strategy}`, `POST /api/failure-lab/{scenario}`) currently operate in offline demo mode. Platform-wide operator role authorization is an active Ram (Member 3) dependency; do not claim it is complete.
+   - DEC-026 requires an explicitly provisioned operator for global kill/reconcile/resume, broker controls, replay and failure injection. Own policy/control actions remain owner-scoped. For interactive rehearsal, register the intended operator, stop the server, provision the displayed isolated SQLite path with the offline CLI, then restart using the same --db-path; never elevate public demo credentials automatically. See SECURITY_OPERATIONS.md.
 
 3. **Ram's Continuous Broker Refresh Loop (Dependency)**:
    - Continuous background broker health and position refresh is an active Ram (Member 3) dependency; do not claim it is complete.

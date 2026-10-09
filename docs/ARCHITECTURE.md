@@ -1,5 +1,7 @@
 # Architecture
 
+Current operational boundaries and dependency gates are in [TEAM_EXECUTION_PLAN](TEAM_EXECUTION_PLAN.md). Member 1 owns persistence/accounting, Member 2 provider contracts/execution, Member 3 shared security/reliability integration, Member 4 frontend/feed consumers. SQLite mock evidence does not prove PostgreSQL or live-provider behavior.
+
 ## Goal and flow
 
 Untrusted strategies express intent. Platform services own execution authority. Fills create financial truth; broker snapshots verify external truth. One deployable Python/FastAPI modular monolith runs a serialized control plane, Neon PostgreSQL durable store (SQLite offline fallback), and a React SPA driven by authenticated backend telemetry. PostgreSQL is configured through the centralized Store boundary and versioned additive migrations; Redis is unnecessary now. A database advisory ownership lock rejects a second backend process, but multi-process execution is still unsupported.
@@ -36,7 +38,7 @@ Start RECOVERING with runtime disabled. Load policies/halts, orders/fills, marks
 
 Close gate -> disable callbacks -> cancel open broker orders -> reconcile executions -> authorize attributed emergency exits -> ingest actual fills -> reconcile -> verify no open broker orders, no broker positions, and flat virtual positions. Latch/certificate persist across processes; explicit reset requires fresh verified flat/no-order evidence. SUCCESS requires verified state in <10 seconds; SAFE_LATE records safe completion outside target; FAILED leaves gate uncertain. Certification includes duration and final evidence.
 
-Opposing virtual positions can externally net to zero while still carrying strategy exposure. Bootstrap closes each strategy through broker executions; this may temporarily increase broker net exposure. Do not fabricate cross-strategy fills. Sponsor must confirm whether only net account flatness is required and whether shorting/close sequencing is supported. Live close sequencing and durable kill latch are release blockers.
+Opposing virtual positions can externally net to zero while still carrying strategy exposure. Bootstrap closes each strategy through broker executions; this may temporarily increase broker net exposure. Do not fabricate cross-strategy fills. Sponsor must confirm whether only net account flatness is required and whether shorting/close sequencing is supported. Live close sequencing remains a release blocker; the durable mock kill latch is already implemented and regression-tested.
 
 ## Failure handling
 
@@ -60,3 +62,13 @@ The Python lock does not provide multi-process safety; PostgreSQL adds a session
 The platform projects a read-only evidence layer over the existing control plane. `SafetyProofService` evaluates invariants I1-I10 from durable orders, decisions, fills, positions, reconciliation freshness and kill evidence; it never mutates trading state and uses `UNKNOWN` when proof is unavailable. Account net/gross limits and LIMIT-price deviation checks execute inside the serialized risk reservation boundary. Additive audit correlation supports server-built execution traces. `MetricsRegistry` keeps bounded process-local samples and is isolated from safety decisions.
 
 Failure Lab V2 and SafetyBench remain SQLite/mock-only; SafetyBench creates a fresh platform per case and persists only completed summaries. The reconciliation center reports local/broker deltas and recovered canonical fill IDs without synthetic balancing fills. Kill certificates add protocol-stage timing and final evidence without changing SUCCESS/SAFE_LATE/FAILED semantics. Authenticated snapshots scope subscriptions, positions, orders, fills, signals, decisions and traces to the current account; strategy/order mutations also verify ownership.
+
+## Account presentation and operator authority (DEC-026)
+
+DEC-027 adds an explicit configured Origin boundary before unsafe HTTP/cookie
+WebSocket access, versioned PBKDF2 with safe legacy upgrade, bounded local login
+throttling and outcome-only audits. See SECURITY_OPERATIONS for transport/proxy
+policy. Broker normalized identity and unsupported correction/fee capabilities
+are specified in CONTRACTS. No ledger, candle or persistence schema was replaced.
+
+AuthService joins durable operator_grants during local session validation. Global controls require that grant before invoking platform operations; own-strategy/account/order controls retain ownership checks. AccountResponseScope projects copies after authoritative calculations and is applied to scoped snapshots (including SSE/WS), action responses, proof, reconciliation, traces and broker evidence. It removes foreign attributed records/references, scopes historical counts from verified account breakdowns, and handles nested JSON audit payloads. It preserves global verdicts and certificate timing/status. Internal ledger/reconciliation inputs remain global. Offline provisioning is documented in SECURITY_OPERATIONS.md; production identity and real PostgreSQL validation are still incomplete.

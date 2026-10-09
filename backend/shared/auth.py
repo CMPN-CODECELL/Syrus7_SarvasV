@@ -3,6 +3,9 @@
 import hashlib
 import secrets
 import time
+import re
+
+PASSWORD_ITERATIONS = 600_000
 
 
 class AuthService:
@@ -11,7 +14,32 @@ class AuthService:
         self.token_ttl_seconds = token_ttl_seconds
 
     def _hash_password(self, password: str, salt: str) -> str:
-        return hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
+        digest = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.encode("utf-8"),
+            salt.encode("utf-8"),
+            PASSWORD_ITERATIONS,
+        ).hex()
+        return f"pbkdf2-sha256$v1${PASSWORD_ITERATIONS}${digest}"
+
+    def _verify_password(self, password, salt, record):
+        if not isinstance(record, str) or not isinstance(salt, str):
+            return False
+        if not re.fullmatch(r"[0-9a-f]{32}", salt):
+            return False
+        if re.fullmatch(r"[0-9a-f]{64}", record):
+            expected = hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
+        else:
+            parts = record.split("$")
+            if (
+                len(parts) != 4
+                or parts[:2] != ["pbkdf2-sha256", "v1"]
+                or parts[2] != str(PASSWORD_ITERATIONS)
+                or not re.fullmatch(r"[0-9a-f]{64}", parts[3])
+            ):
+                return False
+            expected = self._hash_password(password, salt)
+        return secrets.compare_digest(expected, record)
 
     def register(
         self, username: str, password: str, account_id: str | None = None
@@ -64,12 +92,26 @@ class AuthService:
 
         row = self.store.rows("SELECT * FROM users WHERE username=?", (username,))
         if not row:
+            # Equalize the dominant KDF cost for nonexistent usernames.
+            self._hash_password(password, "0" * 32)
             return None
         user = row[0]
 
-        expected_hash = self._hash_password(password, user["salt"])
-        if not secrets.compare_digest(expected_hash, user["password_hash"]):
+        if not self._verify_password(password, user["salt"], user["password_hash"]):
+            if not user["password_hash"].startswith("pbkdf2-sha256$v1$"):
+                self._hash_password(password, "0" * 32)
             return None
+
+        if re.fullmatch(r"[0-9a-f]{64}", user["password_hash"]):
+            salt = secrets.token_hex(16)
+            upgraded = self._hash_password(password, salt)
+            with self.store.transaction() as db:
+                # Compare-and-swap protects concurrent upgrade/password changes.
+                db.execute(
+                    "UPDATE users SET password_hash=?, salt=? "
+                    "WHERE username=? AND password_hash=? AND salt=?",
+                    (upgraded, salt, username, user["password_hash"], user["salt"]),
+                )
 
         token = self.create_token(username)
         return {
@@ -93,15 +135,37 @@ class AuthService:
             return None
         now = time.time()
         rows = self.store.rows(
-            """SELECT u.username, u.account_id, t.expires_at 
+            """SELECT u.username, u.account_id, t.expires_at,
+                      CASE WHEN g.username IS NULL THEN 0 ELSE 1 END AS is_operator
                FROM user_tokens t 
                JOIN users u ON t.username = u.username 
+               LEFT JOIN operator_grants g ON g.username = u.username
                WHERE t.token = ? AND t.expires_at > ?""",
             (token, now),
         )
         if not rows:
             return None
         return dict(rows[0])
+
+    def provision_operator(self, username: str, *, granted: bool):
+        """Trusted local administration only; never exposed through HTTP."""
+        username = username.strip().lower()
+        with self.store.transaction() as db:
+            if not db.execute(
+                "SELECT username FROM users WHERE username=?", (username,)
+            ).fetchone():
+                raise ValueError("existing registered user required")
+            if granted:
+                db.execute(
+                    "INSERT INTO operator_grants(username,granted_at) VALUES (?,?) "
+                    "ON CONFLICT(username) DO NOTHING",
+                    (username, time.time()),
+                )
+            else:
+                db.execute("DELETE FROM operator_grants WHERE username=?", (username,))
+            self.store.audit(
+                "OPERATOR_GRANT_CHANGED", {"username": username, "granted": granted}
+            )
 
     def logout(self, token: str) -> bool:
         if not token:

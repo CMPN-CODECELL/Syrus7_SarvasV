@@ -1,5 +1,5 @@
 name: safety-tests
-on: [push, pull_request]
+on: [push]
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -12,8 +12,13 @@ jobs:
         with:
           node-version: '22'
       - run: pip install -e '.[dev]'
+      - run: npm --prefix frontend ci
+      - run: npm --prefix frontend run test
+      - run: npm --prefix frontend run lint
+      - run: npm --prefix frontend run build
       - run: python -m ruff check .
       - run: python -m ruff format --check .
       - run: python -m pytest -q
       - run: npm ci
       - run: npm run check
+      - run: python -m scripts.rehearsal_runner

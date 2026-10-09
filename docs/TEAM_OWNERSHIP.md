@@ -1,5 +1,7 @@
 # Team Ownership
 
+DEC-028 operational ownership: Member 1 owns accounting/persistence; Member 2 broker/execution contracts; Member 3 security/reliability and shared integration; Member 4 frontend/market-data consumers. Shared boundaries have one writer and affected-owner review. Use [TEAM_EXECUTION_PLAN](TEAM_EXECUTION_PLAN.md) for task packets and dependencies; historical assignments remain context.
+
 The goal is equal, clean ownership so bugs are easy to localize.
 
 ## Member 1 — Accounting & Platform State

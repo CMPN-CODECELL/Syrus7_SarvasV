@@ -39,7 +39,7 @@ class Store:
         """)
         version = self.db.execute("PRAGMA user_version").fetchone()[0]
         self.audit_clock = time.time
-        if version > 11:
+        if version > 12:
             raise ValueError("SQLite schema is newer than this application")
         if version < 1:
             self.db.execute("PRAGMA user_version=1")
@@ -62,6 +62,7 @@ class Store:
             (9, "009_audit_correlation.sql"),
             (10, "010_risk_price_guard.sql"),
             (11, "011_benchmark_runs.sql"),
+            (12, "012_operator_grants.sql"),
         ):
             if version < number:
                 sql = (

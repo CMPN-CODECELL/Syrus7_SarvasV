@@ -31,4 +31,9 @@ def settings():
         result["yahoo_symbols"] = tuple(
             symbol.strip().upper() for symbol in symbols.split(",") if symbol.strip()
         )
+    trusted_origins = os.getenv(
+        "ALGOSHIELD_TRUSTED_ORIGINS", values.get("ALGOSHIELD_TRUSTED_ORIGINS")
+    )
+    if trusted_origins is not None:
+        result["trusted_origins"] = trusted_origins
     return result

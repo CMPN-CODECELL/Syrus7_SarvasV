@@ -1,0 +1,15 @@
+# Implementation delta
+
+Current task sequencing and ownership live in [TEAM_EXECUTION_PLAN](TEAM_EXECUTION_PLAN.md), the sole execution plan under DEC-028. Evidence is in [requirements traceability](REQUIREMENTS_TRACEABILITY.md) and [integration progress](progress/INTEGRATION.md).
+
+Confirmed remaining gaps:
+
+- P0: verified 021 orders, fills, cancellation, history, charges and raw feed contracts; no fabricated adapter behavior.
+- P0: isolated PostgreSQL transaction, restart and ownership evidence; production access is excluded.
+- P0: real-provider reconciliation coverage and verified kill/flatten semantics, including opposing strategies.
+- P1: actual React browser smoke, deployment Origin/proxy configuration and reproducible runtime evidence.
+- Conditional: correction/late-fee accounting only after an accepted provider event contract.
+
+Existing mock accounting, risk reservations, security projection, runtime isolation bounds and evidence panels must be reused. A passing mock suite does not certify live readiness. Member research is evidence to assess, not independent implementation authority.
+
+The [pre-promotion delta](archive/2026-10-09/IMPLEMENTATION_DELTA-pre-promotion.md) retains previous decisions and task history; it is not an active competing plan.

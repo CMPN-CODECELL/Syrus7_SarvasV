@@ -587,7 +587,81 @@ The operational surface now spans independent workflows that need routing, share
 ### Impact
 `frontend/src` becomes the UI source, `frontend/dist` remains generated and ignored, legacy login/register pages are removed, and direct-route refresh requires a completed frontend build. Backend-only environments receive an explicit 503 build instruction when assets are absent.
 
-## DEC-026 — Optional supervised Yahoo quote evidence
+## DEC-026 — Explicit operators and shared account response projection
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Context
+Authenticated ordinary users could invoke platform-wide mutations, and several
+action/evidence endpoints returned global snapshots. A two-account probe proved
+that `POST /api/reconcile` disclosed another account's subscription. Public
+registration could not safely imply administrative authority.
+
+### Decision
+Add durable `operator_grants` through forward-only SQLite migration 012 and
+PostgreSQL migration 011. Resolve grants during existing session validation. No
+HTTP endpoint grants authority; a local offline command provisions an existing
+registered user. Global controls require an operator while own-account actions
+retain ownership checks.
+
+Apply reusable `AccountResponseScope` after authoritative calculations to
+snapshots, streams, actions, proof, reconciliation, traces, broker evidence and
+nested audit payloads. Operators also receive only their account's private
+evidence. Preserve global gate/health/proof verdicts, kill result/timing and
+aggregate diagnostics. Internal reconciliation, ledger and risk inputs remain
+unfiltered. Unknown or unattributed traces are denied.
+
+### Reason
+This closes function-level authorization and response leakage without changing
+financial truth or adding an external dependency to the kill path. Durable
+grants support restart and immediate revocation for existing sessions.
+
+### Impact
+SQLite provisioning and two-account/operator regressions are
+IMPLEMENTED_VERIFIED. PostgreSQL migration/provisioning is
+IMPLEMENTED_UNVERIFIED pending an isolated database. Production identity,
+cookie/TLS and operator governance remain BLOCKED. Existing migrations are
+immutable and 021 semantics are unchanged.
+
+## DEC-027 — Targeted Round 2 security, identity and evidence integration
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Decision
+Permit authoritative OPEN → REJECTED only with zero executed quantity; retain
+filled/terminal/UNKNOWN guards. Reject mock order identity reuse with different
+intent/account. Keep canonical platform IDs and specify scoped provider mapping
+in CONTRACTS; defer real mapping until sponsor evidence, without a new column.
+
+Use configured browser Origins for unsafe HTTP and cookie WebSockets; deny
+missing/untrusted Origin with an explicit nonbrowser Bearer exception. Never
+derive trust from Host/forwarded headers. Ship `--no-proxy-headers` and document
+shared-peer limits. Upgrade legacy passwords on successful login using versioned
+standard-library PBKDF2-SHA256/600000 with compare-and-swap. Add bounded monotonic
+single-worker login attempts and outcome-only audit. Preserve DEC-026 authority
+and projection. Render executed/requested quantities and actual candle-linked
+signals through existing React telemetry, without financial calculations.
+
+### Reason and impact
+Current-dev regressions proved rejection, Origin/hash and mock identity gaps;
+member reports were candidate evidence, not merge-ready branches. Existing TEXT
+hash/salt columns suffice: SQLite stays v12, no migration/dependency/lock changes.
+Corrections/late fees remain unsupported pending event contracts; no ledger or
+candle rewrite. Archive inspected superseded plans/visual reference with redirects
+and repaired links; preserve canonical docs, original research and decision history.
+Member logs become optional startup evidence. Exact checks and blockers are in
+ROUND2_INTEGRATION_AUDIT and progress/INTEGRATION.
+
+
+## DEC-028 ? Direct branch pushes and unified execution plan (2026-10-09)
+
+Status: ACCEPTED. Owner explicitly authorized safe main promotion and then requested removal of mandatory PR workflow. Team members may directly push branches with repository write access; PRs are optional. This supersedes previous dev-only/no-main operational instructions. The integration lead promotes validated dev checkpoints to main by normal fast-forward push after successful CI; no force or server-rule bypass. Application operator grants remain unchanged.
+
+TEAM_EXECUTION_PLAN is the sole active four-member task/dependency plan. REQUIREMENTS_TRACEABILITY records scoped code/test evidence; IMPLEMENTATION_DELTA summarizes remaining gaps. Preserve historical decisions, research and migrations. Provider contracts, isolated PostgreSQL and current browser coverage remain blockers, not inferred successes.
+
+The sole executable release change repairs push CI: build/test/lint the frontend before pytest and run mock rehearsals. Commit 63266eb passed GitHub CI and was normally fast-forwarded to origin/main. PR #1 was closed without merge after the owner's direct-push instruction. No GitHub permission/protection edits were made.
+
+## DEC-029 — Optional supervised Yahoo quote evidence
 Date: 2026-10-09
 Status: ACCEPTED
 

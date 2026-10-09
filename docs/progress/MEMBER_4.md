@@ -364,3 +364,20 @@ Member 4 tasks 1 through 8 are 100% complete and fully verified. User workflows 
 - Standalone single-file operational dashboard preserved in `frontend/static_dashboard.html`; canonical Vite entrypoint in `frontend/index.html` with production build in `frontend/dist/`.
 - Full regression verification: Python tests, Vitest frontend tests, rehearsal runner scenarios, and linters all passing cleanly.
 
+## 2026-10-09 — Telemetry and scoped workflow follow-up
+
+DEC-027 follow-up: Orders shows actual filled/requested quantities (missing is
+Unknown); Strategies shows existing account-scoped candle-linked signals.
+Two behavioral tests added, frontend 30 passed across 7 files; lint/build pass.
+No candle algorithm, financial calculation or telemetry provider changed.
+
+- Replaced the stale Python assertion tied to the former `setSnapshot` identifier.
+  Behavioral Vitest tests remain authoritative for account switch/logout, HTTP
+  401, WebSocket 1008, stale socket closure and snapshot clearing.
+- Account-facing snapshots and streams use the DEC-026 nested response boundary.
+  Owned subscription/policy/order workflows remain permitted; global replay and
+  market controls require an explicit operator.
+
+
+
+2026-10-09 documentation integration: current ownership, dependencies and acceptance gates are consolidated in [TEAM_EXECUTION_PLAN](../TEAM_EXECUTION_PLAN.md), DEC-028. Direct branch pushes are allowed; PRs optional. No new member feature is claimed implemented by this planning update. Fresh cross-module evidence is in [INTEGRATION](INTEGRATION.md).

@@ -549,6 +549,9 @@ def test_backend_derived_states_preserved():
 
 
 def test_unavailable_backend_and_reconnect_handling():
+    # Browser session invalidation is exercised behaviorally in
+    # frontend/src/test/telemetry.test.jsx (logout/account switch, HTTP 401,
+    # WS 1008, stale socket teardown). This test owns backend lifecycle behavior.
     # Backend shutdown and restore lifecycle
     platform = Platform()
     try:
