@@ -12,7 +12,7 @@ import time
 import json
 from threading import Event, Lock, Thread, current_thread
 
-from backend.broker.official021 import ObservationKind, parse_market_frames
+from backend.broker.official021 import ObservationKind, Provider021Error, parse_market_frames
 from backend.shared.contracts import Tick
 
 
@@ -94,8 +94,20 @@ class MarketData021Provider:
                     if isinstance(frame, str):
                         continue
                     self.received += 1
-                    for observation in parse_market_frames(frame):
-                        self._emit(observation)
+                    try:
+                        observations = parse_market_frames(frame)
+                    except Exception as exc:
+                        with self._lock:
+                            self.errors.append(type(exc).__name__)
+                        self.platform.reliability.fail_closed("021_FEED_PROTOCOL_ERROR")
+                        continue
+                    for observation in observations:
+                        try:
+                            self._emit(observation)
+                        except (ValueError, Provider021Error) as exc:
+                            with self._lock:
+                                self.errors.append(type(exc).__name__)
+                            self.platform.reliability.fail_closed("021_FEED_UPDATE_REJECTED")
             finally:
                 with self._lock:
                     self._connected = False
@@ -147,6 +159,13 @@ class MarketData021Provider:
             self._last_volume[volume_key] = observation.cumulative_volume
         received_at = time.time()
         timestamp = observation.exchange_timestamp or int(received_at)
+        # The documented exchange epoch is not consistently applied by the
+        # development feed.  Never place a candle in the future or reorder the
+        # stream: use receive-time evidence while retaining the raw timestamp.
+        if abs(timestamp - int(received_at)) > 86_400:
+            timestamp = int(received_at)
+            with self._lock:
+                self.errors.append("EXCHANGE_TIMESTAMP_FALLBACK_RECEIVE_TIME")
         raw_volume = (
             "na"
             if observation.cumulative_volume is None

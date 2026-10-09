@@ -79,3 +79,16 @@ def test_connected_telemetry_reflects_socket_state_not_thread_presence():
     provider._thread = type("ThreadStub", (), {"is_alive": lambda self: True})()
 
     assert provider.telemetry()["connected"] is False
+
+
+def test_implausible_exchange_epoch_uses_receive_time_for_candles(monkeypatch):
+    platform = FakePlatform()
+    provider = MarketData021Provider(platform, FakeAdapter(), ["TCS"])
+    monkeypatch.setattr("backend.market_data.official021.time.time", lambda: 1_791_529_395)
+
+    provider._emit(observation(timestamp=2_106_901_823))
+
+    tick = platform.ticks[0][0]
+    assert tick.event_timestamp == 1_791_529_395
+    assert tick.raw_event_timestamp == "2106901823"
+    assert "EXCHANGE_TIMESTAMP_FALLBACK_RECEIVE_TIME" in provider.telemetry()["errors"]
