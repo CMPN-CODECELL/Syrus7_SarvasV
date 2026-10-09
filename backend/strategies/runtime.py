@@ -4,12 +4,52 @@ from concurrent.futures.thread import _threads_queues, _worker
 from decimal import Decimal
 import inspect
 import json
+import re
 import threading
 import weakref
 
 from backend.shared.contracts import OrderIntent, Side
 
 KINDS = {"momentum", "mean_reversion", "breakout", "rsi_reversal"}
+MAX_BATCH_SYMBOLS = 20
+MAX_SYMBOL_LENGTH = 32
+MAX_INSTANCE_PREFIX_LENGTH = 48
+
+
+class SubscriptionBatchConflict(ValueError):
+    def __init__(self, existing):
+        self.existing = list(existing)
+        super().__init__("one or more strategy instances already exist")
+
+
+def normalize_subscription_symbols(symbols):
+    """Normalize symbols without changing punctuation used by the trading venue."""
+    normalized = []
+    seen = set()
+    for raw_symbol in symbols:
+        if not isinstance(raw_symbol, str):
+            raise ValueError("symbols must be strings")
+        symbol = raw_symbol.strip().upper()
+        if not symbol:
+            raise ValueError("blank symbols are not allowed")
+        if len(symbol) > MAX_SYMBOL_LENGTH:
+            raise ValueError(f"symbols must be at most {MAX_SYMBOL_LENGTH} characters")
+        if symbol not in seen:
+            seen.add(symbol)
+            normalized.append(symbol)
+    if not normalized:
+        raise ValueError("at least one symbol is required")
+    if len(normalized) > MAX_BATCH_SYMBOLS:
+        raise ValueError(f"no more than {MAX_BATCH_SYMBOLS} unique symbols are allowed")
+    return normalized
+
+
+def subscription_id_fragment(value):
+    """Convert an ID component to a deterministic, URL-safe fragment."""
+    fragment = re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
+    if not fragment:
+        raise ValueError("identifier must contain at least one letter or number")
+    return fragment
 
 
 class BoundedStrategyExecutor(ThreadPoolExecutor):
@@ -25,15 +65,23 @@ class BoundedStrategyExecutor(ThreadPoolExecutor):
         num_threads = len(self._threads)
         if num_threads < self._max_workers:
             thread_name = f"{self._thread_name_prefix or self}_{num_threads}"
+            if hasattr(self, "_create_worker_context"):
+                worker_args = (
+                    weakref.ref(self, weakref_cb),
+                    self._create_worker_context(),
+                    self._work_queue,
+                )
+            else:
+                worker_args = (
+                    weakref.ref(self, weakref_cb),
+                    self._work_queue,
+                    getattr(self, "_initializer", None),
+                    getattr(self, "_initargs", ()),
+                )
             t = threading.Thread(
                 name=thread_name,
                 target=_worker,
-                args=(
-                    weakref.ref(self, weakref_cb),
-                    self._work_queue,
-                    self._initializer,
-                    self._initargs,
-                ),
+                args=worker_args,
                 daemon=True,
             )
             t.start()
@@ -259,6 +307,88 @@ class StrategyRuntime:
                 self._subscription_generations.get(strategy, 0) + 1
             )
             self.store.audit("SUBSCRIBED", {"strategy": strategy, "account": account})
+
+    def subscribe_many(self, account, kind, symbols, instance_prefix=None):
+        """Atomically create independent one-symbol strategy instances."""
+        normalized_kind = kind.strip().lower() if isinstance(kind, str) else ""
+        if normalized_kind not in self.handlers:
+            raise ValueError("unknown strategy")
+        if not account:
+            raise ValueError("account is required")
+        normalized_symbols = normalize_subscription_symbols(symbols)
+        raw_prefix = (
+            normalized_kind if instance_prefix is None else instance_prefix.strip()
+        )
+        if not raw_prefix:
+            raise ValueError("instance prefix is required")
+        if len(raw_prefix) > MAX_INSTANCE_PREFIX_LENGTH:
+            raise ValueError(
+                f"instance prefix must be at most {MAX_INSTANCE_PREFIX_LENGTH} characters"
+            )
+        prefix = subscription_id_fragment(raw_prefix)
+        created = [
+            {
+                "id": f"{prefix}-{subscription_id_fragment(symbol)}",
+                "account": account,
+                "kind": normalized_kind,
+                "symbol": symbol,
+                "enabled": 1,
+            }
+            for symbol in normalized_symbols
+        ]
+        ids = [row["id"] for row in created]
+        if len(set(ids)) != len(ids):
+            raise ValueError("symbols generate duplicate strategy instance IDs")
+
+        with self.store.transaction() as db:
+            if not db.execute(
+                "SELECT id FROM accounts WHERE id=?", (account,)
+            ).fetchone():
+                raise ValueError("account does not exist")
+            placeholders = ",".join("?" for _ in ids)
+            existing = [
+                row["id"]
+                for row in db.execute(
+                    f"SELECT id FROM subscriptions WHERE id IN ({placeholders}) "
+                    "ORDER BY id",
+                    tuple(ids),
+                ).fetchall()
+            ]
+            if existing:
+                raise SubscriptionBatchConflict(existing)
+            for row in created:
+                db.execute(
+                    "INSERT INTO subscriptions(id,account,kind,symbol,enabled) "
+                    "VALUES (?,?,?,?,1)",
+                    (row["id"], account, normalized_kind, row["symbol"]),
+                )
+                self.store.audit(
+                    "SUBSCRIBED",
+                    {
+                        "strategy": row["id"],
+                        "account": account,
+                        "kind": normalized_kind,
+                        "symbol": row["symbol"],
+                        "batch": True,
+                    },
+                )
+            self.store.audit(
+                "SUBSCRIPTIONS_BATCH_CREATED",
+                {
+                    "account": account,
+                    "kind": normalized_kind,
+                    "instance_prefix": prefix,
+                    "symbols": normalized_symbols,
+                    "strategy_instances": ids,
+                },
+            )
+
+        with self._state_lock:
+            for strategy_id in ids:
+                self._subscription_generations[strategy_id] = 1
+                self.indicators.pop(strategy_id, None)
+                self._instance_locks[strategy_id] = threading.Lock()
+        return created
 
     def set_enabled(self, account, strategy, enabled):
         with self.store.transaction() as db:

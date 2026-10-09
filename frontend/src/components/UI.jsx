@@ -1,6 +1,6 @@
 export function Page({eyebrow,title,description,actions,children}){return <><header className="page-head"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>{actions&&<div className="actions">{actions}</div>}</header>{children}</>}
 export function Card({title,meta,children,className=''}){return <section className={`card ${className}`}><header><h2>{title}</h2>{meta&&<span className="muted">{meta}</span>}</header>{children}</section>}
-export function Status({value}){const normalized=String(value??'UNKNOWN').toUpperCase();const tone=['SUCCESS','VERIFIED','VERIFIED_SAFE','HEALTHY','RUNNING','MATCHED','OPEN'].includes(normalized)?'good':['FAILED','UNSAFE','DRIFTED','UNCERTAIN','KILLED','HALTED'].includes(normalized)?'bad':'warn';return <span className={`status ${tone}`}><i/>{normalized}</span>}
+export function Status({value}){const normalized=String(value??'UNKNOWN').toUpperCase();const tone=['PASS','SUCCESS','VERIFIED','VERIFIED_SAFE','HEALTHY','RUNNING','MATCHED','OPEN'].includes(normalized)?'good':['FAIL','FAILED','UNSAFE','DRIFTED','UNCERTAIN','KILLED','HALTED'].includes(normalized)?'bad':'warn';return <span className={`status ${tone}`}><i/>{normalized}</span>}
 export function Money({value}){
   if(value===null||value===undefined||value==='')return <span className="muted">—</span>
   const raw=typeof value==='string'?value.trim():String(value)

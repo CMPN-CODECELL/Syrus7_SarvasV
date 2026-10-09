@@ -652,14 +652,28 @@ and repaired links; preserve canonical docs, original research and decision hist
 Member logs become optional startup evidence. Exact checks and blockers are in
 ROUND2_INTEGRATION_AUDIT and progress/INTEGRATION.
 
+## DEC-028 — Direct branch pushes and unified execution plan
+Date: 2026-10-09
+Status: ACCEPTED
 
-## DEC-028 ? Direct branch pushes and unified execution plan (2026-10-09)
+### Decision
+Team members may directly push branches with repository write access; pull
+requests are optional. This supersedes previous dev-only/no-main operational
+instructions. The integration lead promotes validated dev checkpoints to main by
+normal fast-forward push after successful CI; no force or server-rule bypass.
+Application operator grants remain unchanged.
 
-Status: ACCEPTED. Owner explicitly authorized safe main promotion and then requested removal of mandatory PR workflow. Team members may directly push branches with repository write access; PRs are optional. This supersedes previous dev-only/no-main operational instructions. The integration lead promotes validated dev checkpoints to main by normal fast-forward push after successful CI; no force or server-rule bypass. Application operator grants remain unchanged.
+`TEAM_EXECUTION_PLAN.md` is the sole active four-member task/dependency plan.
+`REQUIREMENTS_TRACEABILITY.md` records scoped code/test evidence, while
+`IMPLEMENTATION_DELTA.md` summarizes remaining gaps. Preserve historical
+decisions, research and migrations. Provider contracts, isolated PostgreSQL and
+current browser coverage remain blockers, not inferred successes.
 
-TEAM_EXECUTION_PLAN is the sole active four-member task/dependency plan. REQUIREMENTS_TRACEABILITY records scoped code/test evidence; IMPLEMENTATION_DELTA summarizes remaining gaps. Preserve historical decisions, research and migrations. Provider contracts, isolated PostgreSQL and current browser coverage remain blockers, not inferred successes.
-
-The sole executable release change repairs push CI: build/test/lint the frontend before pytest and run mock rehearsals. Commit 63266eb passed GitHub CI and was normally fast-forwarded to origin/main. PR #1 was closed without merge after the owner's direct-push instruction. No GitHub permission/protection edits were made.
+### Reason and impact
+The owner explicitly authorized safe main promotion and then removed the
+mandatory PR workflow. Commit `63266eb` repaired push CI ordering, passed GitHub
+CI and was normally fast-forwarded to `origin/main`; PR #1 was closed without
+merge. No GitHub permission/protection changes were made.
 
 ## DEC-029 — Optional supervised Yahoo quote evidence
 Date: 2026-10-09
@@ -673,3 +687,22 @@ Task 9A confirmed sampled price messages but did not establish complete exchange
 
 ### Impact
 `Tick` and `Candle` gain additive source and volume-availability evidence. The `yahoo` extra pins the probed yfinance 1.7.0, which resolves with the existing `websockets>=13,<16` constraint (validated with 15.0.1). Yahoo can never be mixed with replay in a running timeline and does not establish 021 compatibility.
+
+## DEC-030 — Atomic multi-stock subscription orchestration
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Context
+Traders need to apply one strategy kind to several stocks without manually repeating subscription creation. The existing safety and accounting model is explicitly keyed by strategy instance and symbol, so changing one subscription row to own many symbols would couple indicator state, failure handling, risk and P&L and weaken existing invariants.
+
+### Decision
+Keep one strategy instance equal to one symbol. Add authenticated `POST /api/subscriptions/batch` as an orchestration boundary that normalizes up to 20 unique symbols, generates deterministic instance IDs, checks all collisions, and inserts all ordinary subscription rows and audit evidence in one database transaction. A failure creates no rows. In-memory generations and instance locks are initialized only after commit. The React form uses this endpoint for both one-stock and multi-stock creation and displays only backend-confirmed outcomes.
+
+### Reason
+This provides a simple trader workflow while preserving per-instance candle state, callback quarantine, risk decisions, broker attribution, ledger keys, start/stop control and reconciliation behavior.
+
+### Impact
+No schema or broker/provider contract changes. Existing `POST /api/subscriptions` remains compatible. Replay already discovers unique enabled subscription symbols. It remains the explicit default/fallback mode when Yahoo is unavailable, selected at clean process startup; there is no automatic source switch, candle-timeline mixing, backfill, or trading resume. Live 021 symbol-subscription behavior remains unknown and is not inferred.
+
+### Alternatives
+A symbols array or JSON column on one subscription was rejected because it creates shared failure and accounting state. Repeated frontend calls were rejected because they can partially succeed. A second multi-symbol execution model was rejected because it duplicates existing contracts.

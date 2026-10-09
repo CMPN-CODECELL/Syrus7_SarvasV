@@ -12,4 +12,6 @@ Confirmed remaining gaps:
 
 Existing mock accounting, risk reservations, security projection, runtime isolation bounds and evidence panels must be reused. A passing mock suite does not certify live readiness. Member research is evidence to assess, not independent implementation authority.
 
+Feature-branch extension: DEC-029 adds authenticated atomic multi-stock subscription orchestration while preserving one strategy instance per symbol and independent state, risk, accounting and failure isolation. It is verified for offline mock/replay only and remains outside the DEC-028 release baseline until reviewed and integrated there. Live symbol availability remains provider-blocked.
+
 The [pre-promotion delta](archive/2026-10-09/IMPLEMENTATION_DELTA-pre-promotion.md) retains previous decisions and task history; it is not an active competing plan.

@@ -5,6 +5,27 @@
 - Status: BLOCKED
 - Last updated: 2026-10-09 Asia/Kolkata
 
+## 2026-10-09 — Multi-stock branch integration
+
+- Integrated the branch's authenticated atomic `POST /api/subscriptions/batch`
+  orchestration while retaining one strategy instance per symbol. Normalization,
+  collision preflight, ownership, indicator state, failure quarantine, risk,
+  execution attribution and financial evidence remain per instance and symbol.
+- Integrated the React multi-stock entry/filter workflow, including accessible
+  quick-select demo shortcuts, deterministic ID previews, one batch request,
+  pending/error evidence and explicit all-or-nothing conflict messaging.
+- The branch does not implement a Yahoo adapter or automatic Yahoo-to-mock
+  failover. Existing replay already discovers every enabled subscription symbol,
+  so it remains the explicit mock fallback selected on a clean process start.
+  A stale/disconnected Yahoo session stays fail-closed; it does not mix synthetic
+  ticks into Yahoo candles, fabricate backfill, or automatically resume trading.
+- Uncommitted merged-tree validation: 403 backend tests passed with one
+  environment-gated PostgreSQL skip; 85 focused Yahoo/multi-stock/operator/
+  Failure Lab tests passed; 40 React tests passed; Ruff lint/format, ESLint,
+  Vite production build, TypeScript, documentation links and all seven
+  deterministic safety rehearsals passed. Browser automation was not rerun for
+  this merge.
+
 ## 2026-10-09 — Task 9B optional Yahoo external market data
 
 - Replay remains default. Explicit opt-in config attaches a supervised yfinance provider with a fixed `TCS.NS -> TCS`, `INFY.NS -> INFY` mapping and refuses replay/Yahoo timeline mixing or non-mock execution.

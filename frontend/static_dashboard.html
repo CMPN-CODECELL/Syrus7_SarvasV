@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -1233,6 +1233,7 @@
           Run replay</button
         ><button class="button" id="reconcile" type="button">Reconcile</button
         ><button class="button" id="resume" type="button">Resume</button
+        ><button class="button" id="reset-kill" type="button">Reset kill latch</button
         ><button class="button danger" id="kill" type="button">Kill all</button
         ><span class="command-spacer"></span
         ><span class="mode-label" id="mode">Loading modeΓÇª</span>
@@ -1568,6 +1569,7 @@
         demo: "/api/demo",
         reconcile: "/api/reconcile",
         resume: "/api/resume",
+        "reset-kill": "/api/kill/reset",
         kill: "/api/kill",
       };
       let state = null;

@@ -8,6 +8,7 @@ const actionLabels={
   '/api/demo':'Run replay',
   '/api/reconcile':'Reconcile',
   '/api/resume':'Resume',
+  '/api/kill/reset':'Reset kill latch',
 }
 
 export function OverviewPage(){
@@ -17,6 +18,8 @@ export function OverviewPage(){
   if(!s)return <Empty>Waiting for authenticated backend state…</Empty>
   const proof=s.safety_proof||{}
   const rows=strategyRows(s)
+  const activeStocks=new Set((s.subscriptions||[]).filter(item=>item.enabled).map(item=>item.symbol)).size
+  const isKillLatched=Boolean(s.safety?.kill_latched||s.gate==='KILLED')
   const run=async(path)=>{
     if(pending)return
     setPending(path);setError('')
@@ -25,13 +28,15 @@ export function OverviewPage(){
     finally{setPending('')}
   }
   const actionButton=(path,className='')=><button disabled={!!pending} onClick={()=>run(path)} className={className}>{pending===path?'Working…':actionLabels[path]}</button>
-  return <Page eyebrow="Control plane" title="Operational truth, at a glance." description="Live account state from fills, reconciliation, and the non-bypassable risk gateway." actions={<>{actionButton('/api/demo','primary')}{actionButton('/api/reconcile')}{actionButton('/api/resume')}</>}>
+  return <Page eyebrow="Control plane" title="Operational truth, at a glance." description="Live account state from fills, reconciliation, and the non-bypassable risk gateway." actions={<>{actionButton('/api/demo','primary')}{actionButton('/api/reconcile')}{isKillLatched&&actionButton('/api/kill/reset')}{actionButton('/api/resume')}</>}>
     {error&&<div className="error" role="alert">{error}</div>}
     <div className="stat-grid">
-      <Card title="Trading gate"><Status value={s.gate}/><p>New exposure follows the global gate.</p></Card>
+      <Card title="Trading gate"><Status value={s.gate}/><p>{isKillLatched?'Kill switch is latched. Reconcile, then use the verified operator reset.':'New exposure follows the global gate.'}</p></Card>
       <Card title="Reconciliation"><Status value={s.health}/><p>{s.safety?.reconciliation?.reason||'No report'}</p></Card>
       <Card title="Execution evidence"><strong>{s.counts?.orders??0} · {s.counts?.fills??0}</strong><p>orders · unique fills</p></Card>
       <Card title="Market data"><strong>{s.market_data?.accepted_ticks??0}</strong><p>{s.market_data?.duplicate_ticks??0} duplicate · {s.market_data?.late_ticks??0} late</p></Card>
+      <Card title="Active stocks"><strong>{activeStocks}</strong><p>unique enabled symbols</p></Card>
+      <Card title="Strategy instances"><strong>{s.subscriptions?.length??0}</strong><p>independent symbol-level ledgers</p></Card>
     </div>
     <div className="grid two">
       <Card title="Subscribed strategies" meta={`${s.subscriptions?.length||0} configured`}>

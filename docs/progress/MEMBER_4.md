@@ -8,6 +8,7 @@ Market Data & Strategies; canonical responsibilities: ../TEAM_OWNERSHIP.md, Memb
 - Current task: await authoritative 021 feed contract and production identity-provider integration
 - Status: BLOCKED
 - Last updated: 2026-10-08 23:56 Asia/Kolkata
+- 2026-10-09: Implemented atomic multi-stock subscription orchestration while preserving one instance per symbol. Added authenticated batch validation/normalization, deterministic IDs, preflight collision reporting, transactional inserts and audit evidence; added the unified React chip/preview workflow, strategy filters, overview stock/instance counts and Market Data symbol filtering. Tests cover normalization, auth/ownership, rollback, limits, replay/candles, accounting and callback/stop/failure isolation. Validation: 360 Python tests passed / 1 environment-gated PostgreSQL test skipped; 35 React tests, ESLint, Ruff, format check and production build passed. An isolated browser smoke created RELIANCE, TCS and ABC.NS in one request, displayed three READY rows and reported no console warnings/errors. Live 021 symbol subscription remains unclaimed.
 - 2026-10-07 integration pass: merged published Member 2/3 persistence, durable risk policies, recovery/freshness gates, bounded broker calls, kill convergence and failure-lab APIs into the Member 4 branch. Preserved the Member 4 strategy indicators, durable subscription controls, callback quarantine, symbol-scoped tick dedupe and dashboard. Combined suite: 89 passed, 1 skipped by default; isolated local PostgreSQL integration: 1 passed after applying migrations 001-005. Ruff check/format pass.
 - 2026-10-07: gated the dashboard behind the durable local session, removed account-ID entry from registration/dashboard/subscription controls, derived strategy ownership from the verified session, replaced raw safety JSON with compact evidence indicators, and verified the strategy form at a 390x844 mobile viewport with no page overflow or browser console errors. RSI reversal is the default form selection. Validation: 218 passed / 1 optional PostgreSQL skipped; Ruff and TypeScript checks pass.
 
@@ -363,7 +364,6 @@ Member 4 tasks 1 through 8 are 100% complete and fully verified. User workflows 
 - Preserved all Member 4 Tasks 1–8 functionality: isolated bounded callbacks/shutdown, generation invalidation, sequential indicator updates, monotonic replay, candle/session correctness, authenticated account scoping, truthful historical evidence, deterministic restart/kill scenarios, rehearsal runner (`scripts/rehearsal_runner.py`), and operational UX.
 - Standalone single-file operational dashboard preserved in `frontend/static_dashboard.html`; canonical Vite entrypoint in `frontend/index.html` with production build in `frontend/dist/`.
 - Full regression verification: Python tests, Vitest frontend tests, rehearsal runner scenarios, and linters all passing cleanly.
-
 ## 2026-10-09 — Telemetry and scoped workflow follow-up
 
 DEC-027 follow-up: Orders shows actual filled/requested quantities (missing is
@@ -378,6 +378,12 @@ No candle algorithm, financial calculation or telemetry provider changed.
   Owned subscription/policy/order workflows remain permitted; global replay and
   market controls require an explicit operator.
 
+## 2026-10-09 — Strategy stock quick select
 
+- Added a stock dropdown to the multi-stock strategy form while retaining manual
+  symbol entry, comma-separated paste, normalization, chips and atomic creation.
+- The dropdown distinguishes symbols observed in backend snapshots from explicitly
+  labeled demo shortcuts. It does not claim live-feed availability or silently
+  alter provider-specific symbol suffixes.
 
 2026-10-09 documentation integration: current ownership, dependencies and acceptance gates are consolidated in [TEAM_EXECUTION_PLAN](../TEAM_EXECUTION_PLAN.md), DEC-028. Direct branch pushes are allowed; PRs optional. No new member feature is claimed implemented by this planning update. Fresh cross-module evidence is in [INTEGRATION](INTEGRATION.md).
