@@ -167,6 +167,13 @@ class Platform:
         validator(normalized)
         return True
 
+    def refresh_external_market_universe(self):
+        """Ask an attached provider to rebuild its bounded subscription set."""
+        if self.external_market_data is None:
+            return True
+        refresh = getattr(self.external_market_data, "refresh_universe", None)
+        return True if refresh is None else refresh()
+
     def account(self, account_id):
         if not account_id:
             raise ValueError("account ID required")
