@@ -1,4 +1,4 @@
-import { useEffect,useRef,useState } from 'react';import { useOutletContext } from 'react-router-dom';import { api } from '../api/client';import { Card,CompactEvidence,DataTable,Empty,EvidenceView,Page,Status } from '../components/UI'
+import { useEffect,useRef,useState } from 'react';import { useOutletContext } from 'react-router-dom';import { api } from '../api/client';import { useAuth } from '../auth/AuthContext';import { Card,CompactEvidence,DataTable,Empty,EvidenceView,Page,Status } from '../components/UI'
 function RemotePage({endpoint,eyebrow,title,description,render,children}){const [data,setData]=useState(null),[error,setError]=useState('');useEffect(()=>{api.get(endpoint).then(setData).catch(e=>setError(e.status===404?'No completed evidence yet.':e.message))},[endpoint]);return <Page eyebrow={eyebrow} title={title} description={description}>{children}{error?<Empty>{error}</Empty>:data?render(data):<Empty>Loading backend evidence…</Empty>}</Page>}
 const reconciliationLabel=value=>String(value).replaceAll('_',' ').replace(/\b\w/g,letter=>letter.toUpperCase())
 const hasReconciliationDetails=value=>value&&typeof value==='object'&&(Array.isArray(value)?value.length>0:Object.keys(value).length>0)
@@ -6,13 +6,34 @@ const reconciliationSections=value=>({summary:Object.fromEntries(Object.entries(
 export function ReconciliationView({data}){const report=data.report||{};const reportSections=reconciliationSections(report);const comparisonSections=reconciliationSections(data.position_comparison);const events=(data.events||[]).map(event=>({...event,payload:auditEvidence(event.payload)}));return <><div className="reconciliation-summary"><Card title="Verification"><Status value={report.verified?'VERIFIED':'FAILED'}/></Card><Card title="Reason"><strong>{report.reason||'UNKNOWN'}</strong></Card><Card title="Unknown orders"><strong>{data.unknown_orders?.length||0}</strong></Card></div><div className="reconciliation-stack"><Card title="Position comparison"><CompactEvidence value={comparisonSections.summary}/>{comparisonSections.details.length>0?<div className="reconciliation-details">{comparisonSections.details.map(([name,value])=><section key={name}><h3>{reconciliationLabel(name)}</h3><EvidenceView value={value} name={name}/></section>)}</div>:<p className="reconciliation-clear">No broker or virtual position differences reported.</p>}</Card><Card title="Broker evidence"><CompactEvidence value={data.broker}/></Card><Card title="Recovery report"><CompactEvidence value={reportSections.summary}/>{reportSections.details.length>0&&<div className="reconciliation-details">{reportSections.details.map(([name,value])=><section key={name}><h3>{reconciliationLabel(name)}</h3><EvidenceView value={value} name={name}/></section>)}</div>}</Card>{events.length>0&&<Card title="Recent reconciliation events"><EvidenceView value={events} name="events"/></Card>}</div></>}
 export function ReconciliationPage(){
   const {refresh}=useOutletContext()||{};
+  const {user,refresh:refreshAuth}=useAuth()||{};
+  const isOperator=Boolean(user?.is_operator);
   const [busy,setBusy]=useState('');
   const [error,setError]=useState('');
-  const run=async action=>{if(busy)return;setBusy(action);setError('');try{await api.post(`/api/broker/${action}`);await refresh?.()}catch(e){setError(e.message||'Broker control failed.')}finally{setBusy('')}};
-  const disconnect=()=>{if(confirm('Disconnect the broker and fail closed?'))run('disconnect')};
+  const run=async action=>{
+    if(busy||!isOperator)return;
+    setBusy(action);setError('');
+    try{await api.post(`/api/broker/${action}`);await refresh?.()}
+    catch(e){
+      if(e?.status===403){await refreshAuth?.()}
+      setError(e.message||'Broker control failed.')
+    }finally{setBusy('')}
+  };
+  const disconnect=()=>{if(!isOperator)return;if(confirm('Disconnect the broker and fail closed?'))run('disconnect')};
   return <RemotePage endpoint="/api/reconciliation" eyebrow="Recovery" title="Reconciliation center" description="Expected local state compared with observed broker truth." render={data=><ReconciliationView data={data}/>}> 
     {error&&<div className="error" role="alert">{error}</div>}
-    <Card title="Broker controls"><p className="muted">Operator-only controls. Reconnect always reconciles before trading can resume.</p><div className="actions"><button type="button" disabled={!!busy} onClick={()=>run('updates/sync')}>{busy==='updates/sync'?'Syncing…':'Sync broker updates'}</button><button type="button" disabled={!!busy} onClick={()=>run('reconnect')}>{busy==='reconnect'?'Reconnecting…':'Reconnect and reconcile'}</button><button type="button" disabled={!!busy} onClick={disconnect}>{busy==='disconnect'?'Disconnecting…':'Disconnect broker'}</button></div></Card>
+    <Card title="Broker controls">
+      <p className="muted">
+        {isOperator
+          ? 'Operator-only controls. Reconnect always reconciles before trading can resume.'
+          : 'Operator authority required to use broker controls.'}
+      </p>
+      <div className="actions">
+        <button type="button" disabled={!!busy||!isOperator} title={!isOperator?'Operator authority required':undefined} onClick={()=>run('updates/sync')}>{busy==='updates/sync'?'Syncing…':'Sync broker updates'}</button>
+        <button type="button" disabled={!!busy||!isOperator} title={!isOperator?'Operator authority required':undefined} onClick={()=>run('reconnect')}>{busy==='reconnect'?'Reconnecting…':'Reconnect and reconcile'}</button>
+        <button type="button" disabled={!!busy||!isOperator} title={!isOperator?'Operator authority required':undefined} onClick={disconnect}>{busy==='disconnect'?'Disconnecting…':'Disconnect broker'}</button>
+      </div>
+    </Card>
   </RemotePage>
 }
 export function TracesPage(){
@@ -235,6 +256,8 @@ function FailureResult({result,details}){
 
 export function FailureLabPage(){
   const {snapshot} = useOutletContext() || {};
+  const {user,refresh:refreshAuth} = useAuth() || {};
+  const isOperator = Boolean(user?.is_operator);
   const [scenarios,setScenarios]=useState([]);
   const [details,setDetails]=useState({});
   const [selectedScenario,setSelectedScenario]=useState('partial');
@@ -307,6 +330,10 @@ export function FailureLabPage(){
   };
 
   const run=async(scenario,customParams)=>{
+    if(!isOperator){
+      setError('Operator authority required to run Failure Lab scenarios.');
+      return;
+    }
     if(!mockLabEnabled){
       setError('Failure Lab is available only in offline mock mode. Stop the 021 backend and restart with ALGOSHIELD_021_ENABLED=false to run synthetic tests.');
       return;
@@ -320,6 +347,7 @@ export function FailureLabPage(){
     try{
       setResult(await api.post(`/api/failure-lab/${scenario}`,paramsToSend));
     }catch(e){
+      if(e?.status===403){await refreshAuth?.()}
       setError(e.message);
     }finally{
       setBusy('');
@@ -444,10 +472,10 @@ export function FailureLabPage(){
               type="button"
               className="primary lab-inspector-run"
               aria-label="Run selected scenario with configured parameters"
-              disabled={!!busy||!mockLabEnabled}
+              disabled={!!busy||!mockLabEnabled||!isOperator}
               onClick={()=>run(selectedScenario)}
             >
-              {busy===selectedScenario?'Running mock test…':`Run ${activeGuide.title} with configured parameters`}
+              {busy===selectedScenario?'Running mock test…':!isOperator?'Run scenario (Operator required)':`Run ${activeGuide.title} with configured parameters`}
             </button>
           </div>
         </section>
@@ -482,7 +510,7 @@ export function FailureLabPage(){
                     <button
                       type="button"
                       className={`scenario-run-btn ${isBusy?'active':''}`}
-                      disabled={!!busy||!mockLabEnabled}
+                      disabled={!!busy||!mockLabEnabled||!isOperator}
                       onClick={e=>{
                         e.stopPropagation();
                         setSelectedScenario(s);
@@ -490,7 +518,7 @@ export function FailureLabPage(){
                       }}
                       aria-label={`Run ${guide.title} mock test`}
                     >
-                      {isBusy?'Test running…':'Run on current mock platform'}
+                      {isBusy?'Test running…':!isOperator?'Operator required':'Run on current mock platform'}
                     </button>
                   </div>
                 </div>
@@ -510,9 +538,33 @@ export function FailureLabPage(){
     </Page>
   );
 }
-export function SafetyBenchPage(){const [data,setData]=useState(null),[busy,setBusy]=useState(false),[iterations,setIterations]=useState(25),[error,setError]=useState('');useEffect(()=>{api.get('/api/safety-bench/latest').then(setData).catch(()=>{})},[]);const run=async()=>{setBusy(true);setError('');try{setData(await api.post('/api/safety-bench/run',{iterations}))}catch(runError){setError(runError.message||'Benchmark failed.')}finally{setBusy(false)}};return <Page eyebrow="Isolated benchmark" title="SafetyBench" description="Bounded reliability tests run away from live platform state." actions={<div className="bench-control"><label>Iterations<input type="number" min="1" max="100" value={iterations} onChange={e=>setIterations(Number(e.target.value))}/></label><button className="primary" disabled={busy} onClick={run}>{busy?'Running…':'Run benchmark'}</button></div>}>{error&&<div className="error" role="alert">{error}</div>}{data?<Card title="Latest completed run"><EvidenceView value={data}/></Card>:<Empty>No completed benchmark run.</Empty>}</Page>}
+export function SafetyBenchPage(){
+  const {user,refresh:refreshAuth}=useAuth()
+  const isOperator=Boolean(user?.is_operator)
+  const [data,setData]=useState(null)
+  const [busy,setBusy]=useState(false)
+  const [iterations,setIterations]=useState(25)
+  const [error,setError]=useState('')
+  useEffect(()=>{api.get('/api/safety-bench/latest').then(setData).catch(()=>{})},[])
+  const run=async()=>{
+    if(busy||!isOperator)return
+    setBusy(true)
+    setError('')
+    try{
+      setData(await api.post('/api/safety-bench/run',{iterations}))
+    }catch(runError){
+      if(runError?.status===403){await refreshAuth?.()}
+      setError(runError.message||'Benchmark failed.')
+    }finally{
+      setBusy(false)
+    }
+  }
+  return <Page eyebrow="Isolated benchmark" title="SafetyBench" description="Bounded reliability tests run away from live platform state." actions={<div className="bench-control"><label>Iterations<input type="number" min="1" max="100" value={iterations} onChange={e=>setIterations(Number(e.target.value))}/></label><button className="primary" disabled={busy||!isOperator} title={!isOperator?'Operator authority required':undefined} onClick={run}>{busy?'Running…':!isOperator?'Run benchmark (Operator required)':'Run benchmark'}</button></div>}>{error&&<div className="error" role="alert">{error}</div>}{data?<Card title="Latest completed run"><EvidenceView value={data}/></Card>:<Empty>No completed benchmark run.</Empty>}</Page>
+}
 export function MetricsPage(){return <RemotePage endpoint="/api/metrics" eyebrow="Process diagnostics" title="Operational metrics" description="Bounded runtime counters—not financial truth." render={d=><div className="grid two"><Card title="Counters"><EvidenceView value={d.counters||d}/></Card><Card title="Latency observations"><EvidenceView value={d.observations||{}}/></Card></div>}/>}
 export function MarketDataPage(){
+  const {user,refresh:refreshAuth}=useAuth()
+  const isOperator=Boolean(user?.is_operator)
   const {snapshot:s}=useOutletContext()
   const [symbol,setSymbol]=useState('')
   const quotes=Array.isArray(s?.market_data?.latest_quotes)?s.market_data.latest_quotes:[]
@@ -526,7 +578,19 @@ export function MarketDataPage(){
   const candles=(s?.candles||[]).filter(item=>!symbol||item.symbol===symbol)
   const [sessionBusy,setSessionBusy]=useState(false)
   const [sessionError,setSessionError]=useState('')
-  const setSession=async status=>{setSessionBusy(true);setSessionError('');try{await api.post('/api/market/session',{status});}catch(e){setSessionError(e.message||'Market session update failed.')}finally{setSessionBusy(false)}}
+  const setSession=async status=>{
+    if(sessionBusy||!isOperator)return
+    setSessionBusy(true)
+    setSessionError('')
+    try{
+      await api.post('/api/market/session',{status})
+    }catch(e){
+      if(e?.status===403){await refreshAuth?.()}
+      setSessionError(e.message||'Market session update failed.')
+    }finally{
+      setSessionBusy(false)
+    }
+  }
   const visibleQuotes=quotes.filter(item=>!symbol||item.symbol===symbol)
   const source=s?.market_data?.label||s?.market_data?.provider||'Unavailable'
   const eventTime=s?.market_data?.last_event_timestamp
@@ -543,7 +607,13 @@ export function MarketDataPage(){
       <Card title="Last quote event"><strong>{asUtc(eventTime)}</strong><p>Raw: {s?.market_data?.last_raw_event_timestamp??'—'}</p></Card>
       <Card title="Last received"><strong>{asUtc(receivedTime)}</strong><p>{s?.market_data?.received_messages??'—'} received · {s?.market_data?.accepted_updates??'—'} accepted</p></Card>
       <Card title="Session"><Status value={s?.market_session?.status}/></Card>
-      <Card title="Operator session control"><div className="actions"><button type="button" disabled={sessionBusy} onClick={()=>setSession('OPEN')}>Open</button><button type="button" disabled={sessionBusy} onClick={()=>setSession('CLOSED')}>Close</button></div></Card>
+      <Card title="Operator session control">
+        {!isOperator&&<p className="muted" style={{margin:'0 0 0.5rem 0',fontSize:'0.85rem'}}>Operator required</p>}
+        <div className="actions">
+          <button type="button" disabled={sessionBusy||!isOperator} title={!isOperator?'Operator authority required':undefined} onClick={()=>setSession('OPEN')}>Open</button>
+          <button type="button" disabled={sessionBusy||!isOperator} title={!isOperator?'Operator authority required':undefined} onClick={()=>setSession('CLOSED')}>Close</button>
+        </div>
+      </Card>
       <Card title="Tracked stocks"><strong>{symbols.length}</strong></Card>
       <Card title="Accepted ticks"><strong>{s?.market_data?.accepted_ticks??'—'}</strong></Card>
       <Card title="Duplicates / late"><strong>{s?.market_data?.duplicate_ticks??'—'} / {s?.market_data?.late_ticks??'—'}</strong></Card>

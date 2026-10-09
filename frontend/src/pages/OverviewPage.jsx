@@ -1,5 +1,6 @@
 import { useOutletContext } from 'react-router-dom'
 import { useState } from 'react'
+import { useAuth } from '../auth/AuthContext'
 import { api } from '../api/client'
 import { Card, DataTable, Empty, Money, Page, Readiness, Status } from '../components/UI'
 import { strategyRows } from '../domain/snapshot'
@@ -14,6 +15,8 @@ const actionLabels={
 
 export function OverviewPage(){
   const {snapshot:s,refresh}=useOutletContext()
+  const {user,refresh:refreshAuth}=useAuth()||{}
+  const isOperator=Boolean(user?.is_operator)
   const [pending,setPending]=useState('')
   const [error,setError]=useState('')
   if(!s)return <Empty>Waiting for authenticated backend state…</Empty>
@@ -22,17 +25,20 @@ export function OverviewPage(){
   const activeStocks=new Set((s.subscriptions||[]).filter(item=>item.enabled).map(item=>item.symbol)).size
   const isKillLatched=Boolean(s.safety?.kill_latched||s.gate==='KILLED')
   const run=async(path)=>{
-    if(pending)return
+    if(pending||!isOperator)return
     setPending(path);setError('')
     try{await api.post(path);await refresh()}
-    catch(actionError){setError(actionError.message||'Action failed.')}
+    catch(actionError){
+      if(actionError?.status===403){await refreshAuth?.()}
+      setError(actionError.message||'Action failed.')
+    }
     finally{setPending('')}
   }
-  const actionButton=(path,className='')=><button disabled={!!pending} onClick={()=>run(path)} className={className}>{pending===path?'Working…':actionLabels[path]}</button>
+  const actionButton=(path,className='')=><button disabled={!!pending||!isOperator} title={!isOperator?'Operator authority required':undefined} onClick={()=>run(path)} className={className}>{pending===path?'Working…':actionLabels[path]}</button>
   // Older/test snapshots may omit the capability field; only an explicit
   // backend false disables replay. Persistent/live backends send false.
   const replayAction=s.demo_enabled!==false?actionButton('/api/demo','primary'):null
-  return <Page eyebrow="Control plane" title="Operational truth, at a glance." description="Live account state from fills, reconciliation, and the non-bypassable risk gateway." actions={<>{replayAction}{actionButton('/api/reconcile')}{isKillLatched&&actionButton('/api/kill/reset')}{actionButton('/api/resume')}</>}>
+  return <Page eyebrow="Control plane" title="Operational truth, at a glance." description="Live account state from fills, reconciliation, and the non-bypassable risk gateway." actions={<>{!isOperator&&<span className="muted" style={{fontSize:'0.85rem',alignSelf:'center'}}>Operator required</span>}{replayAction}{actionButton('/api/reconcile')}{isKillLatched&&actionButton('/api/kill/reset')}{actionButton('/api/resume')}</>}>
     {error&&<div className="error" role="alert">{error}</div>}
     <div className="stat-grid">
       <Card title="Trading gate"><Status value={s.gate}/><p>{isKillLatched?'Kill switch is latched. Reconcile, then use the verified operator reset.':'New exposure follows the global gate.'}</p></Card>

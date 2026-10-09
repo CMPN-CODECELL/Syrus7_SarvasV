@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach,describe,expect,it,vi } from 'vitest'
 
 vi.mock('../api/client',()=>({api:{get:vi.fn(),post:vi.fn()}}))
+vi.mock('../auth/AuthContext',()=>({useAuth:()=>({user:{username:'tester',is_operator:1}})}))
 
 import { api } from '../api/client'
 import { FailureLabPage } from '../pages/EvidencePages'

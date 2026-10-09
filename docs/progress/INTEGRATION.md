@@ -1,5 +1,29 @@
 # Integration Progress
 
+## 2026-10-09 — Frontend operator awareness & client authority boundaries (Member 3 Task 2)
+
+- Reused authoritative authenticated user state `useAuth().user.is_operator`; missing or unknown roles strictly default to non-operator (`isOperator = Boolean(user?.is_operator)`).
+- Topbar navigation prominently displays ` · Operator` badge only when the active session holds verified operator authority.
+- All global mutating operator actions are disabled and clearly labeled with concise "Operator required" guidance when signed in as an ordinary or unranked user:
+  - AppShell: Kill all strategies (`/api/kill`).
+  - OverviewPage: Replay (`/api/demo`), Reconcile (`/api/reconcile`), Reset kill latch (`/api/kill/reset`), Resume (`/api/resume`).
+  - ReconciliationPage: Sync broker updates (`/api/broker/updates/sync`), Reconnect and reconcile (`/api/broker/reconnect`), Disconnect broker (`/api/broker/disconnect`), Reconcile (`/api/reconcile`).
+  - FailureLabPage: Scenario inspector run (`/api/lab/run`) and scenario card run actions.
+  - SafetyBenchPage: Benchmark run (`/api/safety-bench/run`).
+  - MarketDataPage: Open and Close market session overrides (`/api/market/session`).
+- Account-owned controls remain fully accessible:
+  - Strategy subscriptions start/stop and atomic batch creation (`/api/subscriptions/*`).
+  - Order cancellation for open orders (`/api/orders/{id}/cancel`).
+  - Account risk policy inspection (`/api/risk/account-policy`).
+- Backend enforcement remains authoritative: UI restrictions never substitute for `require_operator(request)`. When an operator grant is revoked while a session is active, any mutating operator request returning 403 triggers identity refresh via `refreshAuth()` without logging the user out (403 is never treated as 401/logout), instantly removing operator controls from the UI. Duplicate/re-entrant clicks while in-flight or during identity refresh are prevented.
+- Existing operator provisioning commands documented (never executed):
+  - SQLite: `python -m backend.shared.provision_operator --sqlite-path <db_path> --username <username> [--revoke]`
+  - PostgreSQL: `python -m backend.shared.provision_operator --username <username> [--revoke]`
+- Validation:
+  - Frontend: 47 passed across 10 test files (including 5 new focused tests in `frontend/src/test/operatorAuthority.test.jsx`); ESLint clean (0 errors, 0 warnings); Vite production build passed.
+  - Backend: 38 passed in `tests/test_operator_authority.py`, including strengthened revocation zero-mutation verification on gate, order rows, and fill rows, with session remaining valid for ordinary authenticated endpoints.
+
+
 ## 2026-10-09 — Official 021-03 gap-only fixture integration
 
 Work started from `main` `2490e82a4f6c1dc60ab8cc8d61f0523899dc80de` after fetch; `dev` diverged and was not merged. A temporary local feature branch was created during inspection, then the uncommitted work was moved back to `main` at the owner's explicit request before commit. Before push, remote main advanced to `da609f4`; the checkpoint was normally rebased, preserving upstream multi-stock DEC-030 and assigning this change DEC-031. Added the supplied canonical contract/blueprint, strict 021 price/quantity/instrument/response and TC1/TC3/TC4/TC8 normalization, a live-disabled adapter shell, and isolated durable-once mandatory strategy policies. Focused evidence: `29 passed`; affected regression: `99 passed`; post-rebase Python suite: `408 passed, 1 isolated PostgreSQL skipped`; seven mock rehearsals passed with measured mock kill `0.17s`. Ruff, format, docs links and diff checks passed. No live REST/WS, credentials, sandbox writes, PG, migration, fees, or kill claim. Runtime/provider composition and sponsor-dependent identity/history semantics remain blocked.

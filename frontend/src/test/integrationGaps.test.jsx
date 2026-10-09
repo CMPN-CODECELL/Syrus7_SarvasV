@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks=vi.hoisted(()=>({
   get:vi.fn(),
   post:vi.fn(),
-  auth:{user:{username:'tester',account_id:'acc_a'},logout:vi.fn()},
+  auth:{user:{username:'tester',account_id:'acc_a',is_operator:1},logout:vi.fn()},
   telemetry:{snapshot:{},status:'live',refresh:vi.fn()},
 }))
 vi.mock('../api/client',()=>({api:{get:mocks.get,post:mocks.post}}))
