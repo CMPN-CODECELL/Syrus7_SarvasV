@@ -49,7 +49,7 @@ export function OverviewPage(){
     <Card title="Portfolio overview" meta="Derived from authenticated strategy positions"><div className="stat-grid"><div><span className="muted">Open positions</span><strong>{activePositions}</strong></div><div><span className="muted">Gross quantity</span><strong>{openQuantity}</strong></div><div><span className="muted">Net P&amp;L</span><Money value={portfolioPnl}/></div></div><p className="muted">Funds, margin, holdings, IPO and GTT balances require provider endpoints that are not part of the documented 021 developer API.</p></Card>
     <div className="grid two">
       <Card title="Market candles" meta={s.market_data?.label||'Unavailable'}>
-        <CandleChart candles={s.candles||[]} />
+        <CandleChart candles={s.candles||[]} symbols={(s.market_data?.canonical_symbols||s.market_data?.symbols||[])} />
         <p className="muted">Only backend-closed candles are shown. Prices and source labels are not calculated in the browser.</p>
       </Card>
       <Card title="Subscribed strategies" meta={`${s.subscriptions?.length||0} configured`}>
