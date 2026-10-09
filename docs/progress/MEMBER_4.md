@@ -320,3 +320,11 @@ Member 4 tasks 1 through 8 are 100% complete and fully verified. User workflows 
 - Account-facing snapshots and streams use the DEC-026 nested response boundary.
   Owned subscription/policy/order workflows remain permitted; global replay and
   market controls require an explicit operator.
+
+## 2026-10-09 — Strategy stock quick select
+
+- Added a stock dropdown to the multi-stock strategy form while retaining manual
+  symbol entry, comma-separated paste, normalization, chips and atomic creation.
+- The dropdown distinguishes symbols observed in backend snapshots from explicitly
+  labeled demo shortcuts. It does not claim live-feed availability or silently
+  alter provider-specific symbol suffixes.

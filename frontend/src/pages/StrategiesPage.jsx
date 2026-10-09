@@ -5,6 +5,7 @@ import { Card, DataTable, Money, Page, Readiness, Status } from '../components/U
 import { strategyRows } from '../domain/snapshot'
 
 export const MAX_BATCH_SYMBOLS=20
+export const DEMO_STOCK_PRESETS=['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN']
 const displayName=value=>String(value).replaceAll('_',' ').replace(/\b\w/g,letter=>letter.toUpperCase())
 export const normalizeSymbols=values=>[...new Set(values.flatMap(value=>String(value).split(/[,\n]/)).map(value=>value.trim().toUpperCase()).filter(Boolean))]
 export const idFragment=value=>String(value).trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')
@@ -15,6 +16,7 @@ export function StrategiesPage(){
   const [kind,setKind]=useState('')
   const [prefix,setPrefix]=useState('')
   const [symbolInput,setSymbolInput]=useState('')
+  const [stockChoice,setStockChoice]=useState('')
   const [symbols,setSymbols]=useState([])
   const [pending,setPending]=useState('')
   const [error,setError]=useState('')
@@ -32,11 +34,12 @@ export function StrategiesPage(){
     return()=>{active=false}
   },[])
 
-  const addSymbols=()=>{
+  const addSymbols=(rawValue=symbolInput,{clearInput=false}={})=>{
     setError('');setSuccess(null)
-    const next=normalizeSymbols([...symbols,...normalizeSymbols([symbolInput])])
+    const next=normalizeSymbols([...symbols,...normalizeSymbols([rawValue])])
     if(next.length>MAX_BATCH_SYMBOLS){setError(`Choose no more than ${MAX_BATCH_SYMBOLS} unique symbols.`);return}
-    setSymbols(next);setSymbolInput('')
+    setSymbols(next)
+    if(clearInput)setSymbolInput('')
   }
   const removeSymbol=symbol=>setSymbols(current=>current.filter(item=>item!==symbol))
   const selectKind=next=>{setKind(next);setPrefix(current=>!current||current===kind?next:current)}
@@ -68,6 +71,8 @@ export function StrategiesPage(){
   const rows=strategyRows(s)
   const visibleRows=useMemo(()=>rows.filter(row=>(!filters.kind||row.kind===filters.kind)&&(!filters.symbol||row.symbol===filters.symbol)&&(!filters.state||row.state===filters.state)),[rows,filters])
   const knownSymbols=[...new Set(rows.map(row=>row.symbol))].sort()
+  const observedSymbols=[...new Set([...(s?.candles||[]).map(item=>item.symbol),...knownSymbols])].filter(Boolean).sort()
+  const presetSymbols=DEMO_STOCK_PRESETS.filter(symbol=>!observedSymbols.includes(symbol))
   const knownStates=[...new Set(rows.map(row=>row.state))].sort()
   const previewPrefix=idFragment(prefix||kind)
 
@@ -98,7 +103,8 @@ export function StrategiesPage(){
         <form onSubmit={submit}>
           <label>Strategy<select required value={kind} onChange={event=>selectKind(event.target.value)}>{strategies.map(strategy=><option value={strategy.kind} key={strategy.kind}>{strategy.description||displayName(strategy.kind)}</option>)}</select></label>
           <label>Instance prefix<input required maxLength="48" placeholder="momentum" value={prefix} onChange={event=>setPrefix(event.target.value)}/><small>Used only to name each instance.</small></label>
-          <label>Stocks<div className="input-action"><input aria-label="Stocks" placeholder="RELIANCE, TCS, INFY" value={symbolInput} onChange={event=>setSymbolInput(event.target.value.toUpperCase())} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();addSymbols()}}}/><button type="button" onClick={addSymbols} disabled={!symbolInput.trim()||symbols.length>=MAX_BATCH_SYMBOLS}>Add</button></div><small>Paste comma-separated symbols or add one at a time. Maximum {MAX_BATCH_SYMBOLS}.</small></label>
+          <label>Quick select stock<select aria-label="Quick select stock" value={stockChoice} disabled={symbols.length>=MAX_BATCH_SYMBOLS} onChange={event=>{const value=event.target.value;setStockChoice('');if(value)addSymbols(value)}}><option value="">Choose a stock…</option>{observedSymbols.length>0&&<optgroup label="Observed by backend">{observedSymbols.map(symbol=><option value={symbol} key={`observed-${symbol}`} disabled={symbols.includes(symbol)}>{symbol}</option>)}</optgroup>}{presetSymbols.length>0&&<optgroup label="Demo shortcuts">{presetSymbols.map(symbol=><option value={symbol} key={`preset-${symbol}`} disabled={symbols.includes(symbol)}>{symbol}</option>)}</optgroup>}</select><small>Demo shortcuts are conveniences, not confirmation of live-feed availability.</small></label>
+          <label>Or enter stocks<div className="input-action"><input aria-label="Stocks" placeholder="RELIANCE, TCS, INFY" value={symbolInput} onChange={event=>setSymbolInput(event.target.value.toUpperCase())} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();addSymbols(symbolInput,{clearInput:true})}}}/><button type="button" onClick={()=>addSymbols(symbolInput,{clearInput:true})} disabled={!symbolInput.trim()||symbols.length>=MAX_BATCH_SYMBOLS}>Add</button></div><small>Paste comma-separated symbols or add one at a time. Maximum {MAX_BATCH_SYMBOLS}.</small></label>
           <div className="chips" aria-label="Selected stocks">{symbols.map(symbol=><button type="button" className="chip" key={symbol} onClick={()=>removeSymbol(symbol)} aria-label={`Remove ${symbol}`}>{symbol} ×</button>)}</div>
           {symbols.length>0&&<div className="instance-preview"><b>Instances to create</b>{symbols.map(symbol=><code key={symbol}>{previewPrefix}-{idFragment(symbol)} <span>→ {symbol}</span></code>)}</div>}
           <button className="primary" disabled={!strategies.length||!symbols.length||!!pending}>{pending==='batch'?`Creating ${symbols.length} strategy ${symbols.length===1?'instance':'instances'}…`:symbols.length===1?'Create strategy':`Run on ${symbols.length} stocks`}</button>

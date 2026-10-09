@@ -22,6 +22,14 @@
   Vite production build passed; all seven deterministic rehearsal scenarios
   passed with zero errors.
 
+## 2026-10-09 — Multi-stock quick-select dropdown
+
+- Added an accessible quick-select stock dropdown to Create Strategy Set. Backend-
+  observed symbols and clearly labeled demo shortcuts feed the existing deduplicated
+  chip list and single atomic batch request; manual symbol entry remains available.
+- The UI explicitly states that shortcuts do not confirm live market-feed support.
+  No backend, schema, risk, accounting, execution, or provider contract changed.
+
 ## 2026-10-09 — Atomic multi-stock strategy orchestration
 
 - Added authenticated `POST /api/subscriptions/batch` without changing the one-instance/one-symbol schema or the existing single-subscription endpoint. Up to 20 normalized unique symbols are preflighted and inserted with durable evidence in one transaction; any ID collision creates zero rows and returns the conflicting IDs.

@@ -19,6 +19,17 @@ beforeEach(()=>{
 })
 
 describe('multi-stock strategy creation',()=>{
+  it('adds stocks from a clearly labeled quick-select dropdown',async()=>{
+    const user=userEvent.setup()
+    renderPage()
+    const dropdown=await screen.findByRole('combobox',{name:'Quick select stock'})
+    await user.selectOptions(dropdown,'RELIANCE')
+    expect(screen.getByRole('button',{name:'Remove RELIANCE'})).toBeInTheDocument()
+    expect(screen.getByText(/momentum-reliance/)).toBeInTheDocument()
+    expect(screen.getByText(/not confirmation of live-feed availability/i)).toBeInTheDocument()
+    expect(within(dropdown).getByRole('option',{name:'RELIANCE'})).toBeDisabled()
+  })
+
   it('normalizes, deduplicates, previews, removes, and sends one atomic request',async()=>{
     const user=userEvent.setup()
     const refresh=vi.fn().mockResolvedValue()
