@@ -75,12 +75,22 @@ export function StrategiesPage(){
   const presetSymbols=DEMO_STOCK_PRESETS.filter(symbol=>!observedSymbols.includes(symbol))
   const knownStates=[...new Set(rows.map(row=>row.state))].sort()
   const previewPrefix=idFragment(prefix||kind)
+  const warmingRows=rows.filter(row=>row.readiness?.ready!==true)
+  const demoRows=rows.filter(row=>String(row.symbol||'').toUpperCase()==='DEMO')
+  const live021=String(s?.mode||'').toUpperCase().includes('021')
+  const gate=String(s?.gate||'').toUpperCase()
+  const activityReasons=[]
+  if(live021&&demoRows.length)activityReasons.push(`DEMO is replay-only, so ${demoRows.length} DEMO ${demoRows.length===1?'subscription is':'subscriptions are'} not receiving 021 market ticks. Use a real 021 symbol (for example RELIANCE, TCS, or ICICIBANK).`)
+  if(warmingRows.length)activityReasons.push(`${warmingRows.length} ${warmingRows.length===1?'strategy instance is':'strategy instances are'} warming; each must receive its required closed candles before it can emit an intent.`)
+  if(gate&&gate!=='RUNNING')activityReasons.push(`New orders are paused because the platform trading gate is ${gate}. Reconcile the broker, then explicitly resume trading when the evidence is healthy.`)
+  const activityMessage=activityReasons.length?activityReasons.join(' '):'Strategies do not buy or sell on every tick. They emit an intent only when their indicator condition is met; otherwise no trade is expected.'
 
   return <Page eyebrow="Subscriptions" title="Run one strategy across many stocks" description="Independent strategy ledgers keep each stock isolated. Choose a strategy and stocks once; failures, positions, risk, and P&L stay independent.">
     {error&&<div className="error" role="alert">{error}</div>}
     {success&&<div className="success" role="status"><b>Created {success.count} strategy {success.count===1?'instance':'instances'}.</b><span>{success.symbols.join(', ')}</span></div>}
     <div className="grid strategy-grid">
       <Card title="Strategy instances" meta={`${visibleRows.length} shown · ${rows.length} total`}>
+        <div className="success strategy-explanation"><b>Why no new trades?</b><span>{activityMessage}</span></div>
         <div className="filter-row" aria-label="Strategy filters">
           <label>Kind<select aria-label="Filter by kind" value={filters.kind} onChange={event=>setFilters({...filters,kind:event.target.value})}><option value="">All kinds</option>{[...new Set(rows.map(row=>row.kind))].sort().map(value=><option key={value}>{value}</option>)}</select></label>
           <label>Symbol<select aria-label="Filter by symbol" value={filters.symbol} onChange={event=>setFilters({...filters,symbol:event.target.value})}><option value="">All symbols</option>{knownSymbols.map(value=><option key={value}>{value}</option>)}</select></label>
