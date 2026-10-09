@@ -515,6 +515,7 @@ export function MetricsPage(){return <RemotePage endpoint="/api/metrics" eyebrow
 export function MarketDataPage(){
   const {snapshot:s}=useOutletContext()
   const [symbol,setSymbol]=useState('')
+  const [displayLimit,setDisplayLimit]=useState(50)
   const quotes=Array.isArray(s?.market_data?.latest_quotes)?s.market_data.latest_quotes:[]
   const symbols=[...new Set([
     ...(s?.market_data?.canonical_symbols||[]),
@@ -528,6 +529,7 @@ export function MarketDataPage(){
   const [sessionError,setSessionError]=useState('')
   const setSession=async status=>{setSessionBusy(true);setSessionError('');try{await api.post('/api/market/session',{status});}catch(e){setSessionError(e.message||'Market session update failed.')}finally{setSessionBusy(false)}}
   const visibleQuotes=quotes.filter(item=>!symbol||item.symbol===symbol)
+  const displayedQuotes=visibleQuotes.slice(0,displayLimit)
   const source=s?.market_data?.label||s?.market_data?.provider||'Unavailable'
   const eventTime=s?.market_data?.last_event_timestamp
   const receivedTime=s?.market_data?.last_received_at
@@ -549,8 +551,9 @@ export function MarketDataPage(){
       <Card title="Duplicates / late"><strong>{s?.market_data?.duplicate_ticks??'—'} / {s?.market_data?.late_ticks??'—'}</strong></Card>
     </div>
     {s?.market_data?.errors?.length?<Card title="Provider lifecycle errors"><EvidenceView value={s.market_data.errors}/></Card>:null}
-    <Card title="Latest external quotes" meta={`${visibleQuotes.length} shown`}>
-      <DataTable rows={visibleQuotes} columns={[{key:'symbol',label:'Symbol'},{key:'provider_symbol',label:'Provider symbol'},{key:'price',label:'Price',render:row=>row.price??'—'},{key:'event_timestamp',label:'Event time',render:row=>asUtc(row.event_timestamp)},{key:'raw_event_timestamp',label:'Raw timestamp',render:row=>row.raw_event_timestamp??'—'},{key:'received_at',label:'Received',render:row=>asUtc(row.received_at)},{key:'volume_available',label:'Volume',render:row=>row.volume_available===false?'Unavailable':'Available'},{key:'data_source',label:'Source'}]}/>
+    <Card title="Latest external quotes" meta={`${displayedQuotes.length} of ${visibleQuotes.length} shown`}>
+      <label className="compact-filter">Show stocks<input aria-label="Number of stocks to display" type="number" min="1" max="200" value={displayLimit} onChange={event=>setDisplayLimit(Math.max(1,Math.min(200,Number(event.target.value)||1)))}/></label>
+      <DataTable rows={displayedQuotes} columns={[{key:'symbol',label:'Symbol'},{key:'provider_symbol',label:'Provider symbol'},{key:'price',label:'Price',render:row=>row.price??'—'},{key:'event_timestamp',label:'Event time',render:row=>asUtc(row.event_timestamp)},{key:'raw_event_timestamp',label:'Raw timestamp',render:row=>row.raw_event_timestamp??'—'},{key:'received_at',label:'Received',render:row=>asUtc(row.received_at)},{key:'volume_available',label:'Volume',render:row=>row.volume_available===false?'Unavailable':'Available'},{key:'data_source',label:'Source'}]}/>
     </Card>
     <Card title="Closed candles" meta={`${candles.length} shown`}>
       <label className="compact-filter">Symbol<select aria-label="Filter market data by symbol" value={symbol} onChange={event=>setSymbol(event.target.value)}><option value="">All symbols</option>{symbols.map(value=><option key={value}>{value}</option>)}</select></label>
