@@ -74,6 +74,8 @@ Kill latches durably and converges through verified cancellation/fill evidence a
 
 This is a local development tool, not a production service. It has a basic durable local login/session boundary and authenticated local WebSocket telemetry, but no production identity provider or arbitrary strategy upload. The documented 021 REST/auth transport, durable order mapping, sampled market provider and fixture tests are now implemented behind an explicit server-side feature flag; they remain live-unverified. Credentials, charges, corrections, complete history and kill semantics are not claimed. Never commit 021 credentials or use the failure lab against live mode. No profitability or live kill SLA claim is made.
 
+Provider selection is explicit: when `ALGOSHIELD_021_ENABLED=true`, 021 is the primary market/broker provider and the dashboard labels it `021 LIVE / REAL MARKET DATA`. When it is false, the safe default is `MOCK / REPLAY`. The system never silently falls back from a failed 021 connection to mock data. The Market Data page's Source card, `market_data.provider`, `market_data.source`, `market_data.label`, and candle `data_source` are the authoritative indicators.
+
 ## Repository map
 
 - `AGENTS.md`: canonical engineering rules and reading order.

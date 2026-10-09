@@ -21,6 +21,9 @@ def settings():
     if enabled_021 not in {"true", "false"}:
         raise ValueError("ALGOSHIELD_021_ENABLED must be true or false")
     result["021_enabled"] = enabled_021 == "true"
+    # 021 is primary when explicitly enabled; offline installs retain replay.
+    # Provider changes are startup configuration, never an implicit fallback.
+    result["market_data_provider"] = "021" if result["021_enabled"] else "replay"
     for key, env_name in (
         ("021_base_url", "ALGOSHIELD_021_BASE_URL"),
         ("021_username", "ALGOSHIELD_021_USERNAME"),

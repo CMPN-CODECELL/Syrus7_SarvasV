@@ -132,6 +132,7 @@ class MarketData021Provider:
         return {
             "provider": "021",
             "source": "021_LIVE",
+            "label": "021 LIVE / REAL MARKET DATA",
             "connected": bool(self._thread and self._thread.is_alive()),
             "symbols": list(self.symbols),
             "received": self.received,

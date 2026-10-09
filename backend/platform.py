@@ -874,7 +874,9 @@ class Platform:
                 )
             result = {
                 "mode": (
-                    "YAHOO EXTERNAL QUOTES / MOCK EXECUTION"
+                    self.external_market_data.telemetry().get(
+                        "label", "EXTERNAL MARKET DATA"
+                    )
                     if self.external_market_data is not None
                     else (
                         "MOCK / REPLAY"
