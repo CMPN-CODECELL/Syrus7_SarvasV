@@ -1,5 +1,7 @@
 # Security operations
 
+Git direct-push permission is separate from application operator authority. DEC-028 makes PRs optional and retains server-side permissions. No GitHub access grants or protection changes were made. Deployment Origin/proxy verification remains a task in [TEAM_EXECUTION_PLAN](TEAM_EXECUTION_PLAN.md).
+
 ## Authorization policy
 
 Public registration creates an ordinary account user and never grants operator

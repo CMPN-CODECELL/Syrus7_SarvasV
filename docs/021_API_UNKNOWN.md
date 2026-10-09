@@ -1,5 +1,7 @@
 # 021 Integration — Known Unknowns
 
+The next provider gate is M2-CAP01 in [TEAM_EXECUTION_PLAN](TEAM_EXECUTION_PLAN.md): obtain authenticated sponsor schemas and sanitized executable fixtures. Broker021Adapter is unimplemented; a concrete MarketData021Provider is absent. Mock evidence cannot resolve provider fees, history coverage or kill semantics.
+
 Do not assume answers until sponsor documentation or mentoring confirms them.
 
 DEC-027's [broker identity contract](CONTRACTS.md) requires provider/account-scoped

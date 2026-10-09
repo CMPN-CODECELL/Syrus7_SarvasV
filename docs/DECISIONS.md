@@ -652,7 +652,30 @@ and repaired links; preserve canonical docs, original research and decision hist
 Member logs become optional startup evidence. Exact checks and blockers are in
 ROUND2_INTEGRATION_AUDIT and progress/INTEGRATION.
 
-## DEC-028 — Atomic multi-stock subscription orchestration
+## DEC-028 — Direct branch pushes and unified execution plan
+Date: 2026-10-09
+Status: ACCEPTED
+
+### Decision
+Team members may directly push branches with repository write access; pull
+requests are optional. This supersedes previous dev-only/no-main operational
+instructions. The integration lead promotes validated dev checkpoints to main by
+normal fast-forward push after successful CI; no force or server-rule bypass.
+Application operator grants remain unchanged.
+
+`TEAM_EXECUTION_PLAN.md` is the sole active four-member task/dependency plan.
+`REQUIREMENTS_TRACEABILITY.md` records scoped code/test evidence, while
+`IMPLEMENTATION_DELTA.md` summarizes remaining gaps. Preserve historical
+decisions, research and migrations. Provider contracts, isolated PostgreSQL and
+current browser coverage remain blockers, not inferred successes.
+
+### Reason and impact
+The owner explicitly authorized safe main promotion and then removed the
+mandatory PR workflow. Commit `63266eb` repaired push CI ordering, passed GitHub
+CI and was normally fast-forwarded to `origin/main`; PR #1 was closed without
+merge. No GitHub permission/protection changes were made.
+
+## DEC-029 — Atomic multi-stock subscription orchestration
 Date: 2026-10-09
 Status: ACCEPTED
 

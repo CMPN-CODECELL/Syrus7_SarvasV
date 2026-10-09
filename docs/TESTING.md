@@ -1,5 +1,7 @@
 # Testing
 
+Push CI builds the React SPA before the Python suite, then checks frontend tests/lint, Ruff, root TypeScript and rehearsals. Fresh local release evidence: 372 Python passed, one isolated PostgreSQL test skipped; 30 frontend tests passed; seven mock rehearsals passed. Browser automation remains unverified; the existing smoke script targets legacy selectors. Exact commands and setup failures are retained in [integration progress](progress/INTEGRATION.md).
+
 Run `python -m pytest -q --basetemp=.pytest-tmp`. The explicit workspace temp directory avoids Windows sandbox temp restrictions and works from a clean checkout. Run `python -m ruff check .` and `python -m ruff format --check .`. For the SPA run `npm --prefix frontend ci`, `npm --prefix frontend run test`, `npm --prefix frontend run lint`, and `npm --prefix frontend run build`.
 
 `tests/test_safety.py` is a deterministic unit/integration foundation with injected clock and mock execution evidence. No timing sleeps.

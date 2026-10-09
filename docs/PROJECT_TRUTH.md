@@ -55,7 +55,7 @@ Uploaded 2026-10-08 integration progress reports merge builds with **311 Python 
 
 ## Non-negotiable change rules
 
-Do not bypass RiskGateway; invent fills; turn unknown into verified; trust client account IDs; run mock fault injection against live; edit applied migrations; force-push; or push to main. Preserve existing local changes before git operations. Work on `dev` or an integration branch targeting `dev`. Documentation/status updates follow successful evidence, not vice versa.
+Do not bypass RiskGateway; invent fills; turn unknown into verified; trust client account IDs; run mock fault injection against live; edit applied migrations; force-push or bypass server permissions. Preserve existing local changes before git operations. DEC-028 permits direct branch pushes and validated lead promotion to main; pull requests are optional. Follow TEAM_EXECUTION_PLAN.md for current sequencing. Documentation/status updates follow successful evidence, not vice versa.
 
 **Next read:** [`IMPLEMENTATION_DELTA.md`](IMPLEMENTATION_DELTA.md), then [`REQUIREMENTS_TRACEABILITY.md`](REQUIREMENTS_TRACEABILITY.md), then [`RESEARCH_DECISIONS.md`](RESEARCH_DECISIONS.md).
 
