@@ -37,9 +37,9 @@ verifies policy thresholds, selected strategy, provider-backed symbol choices,
 HOLD evidence, selected Auto instances, the no-profit-guarantee warning and the
 authenticated start action. These deterministic mock tests prove control flow,
 not strategy profitability or live 021 execution.
-The backend suite also recreates the platform from disk and verifies that an
-explicit Auto start restores scanning, while a later explicit stop remains
-stopped; neither lifecycle operation resumes the global gate.
+The backend suite verifies explicit Auto start/stop lifecycle evidence and that
+neither operation resumes the global gate. Normal application startup does not
+invoke lifecycle restoration; scanning must be enabled again by the account.
 
 ## Required extensions before live integration
 

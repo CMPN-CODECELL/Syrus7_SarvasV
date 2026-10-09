@@ -39,8 +39,12 @@ python -m uvicorn backend.api:create_app --factory --host 127.0.0.1 --port 8000 
 
 Open http://127.0.0.1:8000, register or sign in, explicitly provision the intended operator as described below, and click **Run replay** from that operator session. Registration assigns a trading account ID from the authenticated username; the dashboard never asks users to type or choose it. Four built-in strategies consume completed candles concurrently in one serialized event loop: a 3/5 EMA crossover, five-period mean reversion, a 5-minute range breakout and 14-period RSI reversal. The Strategies page accepts one or many stock symbols and atomically creates one independent single-symbol strategy instance for each; each instance retains its own warm-up, failure state, risk, position and P&L. The demo stops after replay and displays actual signals, orders, unique fills, charges, virtual positions, market-data counters and audit events. The dashboard supports durable per-strategy start/stop controls. Click **Kill all** to cancel, flatten and verify. API docs: http://127.0.0.1:8000/docs.
 
-The Strategies page also provides an explicit **Auto mode**. It scans a bounded,
-catalogue-derived cash-equity universe, compares momentum, breakout and
+The Strategies page also provides an explicit **Auto mode**. Offline replay may
+scan its bounded local catalogue; live 021 requires an explicit bounded
+`ALGOSHIELD_AUTO_SYMBOLS` cash-equity allowlist and
+`ALGOSHIELD_AUTO_EXCHANGE=NSECM`. Each live candidate must match exactly one
+documented `STK` catalogue row on that exchange. Tokens come from the current
+catalogue; catalogue order and BSE rows are never fallbacks. Auto compares momentum, breakout and
 mean-reversion opportunities, and selects the strongest qualified stock and
 policy. It creates ordinary one-symbol strategy instances only when needed and
 emits quantity-one long entries plus take-profit, stop-loss or reversal exits.
@@ -55,6 +59,23 @@ symbol, use a 0.01% entry edge, 0.05% take-profit/stop thresholds, a two-second
 cooldown, quantity one and at most one simultaneous Auto position. These defaults
 increase demonstration activity without weakening broker evidence, reconciliation,
 pending-order, market-session or central risk checks.
+
+After signing in, `POST /api/auto-mode/start` enables evaluation only and
+`POST /api/auto-mode/stop` disables new Auto decisions. Neither endpoint opens
+the execution gate. `GET /api/auto-mode` reports evaluation/execution state,
+funnel and HOLD/risk reasons; `GET /api/auto-mode/evaluation` runs the bounded
+captured-observation comparison without broker dispatch authority.
+
+The reviewed eight-symbol live configuration is:
+
+```dotenv
+ALGOSHIELD_AUTO_SYMBOLS=RELIANCE,TCS,HDFCBANK,ICICIBANK,INFY,SBIN,BHARTIARTL,ITC
+ALGOSHIELD_AUTO_EXCHANGE=NSECM
+ALGOSHIELD_AUTO_SCAN_LIMIT=8
+```
+
+This records symbols and exchange, not token constants. Each process resolves
+the current exchange/token identities from its validated 021 catalogue cache.
 
 ```sh
 python -m pytest -q --basetemp=.pytest-tmp
@@ -98,10 +119,12 @@ Provider selection is explicit: when `ALGOSHIELD_021_ENABLED=true`, 021 is the p
 The 021 market universe is dynamic: enabled strategy symbols, active auto-mode
 scan candidates, open exposure/order symbols, plus optional pinned
 `ALGOSHIELD_021_SYMBOLS`. Without any of these the feed remains idle. Auto mode
-uses a configurable bounded, evenly sampled cash-equity subset rather than an
-unbounded whole-catalogue socket. Universe changes fail closed, rebuild bounded
+requires the explicit bounded `ALGOSHIELD_AUTO_SYMBOLS` allowlist rather than
+inferring suitability from catalogue order or freeze quantity. Universe changes fail closed, rebuild bounded
 sockets, obtain fresh ephemeral keys, and require reconciliation plus explicit
-resume. Configure timestamp, broker deadlines and auto policy using the
+resume. The market subscription pair and provider order payload derive from the
+same exchange-qualified catalogue identity; durable order mutation refuses an
+identity mismatch. Configure timestamp, broker deadlines and auto policy using the
 placeholder-only settings documented in `.env.example`.
 
 PowerShell clean-start Yahoo fallback (set the database path to an isolated SQLite file appropriate for the run):

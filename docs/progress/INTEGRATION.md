@@ -752,6 +752,74 @@ The three Task 6 regression failures were repaired without changing provider, ac
 
 Focused coverage (`test_auto_mode`, market-pipeline visibility, strategy lifecycle, execution-state machine, and admission/recovery safety) passed: 50 passed in 6.76s. Final full backend run completed: 465 collected, 463 passed, 1 strict expected xfail (UCC/account mapping owned by Member 2 with Member 1 review), 1 configured PostgreSQL skip, and 0 failures in 160.224s. Ruff lint and changed-file format checks passed; `git diff --check` passed. Full-repository format-check still reports the same untouched baseline files: `backend/market_data/catalogue.py`, `backend/reliability/control.py`, `backend/shared/postgres.py`, `tests/test_admission_recovery_safety.py`, and `tests/test_market_pipeline_visibility.py`.
 
+## 2026-10-09 — Automatic-trading pipeline activation/readiness repair
+
+Starting from verified clean audit HEAD `41b0471`, live 021 composition now
+enforces IST `[09:15,15:30)`, leaves replay hours explicitly unenforced, and no
+longer permits manual OPEN to extend live admission. Startup no longer restores
+Auto scanning. Explicit Auto activation establishes only its bounded candidates;
+execution still requires separate reconciliation, gate authorization and risk
+admission.
+
+Implicit whole-catalogue market demand was removed. Live Auto requires the
+reviewed `ALGOSHIELD_AUTO_SYMBOLS` allowlist; pinned `ALGOSHIELD_021_SYMBOLS`,
+enabled subscriptions, positions and working orders remain independent demand.
+021 serving readiness now requires a fresh valid mapped-instrument observation
+for every required symbol in its current socket generation. Connect/send alone,
+another symbol's observation, an old generation, or receive-time fallback cannot
+verify serving. Reconnect/universe change continues to fail closed and never
+resumes execution.
+
+Auto state now exposes evaluation versus execution state, account-scoped funnel
+counters, HOLD/risk reasons, and a 1000-observation ordered evaluation-only
+capture. Baseline/half/double entry-threshold comparisons use the real Auto
+opportunity function but remain explicitly entry-only and non-dispatching; no
+tuning decision is claimed without representative capture. The React Auto card
+renders these backend facts and exact blocking reason codes. Order-stream
+protocol failures retain strict reconnect behavior while exposing only sanitized
+frame length/four-byte prefix diagnostics; documented text control messages are
+counted without becoming order updates.
+
+Focused backend verification during implementation passed after the final
+account-demand integration (`test_auto_mode`, provider readiness, 021
+market/order stream and session). Final full backend regression: **490 passed,
+1 configured PostgreSQL skip, 1 strict expected xfail** in 314.79 seconds. Ruff
+lint and full format check passed; `git diff --check` passed. React passed **51/51**
+with one worker and a 15-second runner timeout after the default parallel run hit
+host-speed-only five-second timeouts; ESLint and the Vite production build passed.
+No live provider operation or production data mutation occurred. Remaining live
+blocker: the strict-xfail same-provider-order
+ID/UCC collision lacks reviewed provider account-scoping facts; production 021
+snapshot completeness and cross-day recovery also remain unproven.
+
+## 2026-10-09 — Exchange-qualified Auto instrument selection
+
+Live Auto composition now supplies `ALGOSHIELD_AUTO_EXCHANGE=NSECM` to the 021
+adapter. Catalogue loading preserves all eligible cash-stock rows by compound
+`(symbol, exchange)` identity while retaining the symbol-only compatibility path
+for mock/replay and existing unconfigured callers. Explicit lookup requires
+exactly one documented `STK` row on NSECM and fails closed for missing or
+duplicate matches; catalogue order and BSEEQ never become fallbacks. Tokens and
+quantity/tick constraints remain catalogue-derived.
+
+Market subscription construction and provider order construction now share that
+same selected instrument. Durable order modification also rejects an
+exchange/token/product mismatch rather than silently changing identity. This is
+separate from the still-unresolved UCC/account/provider-order-ID attribution
+contract.
+
+The documented reviewed configuration is the eight-symbol allowlist
+`RELIANCE,TCS,HDFCBANK,ICICIBANK,INFY,SBIN,BHARTIARTL,ITC`, exchange `NSECM`, and
+scan limit `8`. A read-only check of the existing local catalogue cache resolved
+all eight uniquely on exchange code 1; no token was embedded in source or
+configuration. No live provider call, activation, restart, broker write,
+reconciliation, resume, commit, or push occurred.
+
+Focused selection/config/Auto/market tests passed: 49 passed and 1 existing
+strict expected xfail. Relevant 021, adapter, Auto, readiness, market-pipeline
+and configuration regression passed: 100 passed and the same 1 strict expected
+xfail. Full Ruff lint passed; Ruff format check reported 175 files formatted;
+`git diff --check` passed.
 ## 2026-10-09 — 021 ordering path live diagnosis and lifecycle race fix
 
 - Verified from the dedicated 021 ledger that Auto submitted and the virtual

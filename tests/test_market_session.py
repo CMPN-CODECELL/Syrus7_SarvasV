@@ -144,7 +144,7 @@ def test_market_session_halt_and_manual_overrides_consistency():
     Consistency between is_open(), status_at(), to_dict() and risk checks.
     HALTED takes precedence over manual OPEN.
     Manual CLOSED forces closed even during market hours.
-    Manual OPEN forces open even outside market hours.
+    Manual OPEN cannot bypass enforced live market hours.
     AUTO reverts to schedule.
     """
     ist = ZoneInfo("Asia/Kolkata")
@@ -187,18 +187,18 @@ def test_market_session_halt_and_manual_overrides_consistency():
     session.resume()
     assert session.status_at(ts_open) == "CLOSED"  # returns to manual CLOSED
 
-    # 6. Manual OPEN outside market hours
+    # 6. Manual OPEN outside live market hours remains closed
     session.set_status("OPEN")
-    assert session.is_open(ts_closed)
-    assert session.status_at(ts_closed) == "OPEN"
-    assert session.to_dict(ts_closed)["status"] == "OPEN"
+    assert not session.is_open(ts_closed)
+    assert session.status_at(ts_closed) == "CLOSED"
+    assert session.to_dict(ts_closed)["status"] == "CLOSED"
 
     # 7. Halt overrides manual OPEN outside market hours
     session.halt("Maintenance halt")
     assert not session.is_open(ts_closed)
     assert session.status_at(ts_closed) == "HALTED"
     session.resume()
-    assert session.is_open(ts_closed)
+    assert not session.is_open(ts_closed)
 
     # 8. Reset to AUTO
     session.set_status("AUTO")
@@ -241,7 +241,7 @@ def test_reliability_risk_evidence_integration_with_market_session(tmp_path):
     res_halt = reliability.check_evidence(intent)
     assert res_halt == "RISK_MARKET_HALTED"
 
-    # Resume, set manual OPEN -> now check passes (empty string indicates passed)
+    # Resume, set manual OPEN: enforced live hours still remain closed.
     session.resume()
     session.set_status("OPEN")
     # Need broker mark so it doesn't fail on market data
@@ -252,7 +252,11 @@ def test_reliability_risk_evidence_integration_with_market_session(tmp_path):
         )
     platform.reliability.last_broker_at = clock()
     res_open = reliability.check_evidence(intent)
-    assert res_open == ""
+    assert res_open == "RISK_MARKET_CLOSED"
+
+    # Explicit offline replay preserves the historical operator OPEN behavior.
+    platform.market_session.enforce_hours = False
+    assert reliability.check_evidence(intent) == ""
 
 
 def test_kill_certificate_elapsed_time_and_exhausted_deadline(tmp_path):

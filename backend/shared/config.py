@@ -111,6 +111,28 @@ def settings():
             for symbol in live_symbols.split(",")
             if symbol.strip()
         )
+    auto_symbols = os.getenv(
+        "ALGOSHIELD_AUTO_SYMBOLS", values.get("ALGOSHIELD_AUTO_SYMBOLS")
+    )
+    if auto_symbols:
+        result["auto_symbols"] = tuple(
+            dict.fromkeys(
+                symbol.strip().upper()
+                for symbol in auto_symbols.split(",")
+                if symbol.strip()
+            )
+        )
+    auto_exchange = (
+        os.getenv(
+            "ALGOSHIELD_AUTO_EXCHANGE",
+            values.get("ALGOSHIELD_AUTO_EXCHANGE", "NSECM"),
+        )
+        .strip()
+        .upper()
+    )
+    if auto_exchange != "NSECM":
+        raise ValueError("ALGOSHIELD_AUTO_EXCHANGE must be NSECM")
+    result["auto_exchange"] = auto_exchange
     result["021_max_timestamp_skew_seconds"] = _positive_float(
         values, "ALGOSHIELD_021_MAX_TIMESTAMP_SKEW_SECONDS", 10
     )
@@ -127,25 +149,25 @@ def settings():
         values, "ALGOSHIELD_AUTO_SCAN_LIMIT", 200, 1, 2000
     )
     result["auto_max_positions"] = _bounded_int(
-        values, "ALGOSHIELD_AUTO_MAX_POSITIONS", 1, 1, 20
+        values, "ALGOSHIELD_AUTO_MAX_POSITIONS", 3, 1, 20
     )
     result["auto_lookback_updates"] = _bounded_int(
-        values, "ALGOSHIELD_AUTO_LOOKBACK_UPDATES", 2, 2, 100
+        values, "ALGOSHIELD_AUTO_LOOKBACK_UPDATES", 5, 2, 100
     )
     result["auto_min_warmed_symbols"] = _bounded_int(
-        values, "ALGOSHIELD_AUTO_MIN_WARMED_SYMBOLS", 1, 1, 2000
+        values, "ALGOSHIELD_AUTO_MIN_WARMED_SYMBOLS", 20, 1, 2000
     )
     result["auto_entry_momentum"] = _positive_float(
-        values, "ALGOSHIELD_AUTO_ENTRY_MOMENTUM", 0.0001
+        values, "ALGOSHIELD_AUTO_ENTRY_MOMENTUM", 0.003
     )
     result["auto_take_profit"] = _positive_float(
-        values, "ALGOSHIELD_AUTO_TAKE_PROFIT", 0.0005
+        values, "ALGOSHIELD_AUTO_TAKE_PROFIT", 0.01
     )
     result["auto_stop_loss"] = _positive_float(
-        values, "ALGOSHIELD_AUTO_STOP_LOSS", 0.0005
+        values, "ALGOSHIELD_AUTO_STOP_LOSS", 0.005
     )
     result["auto_cooldown_seconds"] = _bounded_int(
-        values, "ALGOSHIELD_AUTO_COOLDOWN_SECONDS", 2, 0, 86400
+        values, "ALGOSHIELD_AUTO_COOLDOWN_SECONDS", 60, 0, 86400
     )
     trusted_origins = os.getenv(
         "ALGOSHIELD_TRUSTED_ORIGINS", values.get("ALGOSHIELD_TRUSTED_ORIGINS")

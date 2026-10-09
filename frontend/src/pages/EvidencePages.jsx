@@ -560,7 +560,7 @@ export function MarketDataPage(){
       <Card title="Provider health"><Status value={s?.market_data?.health||'UNKNOWN'}/><p>{s?.market_data?.last_disconnect_reason||'No disconnect reason'}</p></Card>
       <Card title="Market sockets"><strong>{s?.market_data?.connected_sockets??s?.market_data?.connection_count??0} / {s?.market_data?.expected_sockets??'—'}</strong><p>{s?.market_data?.reconnect_attempts??0} reconnect attempts</p></Card>
       {s?.market_data?.order_stream?<Card title="Order stream"><Status value={s.market_data.order_stream.connected?'CONNECTED':'DISCONNECTED'}/><p>{s.market_data.order_stream.frames_received??0} frames · {s.market_data.order_stream.reconnect_attempts??0} reconnects</p></Card>:null}
-      <Card title="Live universe"><strong>{s?.market_data?.subscribed_symbols?.length??s?.market_data?.symbols?.length??0} subscribed</strong><p>{s?.market_data?.desired_symbols?.length??0} desired · {(s?.market_data?.unsupported_symbols||[]).length} unsupported</p></Card>
+      <Card title="Live universe"><strong>{s?.market_data?.requested_symbols?.length??s?.market_data?.symbols?.length??0} requested</strong><p>{s?.market_data?.serving_symbols?.length??0} observation-proven serving · {(s?.market_data?.unsupported_symbols||[]).length} unsupported</p></Card>
       <Card title="Safety gate"><Status value={s?.gate}/></Card>
       <Card title="Last quote event"><strong>{asUtc(eventTime)}</strong><p>Raw: {s?.market_data?.last_raw_event_timestamp??'—'}</p></Card>
       <Card title="Last received"><strong>{asUtc(receivedTime)}</strong><p>{s?.market_data?.received_messages??'—'} received · {s?.market_data?.accepted_updates??'—'} accepted</p></Card>

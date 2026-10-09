@@ -9,16 +9,28 @@ import httpx
 import pytest
 
 from backend.broker.adapters import Broker021Adapter
+from backend.broker.official021 import Provider021Blocked
+from backend.market_data.official021 import MarketData021Provider
 from backend.shared.contracts import OrderIntent, Side
 from backend.shared.store import Store
 
 
-INSTRUMENTS = (
+INSTRUMENT_HEADER = (
     "token,exchange,underlying_token,underlying_exchange,min_lot_size,"
     "board_lot_quantity,freeze_quantity,lower_circuit,upper_circuit,expiry,"
     "option_type,strike_price,symbol,instrument_type,isin,ticksize\n"
+)
+NSE_RELIANCE = (
     "2885,NSECM,2885,NSECM,0,1,1000,1,999999,0,,0,RELIANCE,STK,INE002A01018,5\n"
-).encode()
+)
+BSE_RELIANCE = (
+    "500325,BSEEQ,500325,BSEEQ,0,1,1000,1,999999,0,,0,RELIANCE,STK,INE002A01018,5\n"
+)
+INSTRUMENTS = (INSTRUMENT_HEADER + NSE_RELIANCE).encode()
+
+
+def _catalogue(*rows):
+    return (INSTRUMENT_HEADER + "".join(rows)).encode()
 
 
 def _platform():
@@ -148,6 +160,124 @@ def test_catalogue_exposes_cash_equity_symbols_for_auto_market_setup(tmp_path):
     )
 
     assert adapter.all_market_symbols() == ("RELIANCE",)
+
+
+@pytest.mark.parametrize(
+    "rows",
+    ((BSE_RELIANCE, NSE_RELIANCE), (NSE_RELIANCE, BSE_RELIANCE)),
+)
+def test_explicit_nsecm_selection_is_independent_of_catalogue_order(tmp_path, rows):
+    cache = tmp_path / "instruments.csv"
+    cache.write_bytes(_catalogue(*rows))
+    adapter = Broker021Adapter(
+        _platform(),
+        enabled=True,
+        access_token="test-token",
+        instrument_cache=str(cache),
+        instrument_exchange="NSECM",
+    )
+
+    instrument = adapter._instrument("RELIANCE")
+    assert instrument.exchange == 1
+    assert instrument.token == 2885
+    assert (
+        adapter.instruments_by_symbol_exchange[("RELIANCE", "BSEEQ")][0].token == 500325
+    )
+
+
+def test_explicit_nsecm_selection_rejects_missing_and_ambiguous_matches(tmp_path):
+    missing_cache = tmp_path / "missing.csv"
+    missing_cache.write_bytes(_catalogue(BSE_RELIANCE))
+    missing = Broker021Adapter(
+        _platform(),
+        enabled=True,
+        access_token="test-token",
+        instrument_cache=str(missing_cache),
+        instrument_exchange="NSECM",
+    )
+    with pytest.raises(Provider021Blocked, match="no eligible 021 NSECM"):
+        missing._instrument("RELIANCE")
+
+    ambiguous_cache = tmp_path / "ambiguous.csv"
+    ambiguous_cache.write_bytes(
+        _catalogue(
+            NSE_RELIANCE,
+            NSE_RELIANCE.replace("2885,NSECM,2885", "9999,NSECM,9999"),
+        )
+    )
+    ambiguous = Broker021Adapter(
+        _platform(),
+        enabled=True,
+        access_token="test-token",
+        instrument_cache=str(ambiguous_cache),
+        instrument_exchange="NSECM",
+    )
+    with pytest.raises(Provider021Blocked, match="ambiguous 021 NSECM"):
+        ambiguous._instrument("RELIANCE")
+
+
+def test_market_subscription_and_order_share_explicit_catalogue_identity(tmp_path):
+    cache = tmp_path / "instruments.csv"
+    cache.write_bytes(_catalogue(BSE_RELIANCE, NSE_RELIANCE))
+    submitted = {}
+
+    def handler(request):
+        assert request.url.path.endswith("/orders")
+        submitted.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "data": {"type": "SUCCESS", "message": "accepted", "orderId": "42"},
+                "success": True,
+                "error": None,
+            },
+        )
+
+    adapter = Broker021Adapter(
+        _platform(),
+        enabled=True,
+        access_token="test-token",
+        instrument_cache=str(cache),
+        instrument_exchange="NSECM",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    adapter.ephemeral_key = lambda: "fixture-key"
+
+    class Socket:
+        def send(self, message):
+            self.message = json.loads(message)
+
+    socket = Socket()
+    provider = MarketData021Provider(None, adapter, socket_factory=lambda _url: socket)
+    provider._connect(("RELIANCE",))
+    order = adapter.submit(OrderIntent("i1", "s", "a", "RELIANCE", Side.BUY, 2, 100))
+
+    subscribed_exchange, subscribed_token = socket.message["Instruments"][0]
+    mapping = adapter.store.rows("SELECT exchange,token FROM broker_order_mappings")[0]
+    assert order.status.value == "OPEN"
+    assert (subscribed_exchange, subscribed_token) == (1, submitted["token"])
+    assert submitted["exchange"] == "NSE"
+    assert (mapping["exchange"], mapping["token"]) == ("NSECM", subscribed_token)
+
+
+def test_durable_order_mapping_cannot_switch_instrument_identity(tmp_path):
+    cache = tmp_path / "instruments.csv"
+    cache.write_bytes(_catalogue(BSE_RELIANCE, NSE_RELIANCE))
+    adapter = Broker021Adapter(
+        _platform(),
+        enabled=True,
+        access_token="test-token",
+        instrument_cache=str(cache),
+        instrument_exchange="NSECM",
+    )
+    stale_mapping = {
+        "exchange": "BSEEQ",
+        "token": 500325,
+        "product": "INTRADAY",
+    }
+
+    with pytest.raises(Provider021Blocked, match="does not match"):
+        adapter._instrument_for_mapping(stale_mapping, "RELIANCE")
 
 
 @pytest.mark.xfail(

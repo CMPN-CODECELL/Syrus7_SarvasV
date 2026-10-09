@@ -22,6 +22,9 @@ class OrderStream021:
         self._lock = Lock()
         self.connected = False
         self.frames_received = 0
+        self.control_messages_received = 0
+        self.protocol_errors = 0
+        self.last_protocol_error = None
         self.reconnect_attempts = 0
         self.last_disconnect_reason = None
 
@@ -45,6 +48,9 @@ class OrderStream021:
             return {
                 "connected": self.connected,
                 "frames_received": self.frames_received,
+                "control_messages_received": self.control_messages_received,
+                "protocol_errors": self.protocol_errors,
+                "last_protocol_error": self.last_protocol_error,
                 "reconnect_attempts": self.reconnect_attempts,
                 "last_disconnect_reason": self.last_disconnect_reason,
             }
@@ -67,8 +73,22 @@ class OrderStream021:
                     if frame is None:
                         raise ConnectionError("order websocket closed")
                     if isinstance(frame, str):
+                        with self._lock:
+                            self.control_messages_received += 1
                         continue
-                    update = self.adapter.parse_order_update(frame)
+                    try:
+                        update = self.adapter.parse_order_update(frame)
+                    except Exception:
+                        diagnostic = {
+                            "length": len(frame),
+                            "prefix_hex": bytes(frame[:4]).hex(),
+                        }
+                        with self._lock:
+                            self.protocol_errors += 1
+                            self.last_protocol_error = diagnostic
+                        # Malformed binary evidence is not swallowed. The outer
+                        # handler disconnects and rebuilds the stream.
+                        raise
                     with self._lock:
                         self.frames_received += 1
                     if update is not None:

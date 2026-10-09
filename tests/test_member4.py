@@ -509,6 +509,9 @@ def test_market_session_hours_and_halt_logic():
     assert session.status == "CLOSED"
     assert not session.is_open(base_ts + 36000)
     session.set_status("OPEN")
+    # Manual OPEN does not extend a live enforced schedule.
+    assert not session.is_open(base_ts + 57600)
+    session.enforce_hours = False
     assert session.is_open(base_ts + 57600)
 
     # Invalid status

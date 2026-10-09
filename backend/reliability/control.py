@@ -80,7 +80,10 @@ class Reliability:
                 pass
 
     def observe_tick(self, tick, *, replay=False):
-        self.safety.mark(tick, self.clock(), "REPLAY" if replay else "LIVE")
+        source = "REPLAY" if replay else "LIVE"
+        if not replay and getattr(tick, "event_time_status", "VERIFIED") != "VERIFIED":
+            source = "LIVE_UNVERIFIED_EVENT_TIME"
+        self.safety.mark(tick, tick.received_at or self.clock(), source)
         self.ledger.marks[tick.symbol] = tick.price
 
     def evaluate_safety_evidence(
@@ -116,6 +119,8 @@ class Reliability:
 
         if symbols is not None:
             required_symbols = set(symbols)
+        elif account_id is None and hasattr(self, "required_symbols_provider"):
+            required_symbols = set(self.required_symbols_provider())
         elif account_id:
             subscriptions = self.store.rows(
                 "SELECT symbol FROM subscriptions WHERE account=? AND enabled=1",
@@ -144,6 +149,11 @@ class Reliability:
             else None
         )
         missing_marks = required_symbols - set(marks)
+        unverified_event_marks = {
+            symbol
+            for symbol, row in marks.items()
+            if row["source"] == "LIVE_UNVERIFIED_EVENT_TIME"
+        }
         stale_marks = {
             symbol
             for symbol, row in marks.items()
@@ -153,9 +163,13 @@ class Reliability:
                 and not -1 <= now - row["event_timestamp"] <= self.max_feed_age
             )
         }
-        if not required_symbols or missing_marks:
+        if not required_symbols or missing_marks or unverified_event_marks:
             market_status = "UNKNOWN"
-            market_reason = "MARKET_EVIDENCE_UNAVAILABLE"
+            market_reason = (
+                "MARKET_EVENT_TIME_UNVERIFIED"
+                if unverified_event_marks
+                else "MARKET_EVIDENCE_UNAVAILABLE"
+            )
         elif stale_marks:
             market_status = "STALE"
             market_reason = "MARKET_EVIDENCE_STALE"
@@ -194,12 +208,37 @@ class Reliability:
             telemetry = getattr(self.external_market_data, "telemetry", None)
             if telemetry is not None:
                 provider_state = telemetry()
-        subscribed_symbols = set(provider_state.get("subscribed_symbols") or ())
+        serving_evidence = {
+            item.get("symbol"): item
+            for item in provider_state.get("serving_evidence") or ()
+            if item.get("symbol")
+        }
+        current_generations = provider_state.get("symbol_generations") or {}
+        fresh_serving_symbols = {
+            symbol
+            for symbol, item in serving_evidence.items()
+            if item.get("evidence_type")
+            in {
+                "PROVIDER_ACKNOWLEDGEMENT",
+                "FRESH_VALID_OBSERVATION",
+            }
+            and item.get("connection_generation") == current_generations.get(symbol)
+            and isinstance(item.get("observed_at"), (int, float))
+            and -1 <= now - item["observed_at"] <= self.max_feed_age
+        }
+        serving_observed_at = (
+            min(
+                serving_evidence[symbol]["observed_at"]
+                for symbol in required_symbols & fresh_serving_symbols
+            )
+            if required_symbols and required_symbols <= fresh_serving_symbols
+            else None
+        )
         subscription_observed = bool(
             has_external
             and required_symbols
             and provider_state.get("connected") is True
-            and required_symbols <= subscribed_symbols
+            and required_symbols <= fresh_serving_symbols
         )
         subscription_status = (
             "NOT_APPLICABLE"
@@ -213,7 +252,7 @@ class Reliability:
         subscription_reason = (
             "NO_REQUIRED_MARKET_SYMBOLS"
             if not required_symbols
-            else "PROVIDER_SUBSCRIPTION_OBSERVED"
+            else "PROVIDER_SERVING_OBSERVATION_VERIFIED"
             if subscription_observed
             else "PROVIDER_SUBSCRIPTION_EVIDENCE_UNAVAILABLE"
             if has_external
@@ -247,7 +286,8 @@ class Reliability:
                 broker_status == "VERIFIED",
                 coverage_status == "VERIFIED",
                 reconciliation_status == "VERIFIED",
-                subscription_status in {"VERIFIED", "NOT_APPLICABLE"},
+                subscription_status == "VERIFIED" if has_external else True,
+                bool(required_symbols),
                 unknown_order_count == 0,
                 session_open,
                 not self.kill_latched,
@@ -274,6 +314,8 @@ class Reliability:
             )
         if self.kill_latched:
             blocking_reasons.append("KILL_LATCHED")
+        if not required_symbols:
+            blocking_reasons.append("NO_EXECUTION_DEMAND")
 
         return {
             "evidence_ready": evidence_ready,
@@ -291,6 +333,9 @@ class Reliability:
             "reconciliation_reason": reconciliation_reason,
             "subscription_status": subscription_status,
             "subscription_reason": subscription_reason,
+            "required_symbols": sorted(required_symbols),
+            "serving_symbols": sorted(fresh_serving_symbols),
+            "serving_observed_at": serving_observed_at,
             "unknown_order_count": unknown_order_count,
             "session_open": session_open,
             "session_reason": session_reason,
@@ -617,6 +662,7 @@ class Reliability:
         self,
         *,
         account_id,
+        symbols=None,
         market_data,
         external_market_data,
         broker_connected,
@@ -631,6 +677,7 @@ class Reliability:
         now = self.clock()
         evidence = self.evaluate_safety_evidence(
             account_id=account_id,
+            symbols=symbols,
             external_market_data=external_market_data,
             broker_connected=broker_connected,
         )
@@ -721,8 +768,10 @@ class Reliability:
             },
             "subscription": {
                 "status": evidence["subscription_status"],
-                "observed_at": None,
+                "observed_at": evidence["serving_observed_at"],
                 "reason_code": evidence["subscription_reason"],
+                "required_symbols": evidence["required_symbols"],
+                "serving_symbols": evidence["serving_symbols"],
             },
             "market_freshness": {
                 "status": evidence["market_status"],

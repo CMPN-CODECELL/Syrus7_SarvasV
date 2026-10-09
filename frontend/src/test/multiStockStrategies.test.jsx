@@ -25,7 +25,8 @@ describe('multi-stock strategy creation',()=>{
     mocks.post.mockResolvedValue({enabled:true})
     renderPage(refresh,{
       subscriptions:[{id:'auto-hidden',account:'acc_a',kind:'auto_adaptive',symbol:'TCS',enabled:1,state:'READY',readiness:{samples:0,warmup:1,ready:false}}],positions:[],
-      auto_mode:{enabled:false,candidate_count:200,evaluated_count:12,selected_symbol:'TCS',selected_strategy:'mean_reversion',selected_strategy_instance_id:'auto-hidden',policy:{max_positions:3,entry_momentum:'0.003',take_profit:'0.01',stop_loss:'0.005'},decisions:[{symbol:'TCS',selected_strategy:'mean_reversion',action:'HOLD',result:null,momentum:'0.002',reason:'no entry or exit threshold crossed',observed_at:123}],instances:[{id:'auto-hidden',kind:'auto_adaptive',symbol:'TCS',readiness:{samples:5,warmup:5,ready:true},financial_position:{net_quantity:0,net_pnl:'0',charges:'0'},decision:{selected_strategy:'mean_reversion',action:'HOLD',result:null},latest_order:null}]},
+      auto_mode:{enabled:false,state:'STOPPED',execution_state:'BLOCKED',blocking_reasons:['NO_EXECUTION_DEMAND'],candidate_count:200,evaluated_count:12,funnel:{observations:12,evaluations:12,ready_evaluations:4,signals:0,risk_admitted:0,orders:0,fills:0},hold_reasons:{'no entry or exit threshold crossed':4},selected_symbol:'TCS',selected_strategy:'mean_reversion',selected_strategy_instance_id:'auto-hidden',policy:{max_positions:3,entry_momentum:'0.003',take_profit:'0.01',stop_loss:'0.005'},decisions:[{symbol:'TCS',selected_strategy:'mean_reversion',action:'HOLD',result:null,momentum:'0.002',reason:'no entry or exit threshold crossed',observed_at:123}],instances:[{id:'auto-hidden',kind:'auto_adaptive',symbol:'TCS',readiness:{samples:5,warmup:5,ready:true},financial_position:{net_quantity:0,net_pnl:'0',charges:'0'},decision:{selected_strategy:'mean_reversion',action:'HOLD',result:null},latest_order:null}]},
+      provider_readiness:{actions:{new_exposure:{status:'BLOCKED',reason_code:'READINESS_NOT_VERIFIED'}},blocking_reason_codes:['NO_EXECUTION_DEMAND']},
     })
     expect(screen.getByText('Profit is not guaranteed.')).toBeInTheDocument()
     expect(screen.getAllByText('TCS').length).toBeGreaterThan(0)
@@ -33,6 +34,8 @@ describe('multi-stock strategy creation',()=>{
     expect(screen.getByText('HOLD')).toBeInTheDocument()
     expect(screen.getAllByText(/auto-hidden/).length).toBeGreaterThan(0)
     expect(screen.getByText('No broker order')).toBeInTheDocument()
+    expect(screen.getByLabelText('Automatic trading funnel')).toHaveTextContent('Ready Evaluations4')
+    expect(screen.getByRole('status')).toHaveTextContent('NO_EXECUTION_DEMAND')
     await user.click(screen.getByRole('button',{name:'Start auto mode'}))
     expect(mocks.post).toHaveBeenCalledWith('/api/auto-mode/start')
     expect(refresh).toHaveBeenCalledOnce()

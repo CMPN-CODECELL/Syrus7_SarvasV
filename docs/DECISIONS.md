@@ -1013,3 +1013,30 @@ financial/identity tables inspected remain empty. This verifies schema
 deployment, not runtime deployment, transaction parity, production identity,
 021 readiness or safety certification. Those require separate authorized
 environments and evidence.
+
+## DEC-042 — Explicit Auto demand and generation-scoped 021 serving evidence
+
+Date: 2026-10-09
+Status: ACCEPTED
+
+Live Auto requires a bounded `ALGOSHIELD_AUTO_SYMBOLS` allowlist. With no
+watchlist, enabled strategy, exposure, open order, or enabled Auto candidate,
+the 021 provider remains idle. Connectivity and locally requested symbols are
+not serving proof: readiness requires a fresh valid mapped-instrument
+observation tied to the current connection generation. Reconnect and universe
+changes invalidate that evidence and never resume execution. Invalid or missing
+event time remains distinct from receive time. Live admission enforces
+Asia/Kolkata `[09:15, 15:30)`; replay remains explicitly unenforced.
+
+## DEC-043 — Exchange-qualified Auto instrument selection
+
+Date: 2026-10-09
+Status: ACCEPTED
+
+Live Auto uses `ALGOSHIELD_AUTO_EXCHANGE=NSECM`. Catalogue loading retains
+eligible cash-stock rows by `(symbol, exchange)` identity. A candidate requires
+exactly one documented `STK` NSECM row; missing or duplicate mappings fail
+closed, with no first-row or BSEEQ fallback. Current catalogue tokens supply
+both market subscription and order construction, while durable order mutation
+rejects an exchange/token/product mismatch. This does not alter unresolved
+UCC/account/provider-order-ID attribution or reconciliation completeness.
