@@ -35,10 +35,12 @@ Exact fresh validation and final provenance will be recorded in INTEGRATION.md.
 
 ## Final disposition — DEC-027
 
-The matrix above is the initial hypothesis inventory. Later-added reports
-[Member 1](Member-1.md), [Member 2](member-2.md), [Member 3](member-3.md),
-[Member 4](member-4.md) were inspected and retained verbatim. They describe
-different reported baselines and absent patches; no member branch was merged.
+The matrix above is the initial hypothesis inventory. Four later-added member
+reports were inspected and initially retained verbatim, then removed from the
+active tree by main cleanup commit `2030c8e`. Their adjudicated findings remain
+in [Round 2 Research Update](ROUND2_RESEARCH_UPDATE.md) and the active
+[Team Execution Plan](TEAM_EXECUTION_PLAN.md). They described different reported
+baselines and absent patches; no member branch was merged.
 Member 3's PBKDF2 claim did not match dev's salted SHA-256. Member 4's timestamp
 dedupe/5m-rollup description did not match canonical event-ID/direct intervals.
 The user approved the targeted work after this review.

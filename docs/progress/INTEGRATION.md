@@ -394,3 +394,12 @@ The separate documentation integration adds a single four-member execution plan 
   part of main's release baseline. Resolved the independently allocated decision
   number by retaining main's workflow as DEC-028 and renumbering multi-stock to
   DEC-029; no runtime contract, schema or provider behavior changed.
+
+## 2026-10-09 — Main research-source cleanup
+
+- Integrated main commit `2030c8e`, which removes the four raw member research
+  handoff files from the active tree.
+- Repaired the audit's four resulting local links to point at the retained
+  consolidated Round 2 research and active team execution plan. Documentation
+  inventory reports 47 Markdown files and zero broken local links. No runtime,
+  schema, dependency, provider or test behavior changed.
