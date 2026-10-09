@@ -292,8 +292,8 @@ installation/change was performed in this round. Only isolated SQLite/mock/repla
 | python -m scripts.rehearsal_runner (PYTHONIOENCODING=utf-8) | **7/7 passed**; observed mock kill SUCCESS 0.18s |
 | python scripts/check_docs.py | Before 42 / after 47 Markdown files; zero broken local file links |
 | git diff --check before research staging | Passed |
-| git diff --cached --check after research staging | Reports pre-existing hard-break trailing spaces/EOF blank lines in four verbatim member reports; preserved intentionally |
-| git diff --cached --check excluding docs/Member-1.md and docs/member-{2,3,4}.md | Passed for all authored changes and archives; no conflict markers |
+| git diff --cached --check after research staging | Reports pre-existing hard-break trailing spaces/EOF blank lines in verbatim member reports and archived USP proposal; preserved intentionally |
+| git diff --check de126de HEAD excluding raw member reports and docs/archive/2026-10-09 | Passed for authored code/docs/redirects; originals retain source formatting |
 | Staged artifact/credential-pattern review | No DB/env/generated/private-key/credential-URL findings; no migration or lock changes |
 
 PostgreSQL skipped because no explicitly isolated test URL was configured; no
@@ -318,5 +318,8 @@ Post-commit security check at 89ea651: `python -m pytest -q
 tests/test_round2_security.py --basetemp=data/round2-committed-security --tb=short`
 passed **16 tests in 8.50s**. Research whitespace is a source-formatting note,
 not a product regression; no original research text was rewritten to hide it.
+
+Documentation/research commit: 6a15db172725de23f887c170cfc22c0061101d92.
+Final delivery adds only this evidence clarification; no production change.
 
 
