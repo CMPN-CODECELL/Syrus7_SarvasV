@@ -12,55 +12,80 @@ import time
 import json
 from threading import Event, Lock, Thread, current_thread
 
-from backend.broker.official021 import ObservationKind, parse_market_frames
+from backend.broker.official021 import ObservationKind, Provider021Error, parse_market_frames
 from backend.shared.contracts import Tick
 
 
 class MarketData021Provider:
     supports_live_broker = True
+    MAX_INSTRUMENTS_PER_CONNECTION = 100
+    MAX_CONNECTIONS = 20
 
     def __init__(self, platform, adapter, symbols, *, mode="full", socket_factory=None):
         if mode not in {"ltp", "ltpo", "ltpc", "full"}:
             raise ValueError("unsupported 021 market mode")
         self.adapter = adapter
         self.platform = platform
-        self.symbols = tuple(
+        requested_symbols = tuple(
             dict.fromkeys(symbol.upper() for symbol in symbols if symbol)
         )
-        if not self.symbols:
+        if not requested_symbols:
             raise ValueError("at least one 021 symbol is required")
+        capacity = self.MAX_INSTRUMENTS_PER_CONNECTION * self.MAX_CONNECTIONS
+        self.symbols = requested_symbols[:capacity]
         self.mode = mode
         self.socket_factory = socket_factory
         self._stop = Event()
         self._thread: Thread | None = None
+        self._threads: list[Thread] = []
+        self._ephemeral_key: str | None = None
         self._lock = Lock()
         self._connected = False
+        self._connected_count = 0
         self._last_volume = {}
         self._latest_quotes = {}
         self._last_received_at = None
         self._last_event_timestamp = None
         self._last_raw_event_timestamp = None
+        self.timestamp_fallbacks = 0
         self.received = 0
         self.normalized = 0
         self.errors = []
+        self.universe_truncated = (
+            f"{len(requested_symbols)}>{capacity}"
+            if len(requested_symbols) > capacity
+            else None
+        )
 
     def start(self):
-        if self._thread and self._thread.is_alive():
+        if any(thread.is_alive() for thread in self._threads):
             return False
         self._stop.clear()
-        self._thread = Thread(target=self._run, daemon=True, name="021-market-data")
-        self._thread.start()
+        self._threads = []
+        self._ephemeral_key = self.adapter.ephemeral_key()
+        for index in range(0, len(self.symbols), self.MAX_INSTRUMENTS_PER_CONNECTION):
+            chunk = self.symbols[index : index + self.MAX_INSTRUMENTS_PER_CONNECTION]
+            thread = Thread(
+                target=self._run,
+                args=(chunk,),
+                daemon=True,
+                name=f"021-market-data-{index // self.MAX_INSTRUMENTS_PER_CONNECTION + 1}",
+            )
+            self._threads.append(thread)
+            thread.start()
+        self._thread = self._threads[0]
         return True
 
     def stop(self):
         self._stop.set()
-        if self._thread and self._thread is not current_thread():
-            self._thread.join(timeout=1.0)
-        return not (self._thread and self._thread.is_alive())
+        for thread in self._threads:
+            if thread is not current_thread():
+                thread.join(timeout=1.0)
+        return not any(thread.is_alive() for thread in self._threads)
 
-    def _connect(self):
-        token = self.adapter.ephemeral_key()
-        instruments = [self.adapter._instrument(symbol) for symbol in self.symbols]
+    def _connect(self, symbols):
+        token = self._ephemeral_key or self.adapter.ephemeral_key()
+        instruments = [self.adapter._instrument(symbol) for symbol in symbols]
         pairs = [[instrument.exchange, instrument.token] for instrument in instruments]
         url = self.adapter.base_url.replace("https://", "wss://").replace(
             "http://", "ws://"
@@ -78,10 +103,11 @@ class MarketData021Provider:
         )
         return socket
 
-    def _run(self):
+    def _run(self, symbols):
         try:
-            socket = self._connect()
+            socket = self._connect(symbols)
             with self._lock:
+                self._connected_count += 1
                 self._connected = True
             try:
                 while not self._stop.is_set():
@@ -94,11 +120,34 @@ class MarketData021Provider:
                     if isinstance(frame, str):
                         continue
                     self.received += 1
-                    for observation in parse_market_frames(frame):
-                        self._emit(observation)
+                    try:
+                        observations = parse_market_frames(frame)
+                    except Exception as exc:
+                        with self._lock:
+                            detail = str(exc).strip()
+                            self.errors.append(
+                                f"{type(exc).__name__}: {detail[:120]}"
+                                if detail
+                                else type(exc).__name__
+                            )
+                        self.platform.reliability.fail_closed("021_FEED_PROTOCOL_ERROR")
+                        continue
+                    for observation in observations:
+                        try:
+                            self._emit(observation)
+                        except (ValueError, Provider021Error) as exc:
+                            with self._lock:
+                                detail = str(exc).strip()
+                                self.errors.append(
+                                    f"{type(exc).__name__}: {detail[:120]}"
+                                    if detail
+                                    else type(exc).__name__
+                                )
+                            self.platform.reliability.fail_closed("021_FEED_UPDATE_REJECTED")
             finally:
                 with self._lock:
-                    self._connected = False
+                    self._connected_count = max(0, self._connected_count - 1)
+                    self._connected = self._connected_count > 0
                 try:
                     socket.close()
                 except Exception:
@@ -109,7 +158,8 @@ class MarketData021Provider:
                 self.platform.reliability.fail_closed("021_FEED_DISCONNECTED")
         except Exception as exc:
             with self._lock:
-                self._connected = False
+                self._connected_count = max(0, self._connected_count - 1)
+                self._connected = self._connected_count > 0
                 self.errors.append(type(exc).__name__)
             try:
                 self.platform.reliability.fail_closed("021_FEED_DISCONNECTED")
@@ -147,6 +197,13 @@ class MarketData021Provider:
             self._last_volume[volume_key] = observation.cumulative_volume
         received_at = time.time()
         timestamp = observation.exchange_timestamp or int(received_at)
+        # The documented exchange epoch is not consistently applied by the
+        # development feed.  Never place a candle in the future or reorder the
+        # stream: use receive-time evidence while retaining the raw timestamp.
+        if abs(timestamp - int(received_at)) > 86_400:
+            timestamp = int(received_at)
+            with self._lock:
+                self.timestamp_fallbacks += 1
         raw_volume = (
             "na"
             if observation.cumulative_volume is None
@@ -194,6 +251,10 @@ class MarketData021Provider:
                 "source": "021_LIVE",
                 "label": "021 LIVE / REAL MARKET DATA",
                 "connected": self._connected,
+                "connection_count": self._connected_count,
+                "connection_limit": self.MAX_CONNECTIONS,
+                "instrument_limit_per_connection": self.MAX_INSTRUMENTS_PER_CONNECTION,
+                "universe_truncated": self.universe_truncated,
                 "symbols": list(self.symbols),
                 "canonical_symbols": list(self.symbols),
                 "latest_quotes": [
@@ -204,6 +265,7 @@ class MarketData021Provider:
                 "last_received_at": self._last_received_at,
                 "last_event_timestamp": self._last_event_timestamp,
                 "last_raw_event_timestamp": self._last_raw_event_timestamp,
+                "timestamp_fallbacks": self.timestamp_fallbacks,
                 "volume_available": False,
                 "received_messages": self.received,
                 "accepted_updates": self.normalized,

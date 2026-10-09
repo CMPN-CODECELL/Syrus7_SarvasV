@@ -5,6 +5,7 @@ The official wire contract is documented in [OFFICIAL_API_CONTRACT](021/OFFICIAL
 Implemented transport scope:
 
 - `Broker021Adapter` authenticates from process configuration, loads and validates the instrument catalogue, encodes paise/signed quantities, submits and asynchronously verifies cancellation, polls orders/trades/positions, and preserves `platform_order_id ↔ provider_order_id` in `broker_order_mappings`.
+- The order-side REST lifecycle now also supports full-state `PUT /orders/{id}` modification and the documented order WebSocket. WebSocket events update status only; trade status remains provisional until the per-order REST trade endpoint supplies `tradeId`.
 - Canonical fills are created only from per-order REST trade evidence with a non-empty `tradeId`; order WebSocket events remain status evidence and never manufacture fills.
 - `MarketData021Provider` consumes the documented sampled market packets through the ephemeral-key WebSocket and converts cumulative volume conservatively. Feed failure is fail-closed.
 - No live order has been submitted by this implementation task. Enablement is explicit and off by default; credentials must stay in ignored environment/process configuration.

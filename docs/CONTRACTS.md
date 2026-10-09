@@ -67,7 +67,7 @@ Synthetic demo fees are not a statutory fee model.
 
 `MarketDataProvider.ticks() -> Iterable[Tick]`.
 `BrokerAdapter.submit(intent) -> CanonicalOrder`, `cancel(order_id)`, `snapshot() -> BrokerSnapshot`.
-Mock exposes `execute(...)` for deterministic fill injection; it is not part of the real broker interface. `Broker021Adapter` is OFF by default and blocks all live mutations unless explicitly enabled in server configuration. Its REST transport and market provider are fixture-tested but remain `IMPLEMENTED_UNVERIFIED`; no sandbox round trip or live write is claimed.
+Mock exposes `execute(...)` for deterministic fill injection; it is not part of the real broker interface. `Broker021Adapter` is OFF by default and blocks all live mutations unless explicitly enabled in server configuration. Its 021 REST submit/modify/cancel lifecycle, order-frame status normalizer, and market provider are fixture-tested; live order/fill/cancel evidence remains unverified.
 
 ### Provider readiness and uncertainty projection
 

@@ -126,3 +126,13 @@ def test_rest_adapter_maps_orders_and_trades_to_canonical_evidence():
     assert snapshot.fills[0].price == Decimal("1400")
     updates = adapter.drain_updates()
     assert any(update.fill and update.fill.fill_id == "021:5001" for update in updates)
+
+
+def test_catalogue_exposes_cash_equity_symbols_for_auto_market_setup(tmp_path):
+    cache = tmp_path / "instruments.csv"
+    cache.write_bytes(INSTRUMENTS)
+    adapter = Broker021Adapter(
+        _platform(), enabled=True, access_token="test-token", instrument_cache=str(cache)
+    )
+
+    assert adapter.all_market_symbols() == ("RELIANCE",)

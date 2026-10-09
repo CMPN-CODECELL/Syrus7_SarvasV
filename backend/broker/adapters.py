@@ -20,6 +20,7 @@ from backend.broker.official021_http import Official021RESTAdapter
 
 class BrokerAdapter(Protocol):
     def submit(self, intent: OrderIntent) -> CanonicalOrder: ...
+    def modify(self, order_id: str, *, quantity: int, limit_price=None) -> None: ...
     def cancel(self, order_id: str) -> None: ...
     def snapshot(self) -> BrokerSnapshot: ...
     def drain_updates(self) -> list[BrokerUpdate]: ...
@@ -262,6 +263,10 @@ class Broker021Adapter(Official021RESTAdapter):
         self._require_enabled()
         return super().cancel(order_id, timeout=timeout)
 
+    def modify(self, order_id: str, *, quantity: int, limit_price=None) -> None:
+        self._require_enabled()
+        return super().modify(order_id, quantity=quantity, limit_price=limit_price)
+
     def snapshot(self) -> BrokerSnapshot:
         self._require_enabled()
         return super().snapshot()
@@ -274,6 +279,18 @@ class Broker021Adapter(Official021RESTAdapter):
     def reconnect(self) -> None:
         self._require_enabled()
         return super().reconnect()
+
+    def ephemeral_key(self) -> str:
+        self._require_enabled()
+        return super().ephemeral_key()
+
+    def connect_order_websocket(self):
+        self._require_enabled()
+        return super().connect_order_websocket()
+
+    def parse_order_update(self, frame: bytes):
+        self._require_enabled()
+        return super().parse_order_update(frame)
 
     def close(self) -> None:
         if self.enabled:

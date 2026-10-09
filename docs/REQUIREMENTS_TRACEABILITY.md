@@ -40,7 +40,7 @@ retain their ordinary meaning. E1/E2 are evidence references for all rows below.
 | PS16 | Hidden tests/change request/viva readiness | tests; demo_scenarios; rehearsal_runner | E1 seven mocks and module regressions | PARTIAL; actual hidden tests cannot be certified; browser smoke stale P1 | M4 DEMO03 |
 
 Scope count: 16 rows = 10 VERIFIED_CURRENT_COMMIT (mock/local), 5 PARTIAL,
-1 BLOCKED_EXTERNAL. This is not 10/16 live PS compliance. PS05 is not implemented;
+1 BLOCKED_EXTERNAL. This is not 10/16 live PS compliance. PS05 transport is implemented but remains live-unverified;
 PS06/07/12/14 and feed/deployment evidence need external acceptance. No test count
 substitutes for sponsor sandbox proof.
 
@@ -65,7 +65,7 @@ substitutes for sponsor sandbox proof.
 |---|---|---|
 | Auth/account security | auth.py, browser_security.py, api.py; operator/Origin/hash suites | Local verified; secure=False cookie, offline-only operator CLI, basic identity → deployment SEC01 |
 | Runtime/candles | runtime.py bounded generation workers; candles.py direct intervals/session.py; execution-safety/candle/replay suites | Mock verified; threads are not hostile-code isolation; real feed absent |
-| Broker/order IDs | adapters.py, http_adapter.py, orders.py; contract/cancellation/recovery suites | Mock canonical IDs verified; actual scoped provider mapping NOT_IMPLEMENTED, no premature column |
+| Broker/order IDs | adapters.py, official021_http.py, http_adapter.py, orders.py; contract/cancellation/recovery suites | Mock canonical IDs verified; 021 provider mapping is implemented with additive SQLite/PG migrations, but live restart/foreign-ID evidence remains unverified |
 | Financial truth | ledger.py immutable executions/Decimal/reversal; member1/charges/recovery | Mock verified; independent late-fee/correction events unsupported; profile before cache |
 | Risk/recovery/kill | gateway.py, control.py, snapshots.py, broker_calls.py | Existing suites verified; external history/close capability and PG failures remain unknown |
 | React/evidence | frontend/src; presentation.py, tracing.py, proof.py | Scope and exact strings verified; scripts/browser_smoke.py uses legacy selectors, port needs trusted Origin |

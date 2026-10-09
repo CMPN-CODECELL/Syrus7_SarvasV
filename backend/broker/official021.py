@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
 import struct
+import time
 from typing import Any
 
 from backend.shared.contracts import OrderStatus, Side
@@ -146,6 +147,13 @@ def paise_to_rupees(value: int) -> Decimal:
     return Decimal(value) / Decimal(100)
 
 
+def _quote_paise_to_rupees(value: int) -> Decimal | None:
+    """Normalize a quote field; zero means the instrument has no quote yet."""
+    if value == 0:
+        return None
+    return paise_to_rupees(value)
+
+
 def encode_order_payload(
     *,
     instrument: Instrument021,
@@ -208,6 +216,17 @@ def _i32(frame: bytes, offset: int) -> int:
     return struct.unpack_from(">i", frame, offset)[0]
 
 
+def _normalize_exchange_timestamp(value: int) -> int:
+    """Accept both documented 1980-epoch and live Unix-second timestamps."""
+    if value == 0:
+        return 0
+    unix_candidate = value + 315513000
+    now = int(time.time())
+    if abs(value - now) <= 86_400:
+        return value
+    return unix_candidate
+
+
 def parse_market_frame(frame: bytes) -> MarketObservation021:
     if len(frame) < 2:
         raise Provider021ProtocolError("truncated 021 market frame")
@@ -224,9 +243,9 @@ def parse_market_frame(frame: bytes) -> MarketObservation021:
         if len(frame) == 17:
             if frame[12:13] != b"o":
                 raise Provider021ProtocolError("unsupported TC1 snapshot suffix")
-            opening = paise_to_rupees(_u32(frame, 13))
+            opening = _quote_paise_to_rupees(_u32(frame, 13))
         return MarketObservation021(
-            exchange, token, ObservationKind.LTP, paise_to_rupees(price), opening
+            exchange, token, ObservationKind.LTP, _quote_paise_to_rupees(price), opening
         )
     if tc != 3:
         raise Provider021ProtocolError(f"unsupported market transaction code {tc}")
@@ -274,11 +293,11 @@ def parse_market_frame(frame: bytes) -> MarketObservation021:
         exchange,
         _u32(frame, token_offset),
         ObservationKind.FULL,
-        paise_to_rupees(_u32(frame, ltp_offset)),
-        paise_to_rupees(_u32(frame, open_offset)),
+        _quote_paise_to_rupees(_u32(frame, ltp_offset)),
+        _quote_paise_to_rupees(_u32(frame, open_offset)),
         _u32(frame, qty_offset) if qty_offset is not None else None,
         _u32(frame, volume_offset) if volume_offset is not None else None,
-        _u32(frame, time_offset) + 315513000,
+        _normalize_exchange_timestamp(_u32(frame, time_offset)),
     )
 
 
