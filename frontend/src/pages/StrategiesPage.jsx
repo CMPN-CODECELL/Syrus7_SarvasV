@@ -76,9 +76,10 @@ export function StrategiesPage(){
   const knownStates=[...new Set(rows.map(row=>row.state))].sort()
   const previewPrefix=idFragment(prefix||kind)
 
-  return <Page eyebrow="Subscriptions" title="Run one strategy across many stocks" description="Independent strategy ledgers keep each stock isolated. Choose a strategy and stocks once; failures, positions, risk, and P&L stay independent.">
+  return <Page className="strategies-page" eyebrow="Subscriptions" title="Independent strategy ledgers" description="Each subscription is an independent symbol-level strategy ledger.">
     {error&&<div className="error" role="alert">{error}</div>}
     {success&&<div className="success" role="status"><b>Created {success.count} strategy {success.count===1?'instance':'instances'}.</b><span>{success.symbols.join(', ')}</span></div>}
+    {!rows.length&&<div className="strategy-state-note" role="note"><strong>No strategies are subscribed.</strong><span>No strategy callbacks or order intents are running for this account. Select an available backend strategy and instrument below to create a subscription.</span>{s?.gate!=='RUNNING'&&<span>Trading gate: {s?.gate||'UNKNOWN'}. New exposure remains blocked until broker reconciliation and explicit resume succeed.</span>}</div>}
     <div className="grid strategy-grid">
       <Card title="Strategy instances" meta={`${visibleRows.length} shown · ${rows.length} total`}>
         <div className="filter-row" aria-label="Strategy filters">

@@ -10,6 +10,7 @@ from threading import RLock
 
 class Store:
     backend_name = "SQLITE_OFFLINE"
+    CANDLE_RETENTION_SECONDS = 365 * 24 * 60 * 60
 
     def __init__(self, path=":memory:"):
         if path != ":memory:":
@@ -118,14 +119,42 @@ class Store:
                  str(candle.open), str(candle.high), str(candle.low), str(candle.close), candle.volume,
                  int(candle.is_closed), int(candle.volume_available), candle.data_source),
             )
+            self.db.execute(
+                "DELETE FROM closed_candles WHERE provider=? AND symbol=? AND start_time<?",
+                (
+                    provider,
+                    candle.symbol,
+                    candle.start_time - self.CANDLE_RETENTION_SECONDS,
+                ),
+            )
 
-    def candle_rows(self, symbol=None, interval=None, limit=200):
+    def candle_rows(self, symbol=None, interval=None, limit=200, provider=None):
         clauses, args = [], []
-        if symbol: clauses.append("symbol=?"); args.append(symbol.upper())
-        if interval: clauses.append("interval=?"); args.append(interval)
+        if symbol:
+            clauses.append("symbol=?")
+            args.append(symbol.upper())
+        if interval:
+            clauses.append("interval=?")
+            args.append(interval)
+        if provider:
+            clauses.append("provider=?")
+            args.append(provider)
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
-        args.append(min(max(int(limit), 1), 1000))
-        return self.rows(f"SELECT * FROM closed_candles{where} ORDER BY start_time DESC LIMIT ?", tuple(args))
+        bounded_limit = min(max(int(limit), 1), 1000)
+        args.extend((bounded_limit, bounded_limit))
+        return self.rows(
+            f"SELECT * FROM (SELECT * FROM closed_candles{where} "
+            "ORDER BY start_time DESC LIMIT ?) ORDER BY start_time ASC LIMIT ?",
+            tuple(args),
+        )
+
+    def candle_count(self, provider=None):
+        if provider:
+            return self.rows(
+                "SELECT COUNT(*) AS n FROM closed_candles WHERE provider=?",
+                (provider,),
+            )[0]["n"]
+        return self.rows("SELECT COUNT(*) AS n FROM closed_candles")[0]["n"]
 
     def audit(self, event_type, payload, correlation_id=None):
         # Caller holds the transaction; event commits atomically with its transition.

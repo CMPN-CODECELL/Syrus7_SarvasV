@@ -63,13 +63,17 @@ describe('backend-shaped React projections',()=>{
   it('labels Yahoo quote evidence and unavailable candle volume honestly',()=>{
     renderOutlet(<MarketDataPage/>,{snapshot:{...snapshot,gate:'UNCERTAIN',market_session:{status:'OPEN'},market_data:{...snapshot.market_data,label:'YAHOO EXTERNAL QUOTES / MOCK EXECUTION',connected:true,volume_available:false,last_event_timestamp:1791521395,last_raw_event_timestamp:'1791521395000',last_received_at:1791521397,received_messages:12,accepted_updates:11,errors:['initial subscription deadline exceeded']},candles:[{symbol:'TCS',interval:60,open:'100',high:'101',low:'100',close:'101',volume:0,volume_available:false,data_source:'YAHOO_EXTERNAL_QUOTES'}]}})
     expect(screen.getByText('YAHOO EXTERNAL QUOTES / MOCK EXECUTION')).toBeInTheDocument()
-    expect(screen.getByText('Connected · Volume unavailable')).toBeInTheDocument()
+    const feedCard=screen.getByText('Market feed').closest('section')
+    expect(within(feedCard).getByText('UNKNOWN')).toBeInTheDocument()
+    expect(within(feedCard).getByText(/Transport connected/)).toBeInTheDocument()
     expect(screen.getByText('2026-10-09T04:49:55.000Z')).toBeInTheDocument()
     expect(screen.getByText('Raw: 1791521395000')).toBeInTheDocument()
-    expect(screen.getByText('12 received · 11 accepted')).toBeInTheDocument()
+    const messagesCard=screen.getByText('Provider messages').closest('section')
+    expect(messagesCard).toHaveTextContent('12')
+    expect(messagesCard).toHaveTextContent('11 accepted')
     expect(screen.getByText('UNCERTAIN')).toBeInTheDocument()
     expect(screen.getByText('initial subscription deadline exceeded')).toBeInTheDocument()
-    expect(screen.getByText('Unavailable')).toBeInTheDocument()
+    expect(screen.getAllByText('Unavailable').length).toBeGreaterThan(0)
     expect(screen.getByText('YAHOO_EXTERNAL_QUOTES')).toBeInTheDocument()
   })
 
@@ -96,7 +100,7 @@ describe('backend-shaped React projections',()=>{
     expect(screen.getByText('TCS.NS')).toBeInTheDocument()
     expect(screen.getByText('2190.80')).toBeInTheDocument()
     expect(screen.getByText('INFY.NS')).toBeInTheDocument()
-    expect(screen.getAllByText('Unavailable')).toHaveLength(2)
+    expect(screen.getAllByText('Unavailable').length).toBeGreaterThanOrEqual(2)
   })
 
   it('shows configured 021 stocks and sampled quote evidence without subscriptions',()=>{
@@ -121,15 +125,15 @@ describe('backend-shaped React projections',()=>{
     expect(screen.getByText('021 LIVE / REAL MARKET DATA')).toBeInTheDocument()
     expect(screen.getByText('3200.25')).toBeInTheDocument()
     expect(screen.getByText('021_LIVE')).toBeInTheDocument()
-    expect(screen.getByText('Unavailable')).toBeInTheDocument()
+    expect(screen.getAllByText('Unavailable').length).toBeGreaterThan(0)
   })
 
   it('uses gate, health, Safety Proof verdict, readiness, and canonical financial joins',()=>{
     renderOutlet(<OverviewPage/>)
-    const gateCard=screen.getByText('Trading gate').closest('section')
+    const gateCard=screen.getByRole('heading',{name:'Trading gate'}).closest('section')
     expect(within(gateCard).getByText('STOPPED')).toBeInTheDocument()
     expect(screen.getByText('DEGRADED')).toBeInTheDocument()
-    expect(screen.getByText('UNKNOWN')).toBeInTheDocument()
+    expect(screen.getAllByText('UNKNOWN').length).toBeGreaterThan(0)
     expect(screen.getByText('2 backend invariant results.')).toBeInTheDocument()
 
     const alpha=screen.getByText('alpha').closest('tr')

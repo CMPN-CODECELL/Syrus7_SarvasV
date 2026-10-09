@@ -59,6 +59,7 @@ def test_additive_migration_constraints_and_checksum():
         "010_benchmark_runs.sql",
         "011_operator_grants.sql",
         "012_021_order_mappings.sql",
+        "013_closed_candles.sql",
     ]
     for name, checksum, sql in items:
         assert checksum == hashlib.sha256(sql.encode()).hexdigest()
@@ -69,6 +70,8 @@ def test_additive_migration_constraints_and_checksum():
     assert "REFERENCES algoshield.orders(id)" in items[0][2]
     assert "ALTER TABLE algoshield.subscriptions" in items[2][2]
     assert "enabled INTEGER NOT NULL DEFAULT 1" in items[2][2]
+    assert "PRIMARY KEY(provider, symbol, interval_seconds, start_time)" in items[-1][2]
+    assert "open NUMERIC NOT NULL" in items[-1][2]
 
 
 def test_postgres_placeholder_binding():
@@ -126,6 +129,6 @@ def test_sqlite_v1_subscription_state_migrates_additively(tmp_path):
     try:
         row = store.rows("SELECT enabled FROM subscriptions WHERE id='s'")[0]
         assert row["enabled"] == 1
-        assert store.rows("PRAGMA user_version")[0][0] == 13
+        assert store.rows("PRAGMA user_version")[0][0] == 14
     finally:
         store.close()

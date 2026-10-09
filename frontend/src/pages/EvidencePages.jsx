@@ -1,9 +1,9 @@
-import { useEffect,useRef,useState } from 'react';import { useOutletContext } from 'react-router-dom';import { api } from '../api/client';import { useAuth } from '../auth/AuthContext';import { Card,CompactEvidence,DataTable,Empty,EvidenceView,Page,Status } from '../components/UI'
+import { useEffect,useRef,useState } from 'react';import { useOutletContext } from 'react-router-dom';import { api } from '../api/client';import { useAuth } from '../auth/AuthContext';import { Card,CompactEvidence,DataTable,Empty,EvidenceView,Page,Status } from '../components/UI';import { CandleChart } from '../components/CandleChart'
 function RemotePage({endpoint,eyebrow,title,description,render,children}){const [data,setData]=useState(null),[error,setError]=useState('');useEffect(()=>{api.get(endpoint).then(setData).catch(e=>setError(e.status===404?'No completed evidence yet.':e.message))},[endpoint]);return <Page eyebrow={eyebrow} title={title} description={description}>{children}{error?<Empty>{error}</Empty>:data?render(data):<Empty>Loading backend evidence…</Empty>}</Page>}
 const reconciliationLabel=value=>String(value).replaceAll('_',' ').replace(/\b\w/g,letter=>letter.toUpperCase())
 const hasReconciliationDetails=value=>value&&typeof value==='object'&&(Array.isArray(value)?value.length>0:Object.keys(value).length>0)
 const reconciliationSections=value=>({summary:Object.fromEntries(Object.entries(value||{}).filter(([,item])=>!item||typeof item!=='object')),details:Object.entries(value||{}).filter(([,item])=>hasReconciliationDetails(item))})
-export function ReconciliationView({data}){const report=data.report||{};const reportSections=reconciliationSections(report);const comparisonSections=reconciliationSections(data.position_comparison);const events=(data.events||[]).map(event=>({...event,payload:auditEvidence(event.payload)}));return <><div className="reconciliation-summary"><Card title="Verification"><Status value={report.verified?'VERIFIED':'FAILED'}/></Card><Card title="Reason"><strong>{report.reason||'UNKNOWN'}</strong></Card><Card title="Unknown orders"><strong>{data.unknown_orders?.length||0}</strong></Card></div><div className="reconciliation-stack"><Card title="Position comparison"><CompactEvidence value={comparisonSections.summary}/>{comparisonSections.details.length>0?<div className="reconciliation-details">{comparisonSections.details.map(([name,value])=><section key={name}><h3>{reconciliationLabel(name)}</h3><EvidenceView value={value} name={name}/></section>)}</div>:<p className="reconciliation-clear">No broker or virtual position differences reported.</p>}</Card><Card title="Broker evidence"><CompactEvidence value={data.broker}/></Card><Card title="Recovery report"><CompactEvidence value={reportSections.summary}/>{reportSections.details.length>0&&<div className="reconciliation-details">{reportSections.details.map(([name,value])=><section key={name}><h3>{reconciliationLabel(name)}</h3><EvidenceView value={value} name={name}/></section>)}</div>}</Card>{events.length>0&&<Card title="Recent reconciliation events"><EvidenceView value={events} name="events"/></Card>}</div></>}
+export function ReconciliationView({data}){const report=data.report||{};const reportSections=reconciliationSections(report);const comparisonSections=reconciliationSections(data.position_comparison);const events=(data.events||[]).map(event=>({...event,payload:auditEvidence(event.payload)}));const pending=!report.verified&&report.reason==='STARTUP_RECONCILIATION_REQUIRED';const brokerUnavailable=!report.verified&&!data.broker?.last_verified_at;return <><div className="reconciliation-summary"><Card title="Verification"><Status value={report.verified?'VERIFIED':pending?'PENDING':'FAILED'}/></Card><Card title="Reason"><strong>{report.reason||'UNKNOWN'}</strong></Card><Card title="Unknown orders"><strong>{data.unknown_orders?.length||0}</strong></Card></div>{pending&&<div className="reconciliation-notice" role="status">Broker state has not been verified since startup. This is pending evidence, not a confirmed position mismatch. An authorized operator must obtain broker evidence and reconcile before explicit resume can open trading.</div>}<div className="reconciliation-stack"><Card title="Position comparison"><CompactEvidence value={comparisonSections.summary}/>{comparisonSections.details.length>0?<div className="reconciliation-details">{comparisonSections.details.map(([name,value])=><section key={name}><h3>{reconciliationLabel(name)}</h3><EvidenceView value={value} name={name}/></section>)}</div>:<p className="reconciliation-clear">{brokerUnavailable?'Broker position evidence is unavailable; drift is not confirmed.':'No broker or virtual position differences reported.'}</p>}</Card><Card title="Broker evidence"><CompactEvidence value={data.broker}/></Card><Card title="Recovery report"><CompactEvidence value={reportSections.summary}/>{reportSections.details.length>0&&<div className="reconciliation-details">{reportSections.details.map(([name,value])=><section key={name}><h3>{reconciliationLabel(name)}</h3><EvidenceView value={value} name={name}/></section>)}</div>}</Card>{events.length>0&&<Card title="Recent reconciliation events"><EvidenceView value={events} name="events"/></Card>}</div></>}
 export function ReconciliationPage(){
   const {refresh}=useOutletContext()||{};
   const {user,refresh:refreshAuth}=useAuth()||{};
@@ -566,9 +566,13 @@ export function MetricsPage(){return <RemotePage endpoint="/api/metrics" eyebrow
 export function MarketDataPage(){
   const {user,refresh:refreshAuth}=useAuth()
   const isOperator=Boolean(user?.is_operator)
-  const {snapshot:s}=useOutletContext()
+  const {snapshot:s,accountId}=useOutletContext()
   const [symbol,setSymbol]=useState('')
   const [symbolQuery,setSymbolQuery]=useState('')
+  const [interval,setInterval]=useState(60)
+  const [history,setHistory]=useState([])
+  const [historyError,setHistoryError]=useState('')
+  const [historyLoading,setHistoryLoading]=useState(false)
   const [displayLimit,setDisplayLimit]=useState(50)
   const [watchlist,setWatchlist]=useState(()=>{try{return JSON.parse(localStorage.getItem('algoshield.watchlist')||'[]')}catch{return []}})
   const quotes=Array.isArray(s?.market_data?.latest_quotes)?s.market_data.latest_quotes:[]
@@ -581,7 +585,8 @@ export function MarketDataPage(){
   ].filter(Boolean))].sort()
   const filteredSymbols=symbols.filter(value=>value.toLowerCase().includes(symbolQuery.trim().toLowerCase()))
   const matchesQuery=item=>!symbolQuery.trim()||item.symbol?.toLowerCase().includes(symbolQuery.trim().toLowerCase())
-  const candles=(s?.candles||[]).filter(item=>(!symbol||item.symbol===symbol)&&matchesQuery(item))
+  const forming=s?.market_data?.forming_candles||[]
+  const liveClosed=(s?.candles||[]).filter(item=>(!symbol||item.symbol===symbol)&&matchesQuery(item))
   const [sessionBusy,setSessionBusy]=useState(false)
   const [sessionError,setSessionError]=useState('')
   const setSession=async status=>{
@@ -602,20 +607,23 @@ export function MarketDataPage(){
   const watchQuotes=quotes.filter(item=>watchlist.includes(item.symbol))
   const toggleWatch=symbol=>setWatchlist(current=>current.includes(symbol)?current.filter(item=>item!==symbol):[...current,symbol])
   useEffect(()=>{localStorage.setItem('algoshield.watchlist',JSON.stringify(watchlist))},[watchlist])
+  useEffect(()=>{let active=true;setHistory([]);setHistoryError('');setHistoryLoading(true);const query=new URLSearchParams({interval:String(interval),limit:'200'});if(symbol)query.set('symbol',symbol);Promise.resolve().then(()=>api.get(`/api/candles?${query}`)).then(rows=>{if(active)setHistory(Array.isArray(rows)?rows:[])}).catch(error=>{if(active)setHistoryError(error.message||'Historical candles unavailable.')}).finally(()=>{if(active)setHistoryLoading(false)});return()=>{active=false}},[accountId,interval,symbol])
+  const historicalRows=[...new Map([...history,...liveClosed].filter(item=>matchesQuery(item)).map(item=>[`${item.symbol}:${item.interval}:${item.start_time}`,item])).values()].sort((a,b)=>a.start_time-b.start_time)
+  const formingRows=forming.filter(item=>(!symbol||item.symbol===symbol)&&matchesQuery(item)&&Number(item.interval)===interval)
   const source=s?.market_data?.label||s?.market_data?.provider||'Unavailable'
-  const eventTime=s?.market_data?.last_event_timestamp
-  const receivedTime=s?.market_data?.last_received_at
+  const eventTime=typeof s?.market_data?.last_event_timestamp==='number'?s.market_data.last_event_timestamp:Math.max(0,...quotes.map(item=>Number(item.event_timestamp)||0))||null
   const asUtc=value=>{
     const numeric=Number(value)
     return value===null||value===undefined||!Number.isFinite(numeric)?'—':new Date(numeric*1000).toISOString()
   }
-  return <Page eyebrow="Market ingestion" title="Market data" description="One- and five-minute candles built from normalized updates for every enabled strategy symbol. Yahoo candles are sampled quote-derived evidence, not complete exchange ticks.">
+  return <Page className="market-data-page" eyebrow="Market ingestion" title="Market data" description="Provider observations, forming bars, and finalized candle history from the backend.">
     {sessionError&&<div className="error" role="alert">{sessionError}</div>}
     <div className="stat-grid">
-      <Card title="Source"><strong>{source}</strong><p>{s?.market_data?.connected?'Connected':'Not connected'} · Volume {s?.market_data?.volume_available===false?'unavailable':'available'}</p></Card>
+      <Card title="Market feed"><strong>{s?.market_data?.feed_status||'UNKNOWN'}</strong><p>{source} · {s?.market_data?.connected?'Transport connected':'Transport disconnected'}</p></Card>
       <Card title="Safety gate"><Status value={s?.gate}/></Card>
+      <Card title="Feed age"><strong>{s?.market_data?.feed_age_seconds==null?'Unavailable':`${Math.floor(s.market_data.feed_age_seconds)}s`}</strong><p>{s?.market_data?.stale?'Latest observation is stale':'Age since last valid quote'}</p></Card>
       <Card title="Last quote event"><strong>{asUtc(eventTime)}</strong><p>Raw: {s?.market_data?.last_raw_event_timestamp??'—'}</p></Card>
-      <Card title="Last received"><strong>{asUtc(receivedTime)}</strong><p>{s?.market_data?.received_messages??'—'} received · {s?.market_data?.accepted_updates??'—'} accepted</p></Card>
+      <Card title="Provider messages"><strong>{s?.market_data?.received_messages??'—'}</strong><p>{s?.market_data?.accepted_updates??s?.market_data?.accepted_ticks??0} accepted · {s?.market_data?.rejected_observations??0} rejected</p></Card>
       <Card title="Session"><Status value={s?.market_session?.status}/></Card>
       <Card title="Operator session control">
         {!isOperator&&<p className="muted" style={{margin:'0 0 0.5rem 0',fontSize:'0.85rem'}}>Operator required</p>}
@@ -625,19 +633,28 @@ export function MarketDataPage(){
         </div>
       </Card>
       <Card title="Tracked stocks"><strong>{symbols.length}</strong></Card>
-      <Card title="Accepted ticks"><strong>{s?.market_data?.accepted_ticks??'—'}</strong></Card>
-      <Card title="Duplicates / late"><strong>{s?.market_data?.duplicate_ticks??'—'} / {s?.market_data?.late_ticks??'—'}</strong></Card>
+      <Card title="Accepted / duplicate"><strong>{s?.market_data?.accepted_ticks??'—'} / {s?.market_data?.duplicate_ticks??'—'}</strong></Card>
+      <Card title="Late / rejected"><strong>{s?.market_data?.late_ticks??'—'} / {s?.market_data?.rejected_observations??'—'}</strong></Card>
     </div>
-    {s?.market_data?.errors?.length?<Card title="Provider lifecycle errors"><EvidenceView value={s.market_data.errors}/></Card>:null}
-    <Card title="Watchlist" meta={`${watchQuotes.length} live symbols`}><DataTable rows={watchQuotes} columns={[{key:'symbol',label:'Symbol'},{key:'price',label:'Price',render:row=>row.price??'—'},{key:'data_source',label:'Source'},{key:'action',label:'',render:row=><button type="button" onClick={()=>toggleWatch(row.symbol)}>Remove</button>}]}/></Card>
-    <Card title="Latest external quotes" meta={`${displayedQuotes.length} of ${visibleQuotes.length} shown`}>
-      <label className="compact-filter">Show stocks<input aria-label="Number of stocks to display" type="number" min="1" max="200" value={displayLimit} onChange={event=>setDisplayLimit(Math.max(1,Math.min(200,Number(event.target.value)||1)))}/></label>
-      <DataTable rows={displayedQuotes} columns={[{key:'symbol',label:'Symbol'},{key:'provider_symbol',label:'Provider symbol'},{key:'price',label:'Price',render:row=>row.price??'—'},{key:'event_timestamp',label:'Event time',render:row=>asUtc(row.event_timestamp)},{key:'raw_event_timestamp',label:'Raw timestamp',render:row=>row.raw_event_timestamp??'—'},{key:'received_at',label:'Received',render:row=>asUtc(row.received_at)},{key:'volume_available',label:'Volume',render:row=>row.volume_available===false?'Unavailable':'Available'},{key:'data_source',label:'Source'},{key:'watch',label:'',render:row=><button type="button" onClick={()=>toggleWatch(row.symbol)}>{watchlist.includes(row.symbol)?'★':'☆'}</button>}]}/>
+    <Card title="Market chart" meta={s?.market_data?.chart_data_status||'UNAVAILABLE'}>
+      <CandleChart key={accountId} accountId={accountId} symbol={symbol||undefined} symbols={symbols} candles={s?.candles||[]} formingCandles={forming} latestQuotes={quotes} marketData={s?.market_data||{}} />
     </Card>
-    <Card title="Closed candles" meta={`${candles.length} shown`}>
+    {s?.market_data?.chart_data_reason&&<p className="muted">Chart data status: {s.market_data.chart_data_reason}</p>}
+    {s?.market_data?.errors?.length?<Card title="Provider lifecycle errors"><EvidenceView value={s.market_data.errors}/></Card>:null}
+    <Card title="Watchlist" meta={`${watchQuotes.length} observed symbols`}><DataTable rows={watchQuotes} columns={[{key:'symbol',label:'Symbol'},{key:'price',label:'Price',render:row=>row.price??'—'},{key:'data_source',label:'Source'},{key:'action',label:'',render:row=><button type="button" onClick={()=>toggleWatch(row.symbol)}>Remove</button>}]}/></Card>
+    <Card title="Latest valid quotes" meta={`${displayedQuotes.length} of ${visibleQuotes.length} shown`}>
+      <label className="compact-filter">Show stocks<input aria-label="Number of stocks to display" type="number" min="1" max="200" value={displayLimit} onChange={event=>setDisplayLimit(Math.max(1,Math.min(200,Number(event.target.value)||1)))}/></label>
+      {displayedQuotes.length?<DataTable rows={displayedQuotes} columns={[{key:'symbol',label:'Symbol'},{key:'provider_symbol',label:'Provider symbol'},{key:'price',label:'Price',render:row=>row.price??'—'},{key:'age_seconds',label:'Age',render:row=>row.age_seconds==null?'—':`${Math.floor(row.age_seconds)}s`},{key:'event_timestamp',label:'Event time',render:row=>asUtc(row.event_timestamp)},{key:'raw_event_timestamp',label:'Raw timestamp',render:row=>row.raw_event_timestamp??'—'},{key:'received_at',label:'Received',render:row=>asUtc(row.received_at)},{key:'volume_available',label:'Volume',render:row=>row.volume_available===false?'Unavailable':'Available'},{key:'data_source',label:'Source'},{key:'watch',label:'',render:row=><button type="button" onClick={()=>toggleWatch(row.symbol)}>{watchlist.includes(row.symbol)?'★':'☆'}</button>}]}/>:<Empty>{s?.market_data?.chart_data_reason||'No valid quote has reached the backend for this provider.'}</Empty>}
+    </Card>
+    <div className="chart-controls"><label>History timeframe<select value={interval} onChange={event=>setInterval(Number(event.target.value))}><option value={60}>1 minute</option><option value={300}>5 minutes</option></select></label></div>
+    <Card title="Forming candles" meta={`${formingRows.length} currently forming`}>
+      {formingRows.length?<DataTable rows={formingRows} columns={[{key:'symbol',label:'Symbol'},{key:'interval',label:'Interval (sec)'},{key:'start_time',label:'Bucket start (UTC sec)'},{key:'open',label:'Open'},{key:'high',label:'High'},{key:'low',label:'Low'},{key:'close',label:'Latest'},{key:'data_source',label:'Source'}]}/>:<Empty>{quotes.length?'No forming bar for this selection yet; the latest valid quote remains available above.':'No forming candle because no valid quote has been accepted.'}</Empty>}
+    </Card>
+    <Card title="Closed candle history" meta={`${historicalRows.length} shown`}>
       <label className="compact-filter">Search stock<input aria-label="Search stock symbols" placeholder="RELIANCE or TCS" value={symbolQuery} onChange={event=>setSymbolQuery(event.target.value)}/></label>
       <label className="compact-filter">Symbol<select aria-label="Filter market data by symbol" value={symbol} onChange={event=>setSymbol(event.target.value)}><option value="">All symbols</option>{filteredSymbols.map(value=><option key={value}>{value}</option>)}</select></label>
-      <DataTable rows={candles} columns={[{key:'symbol',label:'Symbol'},{key:'interval',label:'Interval'},{key:'open',label:'Open'},{key:'high',label:'High'},{key:'low',label:'Low'},{key:'close',label:'Close'},{key:'volume',label:'Volume',render:row=>row.volume_available===false?'Unavailable':String(row.volume??'—')},{key:'data_source',label:'Source'}]}/>
+      {historyError&&<div className="error" role="status">{historyError}</div>}
+      {historyLoading&&!historicalRows.length?<Empty>Loading authenticated candle history…</Empty>:historicalRows.length?<DataTable rows={historicalRows.filter(item=>Number(item.interval)===interval)} columns={[{key:'symbol',label:'Symbol'},{key:'interval',label:'Interval'},{key:'start_time',label:'Bucket start (UTC sec)'},{key:'open',label:'Open'},{key:'high',label:'High'},{key:'low',label:'Low'},{key:'close',label:'Close'},{key:'volume',label:'Volume',render:row=>row.volume_available===false?'Unavailable':String(row.volume??'—')},{key:'data_source',label:'Source'}]}/>:<Empty>{s?.market_data?.chart_data_reason||'No closed candles are available for the active provider.'}</Empty>}
     </Card>
   </Page>
 }

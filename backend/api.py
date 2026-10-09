@@ -627,9 +627,27 @@ def create_app(platform=None, *, trusted_origins=None):
         return financial_json(engine.market_session.to_dict(engine.clock()))
 
     @app.get("/api/candles")
-    def historical_candles(request: Request, symbol: str | None = None, interval: int | None = Query(None, ge=60, le=3600), limit: int = Query(200, ge=1, le=1000)):
+    def historical_candles(
+        request: Request,
+        symbol: str | None = None,
+        interval: int = Query(60, ge=60, le=300),
+        limit: int = Query(200, ge=1, le=1000),
+    ):
         require_user(request)
-        return financial_json([dict(row) for row in engine.store.candle_rows(symbol, interval, limit)])
+        if interval not in {60, 300}:
+            raise HTTPException(422, "interval must be 60 or 300 seconds")
+        provider = (
+            engine.market_data_evidence().get("provider")
+            if engine.external_market_data is not None
+            else "replay"
+        )
+        rows = engine.store.candle_rows(
+            symbol=symbol,
+            interval=interval,
+            limit=limit,
+            provider=provider,
+        )
+        return financial_json([dict(row) for row in rows])
 
     @app.post("/api/market/session")
     def set_market_session(body: MarketSessionRequest, request: Request):

@@ -131,6 +131,15 @@ class AccountResponseScope:
                     return _OMIT
                 if projected is not _OMIT:
                     result[key] = projected
+            if result.get("provider") == "MOCK_REPLAY":
+                for key in ("latest_quotes", "forming_candles"):
+                    if isinstance(result.get(key), list):
+                        result[key] = [
+                            item
+                            for item in result[key]
+                            if isinstance(item, dict)
+                            and item.get("symbol") in self.symbols
+                        ]
             if "accounts" in value and "verified" in value:
                 breakdown = (
                     value["accounts"].get(self.account_id, {})

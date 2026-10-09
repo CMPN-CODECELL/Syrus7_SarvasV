@@ -77,11 +77,11 @@ export function AppShell() {
     </aside>
     <div className="workspace">
       <header className="topbar">
-        <div className="connection"><i className={status}/><span>{status === 'live' ? 'Live backend evidence' : status}</span></div>
+        <div className="connection"><i className={status}/><span>{status === 'live' ? 'Backend telemetry connected' : `Backend telemetry ${status}`}</span><span className="feed-indicator">Market feed: {snapshot?.market_data?.feed_status||'unknown'} · {snapshot?.market_data?.source||snapshot?.market_data?.label||'source unknown'}</span></div>
         <div><span className="user">{user?.username} · {user?.account_id}{isOperator ? ' · Operator' : ''}</span><button className="ghost" onClick={async () => { await logout(); navigate('/login') }}>Sign out</button></div>
       </header>
       {killError && <div className="shell-alert error" role="alert">{killError}</div>}
-      <main className="content"><Outlet context={{ snapshot, refresh }}/></main>
+      <main className="content"><Outlet context={{ snapshot, refresh, accountId:user?.account_id }}/></main>
     </div>
   </div>
 }

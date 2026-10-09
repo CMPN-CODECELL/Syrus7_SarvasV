@@ -78,3 +78,69 @@ class PostgresStore(Store):
             raise RuntimeError(
                 "PostgreSQL initialization failed; inspect migrations/connectivity privately"
             ) from None
+
+    def save_candle(self, candle, *, provider="replay"):
+        with self.transaction():
+            self.db.execute(
+                """INSERT INTO algoshield.closed_candles
+                (provider,symbol,interval_seconds,start_time,end_time,open,high,low,close,volume,is_closed,volume_available,data_source)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(provider,symbol,interval_seconds,start_time) DO NOTHING""",
+                (
+                    provider,
+                    candle.symbol,
+                    candle.interval,
+                    candle.start_time,
+                    candle.end_time,
+                    str(candle.open),
+                    str(candle.high),
+                    str(candle.low),
+                    str(candle.close),
+                    candle.volume,
+                    candle.is_closed,
+                    candle.volume_available,
+                    candle.data_source,
+                ),
+            )
+            self.db.execute(
+                "DELETE FROM algoshield.closed_candles "
+                "WHERE provider=? AND symbol=? AND start_time<?",
+                (
+                    provider,
+                    candle.symbol,
+                    candle.start_time - self.CANDLE_RETENTION_SECONDS,
+                ),
+            )
+
+    def candle_rows(self, symbol=None, interval=None, limit=200, provider=None):
+        clauses, args = [], []
+        if symbol:
+            clauses.append("symbol=?")
+            args.append(symbol.upper())
+        if interval:
+            clauses.append("interval_seconds=?")
+            args.append(interval)
+        if provider:
+            clauses.append("provider=?")
+            args.append(provider)
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        bounded_limit = min(max(int(limit), 1), 1000)
+        args.extend((bounded_limit, bounded_limit))
+        return self.rows(
+            "SELECT * FROM (SELECT provider,symbol,interval_seconds AS interval,"
+            "start_time,end_time,open,high,low,close,volume,is_closed,"
+            "volume_available,data_source FROM algoshield.closed_candles"
+            f"{where} ORDER BY start_time DESC LIMIT ?) recent "
+            "ORDER BY start_time ASC LIMIT ?",
+            tuple(args),
+        )
+
+    def candle_count(self, provider=None):
+        if provider:
+            return self.rows(
+                "SELECT COUNT(*) AS n FROM algoshield.closed_candles WHERE provider=?",
+                (provider,),
+            )[0]["n"]
+        return self.rows(
+            "SELECT COUNT(*) AS n FROM algoshield.closed_candles"
+        )[0]["n"]

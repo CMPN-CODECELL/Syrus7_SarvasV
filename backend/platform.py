@@ -87,9 +87,10 @@ class Platform:
         for meta in self.strategies.registry.values():
             self.candles.add_interval(meta["interval"])
         self.closed_candles = deque(maxlen=128)
-        for row in reversed(self.store.candle_rows(limit=128)):
-            from backend.shared.contracts import Candle
-            self.closed_candles.append(Candle(row["symbol"], row["interval"], row["start_time"], row["end_time"], Decimal(row["open"]), Decimal(row["high"]), Decimal(row["low"]), Decimal(row["close"]), row["volume"], bool(row["is_closed"]), bool(row["volume_available"]), row["data_source"]))
+        self._market_observations = {}
+        self._market_rejected = 0
+        self._candle_count_cache = {}
+        self._restore_closed_candles("replay")
         self.auth = AuthService(self.store)
         self.demo_count = 0
         self._simulation_cursor = {}
@@ -110,6 +111,30 @@ class Platform:
                 "external market data source is not compatible with this broker"
             )
         self.external_market_data = provider
+        provider_key = provider.telemetry().get("provider")
+        self._restore_closed_candles(provider_key)
+
+    def _restore_closed_candles(self, provider):
+        from backend.shared.contracts import Candle
+
+        self.closed_candles.clear()
+        for row in self.store.candle_rows(limit=128, provider=provider):
+            self.closed_candles.append(
+                Candle(
+                    row["symbol"],
+                    row["interval"],
+                    row["start_time"],
+                    row["end_time"],
+                    Decimal(row["open"]),
+                    Decimal(row["high"]),
+                    Decimal(row["low"]),
+                    Decimal(row["close"]),
+                    row["volume"],
+                    bool(row["is_closed"]),
+                    bool(row["volume_available"]),
+                    row["data_source"],
+                )
+            )
 
     def start_external_market_data(self):
         if self.external_market_data is None:
@@ -258,6 +283,7 @@ class Platform:
             try:
                 accepted, closed = self.candles.ingest_event(tick)
             except ValueError as exc:
+                self._market_rejected += 1
                 self.reliability.fail_closed("MARKET_EVENT_REJECTED")
                 with self.store.transaction():
                     self.store.audit(
@@ -288,10 +314,33 @@ class Platform:
                 getattr(tick, "event_timestamp", 0),
             )
             self.ledger.marks[tick.symbol] = tick.price
+            self._market_observations[tick.symbol] = {
+                "symbol": tick.symbol,
+                "provider_symbol": tick.symbol,
+                "price": str(tick.price),
+                "event_timestamp": tick.event_timestamp,
+                "raw_event_timestamp": tick.raw_event_timestamp,
+                "received_at": time.time(),
+                "volume_available": tick.volume_available,
+                "data_source": tick.data_source,
+            }
             self.reliability.observe_tick(tick, replay=replay)
             for candle in closed:
                 self.closed_candles.append(candle)
-                self.store.save_candle(candle, provider=(provider_telemetry.get("provider", "replay") if provider_telemetry else "replay"))
+                self.store.save_candle(
+                    candle,
+                    provider=(
+                        provider_telemetry.get("provider", "replay")
+                        if provider_telemetry
+                        else "replay"
+                    ),
+                )
+                self._candle_count_cache.pop(
+                    provider_telemetry.get("provider", "replay")
+                    if provider_telemetry
+                    else "replay",
+                    None,
+                )
         intents = []
         for candle in closed:
             try:
@@ -591,20 +640,113 @@ class Platform:
     def strategy_readiness(self, strategy_id: str):
         return self.strategies.readiness_for(strategy_id)
 
-    def market_data_evidence(self):
+    def market_data_evidence(self, account_id: str | None = None):
         market_data = self.candles.stats()
         if self.external_market_data is not None:
             market_data.update(self.external_market_data.telemetry())
+            source = market_data.get("source") or "UNKNOWN"
+            quotes = list(market_data.get("latest_quotes") or [])
         else:
+            source = "MOCK_REPLAY"
+            quotes = list(self._market_observations.values())
+            if account_id is not None:
+                # Replay observations are shared process state, but account
+                # responses may only expose instruments subscribed by that account.
+                visible_symbols = {
+                    row["symbol"]
+                    for row in self.store.rows(
+                        "SELECT DISTINCT symbol FROM subscriptions WHERE account=?",
+                        (account_id,),
+                    )
+                }
+                quotes = [quote for quote in quotes if quote.get("symbol") in visible_symbols]
             market_data.update(
                 {
                     "provider": "MOCK_REPLAY",
+                    "source": source,
                     "label": "MOCK / REPLAY",
                     "volume_available": True,
                     "connected": bool(
                         self._replay_thread and self._replay_thread.is_alive()
                     ),
                 }
+            )
+        now = self.clock()
+        enriched_quotes = []
+        for quote in quotes:
+            item = dict(quote)
+            received_at = item.get("received_at")
+            age = max(0.0, now - float(received_at)) if received_at is not None else None
+            item["age_seconds"] = age
+            item["stale"] = age is not None and age > 15
+            enriched_quotes.append(item)
+        market_data["latest_quotes"] = enriched_quotes
+        market_data["rejected_observations"] = self._market_rejected
+        forming_candles = [
+            _contract_dict(candle)
+            for candle in sorted(
+                self.candles.active.values(),
+                key=lambda candle: (candle.symbol, candle.interval),
+            )
+        ]
+        if self.external_market_data is None and account_id is not None:
+            visible_symbols = {
+                row["symbol"]
+                for row in self.store.rows(
+                    "SELECT DISTINCT symbol FROM subscriptions WHERE account=?",
+                    (account_id,),
+                )
+            }
+            forming_candles = [
+                candle for candle in forming_candles
+                if candle["symbol"] in visible_symbols
+            ]
+        market_data["forming_candles"] = forming_candles
+        provider_key = (
+            market_data.get("provider") if self.external_market_data is not None else "replay"
+        )
+        cached_count = self._candle_count_cache.get(provider_key)
+        if cached_count is None or now - cached_count[0] > 2:
+            cached_count = (now, self.store.candle_count(provider_key))
+            self._candle_count_cache[provider_key] = cached_count
+        market_data["closed_candles_available"] = cached_count[1]
+        received_times = [
+            float(item["received_at"])
+            for item in enriched_quotes
+            if item.get("received_at") is not None
+        ]
+        if not received_times and market_data.get("last_received_at") is not None:
+            received_times.append(float(market_data["last_received_at"]))
+        feed_age = max(0.0, now - max(received_times)) if received_times else None
+        market_data["feed_age_seconds"] = feed_age
+        connected = bool(market_data.get("connected"))
+        if self.external_market_data is None:
+            market_data["feed_status"] = "MOCK_REPLAY" if enriched_quotes else "NO_DATA"
+            market_data["stale"] = False
+        elif not connected:
+            market_data["feed_status"] = "DISCONNECTED"
+            market_data["stale"] = False
+        elif not enriched_quotes:
+            market_data["feed_status"] = "CONNECTED_NO_EVENTS"
+            market_data["stale"] = False
+        else:
+            market_data["stale"] = feed_age is not None and feed_age > 15
+            market_data["feed_status"] = "STALE" if market_data["stale"] else "LIVE"
+        if market_data["closed_candles_available"]:
+            market_data["chart_data_status"] = "HISTORY_AVAILABLE"
+            market_data["chart_data_reason"] = None
+        elif market_data["forming_candles"]:
+            market_data["chart_data_status"] = "FORMING"
+            market_data["chart_data_reason"] = "WAITING_FOR_NEXT_BUCKET_OBSERVATION"
+        elif enriched_quotes:
+            market_data["chart_data_status"] = "QUOTE_ONLY"
+            market_data["chart_data_reason"] = "NO_CLOSED_CANDLE_YET"
+        else:
+            market_data["chart_data_status"] = "UNAVAILABLE"
+            market_data["chart_data_reason"] = (
+                "PROVIDER_DISCONNECTED"
+                if self.external_market_data is not None and not connected
+                else "NO_VALID_OBSERVATIONS"
             )
         return market_data
 
@@ -903,7 +1045,7 @@ class Platform:
                     else None
                 )
 
-            market_data = self.market_data_evidence()
+            market_data = self.market_data_evidence(account_id)
             result = {
                 "demo_enabled": self.demo_enabled,
                 "failure_lab_enabled": True,
@@ -947,7 +1089,13 @@ class Platform:
                 "orders": orders,
                 "fills": fills,
                 "counts": counts,
-                "candles": [_contract_dict(c) for c in list(self.closed_candles)[-20:]],
+                "candles": [
+                    _contract_dict(c)
+                    for c in list(self.closed_candles)[-20:]
+                    if account_id is None
+                    or self.external_market_data is not None
+                    or any(row["symbol"] == c.symbol for row in sub_rows)
+                ][-20:],
                 "signals": signals,
                 "strategy_errors": strategy_errors,
                 "market_data": market_data,
