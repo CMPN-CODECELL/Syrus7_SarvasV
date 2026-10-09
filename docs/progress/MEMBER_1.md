@@ -1,5 +1,21 @@
 # Member 1 Progress
 
+## 2026-10-09 financial handoff review
+
+Current source inspection found no independent ledger formula or schema defect: retain Decimal fill-derived positions, global canonical fill-ID conflict checks, order/account/strategy attribution, partial/reversal handling, and the existing outer transaction that groups fill insert, order cumulative quantity/status, reservation-derived exposure, and audits. Added two missing rollback/concurrency acceptance tests in `tests/test_execution_state_machine.py`; targeted validation passed 51 tests across execution state, Member 1 ledger, and broker update suites. Full suite on refreshed `main`: 417 passed, 1 isolated PostgreSQL test skipped; seven offline mock rehearsals passed (mock kill 0.29s); Ruff check/format passed. PostgreSQL remains blocked without `ALGOSHIELD_TEST_DATABASE_URL`; no migration added.
+
+### Provider handoff to Member 2
+
+- Persist `(provider, UCC, brokerOrderId) -> platform order ID` before processing dependent events. Enforce collision isolation across both provider and UCC, and preserve the mapping across restart. Cancellation and per-order trade reads must resolve through the same mapping.
+- Do not infer trade/order association from symbol, side, quantity, timestamp, price, or an order-WebSocket trade hint. The official all-trades example omits `orderId`; only use `GET /orders/{orderId}/trades` after fixtures/harmless reads establish that the response is scoped to that order.
+- For each per-order response, validate order identity, trade fields, signed-side agreement, unique trade identity, and the sum of effective trade quantities against `qtyTraded`; quarantine missing, duplicate-conflicting, foreign, overfilled, or inconsistent evidence and keep reconciliation uncertain.
+- `tradeId` uniqueness scope is not proven. Do not choose a persistent fill-ID namespace or add a schema constraint until provider/UCC/day scope is evidenced. Normalize only proven IDs; identical full payload duplicates are no-ops, conflicting reuse fails closed while preserving the original fill.
+- The guide has no charges table or correction/bust schema. Do not claim exact 021 net P&L or invent fee/correction behavior; carry explicit unknown/estimated status in the later agreed financial contract.
+
+### Provider/reliability handoff to Member 3
+
+Account net positions cannot identify strategy ownership. Any local virtual/account-net mismatch, manual execution, incomplete day history, non-atomic snapshot, or unattributable trade must remain uncertain; do not synthesize fills or declare opposing virtual positions flat from net zero. Real PostgreSQL transaction/controller parity still requires an explicitly isolated database.
+
 ## Ownership
 Accounting & Platform State; canonical responsibilities: ../TEAM_OWNERSHIP.md, Member 1.
 
